@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>石岡青果センター 在庫管理デモ</title>
   <style>
-    :root{--bg:#f8fafc;--ink:#0f172a;--line:#e2e8f0;--muted:#64748b;--main:#16a34a;--red:#dc2626;--orange:#ea580c;--blue:#2563eb;--purple:#7c3aed}
+    :root{--bg:#f8fafc;--ink:#0f172a;--line:#e2e8f0;--muted:#64748b;--main:#16a34a;--red:#dc2626;--orange:#ea580c;--blue:#2563eb}
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     button,input,select,textarea{font:inherit}
@@ -67,8 +67,10 @@
 </head>
 <body>
 <div id="app"></div>
-
 <script>
+const SUPABASE_URL='https://hsuofxvcxgmsplwdigpr.supabase.co';
+const SUPABASE_KEY='sb_publishable_1nv4y9m3z8pKTyQliJ-Cfg_FLY8ph3_';
+
 const ITEMS=[
   {id:'item1',name:'レタス',pack:8,sort:1},
   {id:'item2',name:'サニー',pack:4,sort:2},
@@ -106,6 +108,7 @@ const USERS=[
 ];
 
 const STORE='ishioka_inventory_demo_v6_linecopy_weekly';
+const STATE_ID=STORE;
 
 const ROLE_LABEL={
   admin:'管理者',
@@ -120,19 +123,7 @@ function newId(){
     : 'id_'+Date.now()+'_'+Math.random().toString(16).slice(2);
 }
 
-function init(){
-  const saved=localStorage.getItem(STORE);
-  if(saved){
-    try{
-      const d=JSON.parse(saved);
-      d.movements=d.movements||[];
-      d.notifications=d.notifications||[];
-      d.records=d.records||[];
-      d.items=d.items||ITEMS;
-      return d;
-    }catch(e){}
-  }
-
+function defaultState(){
   const settings=Object.fromEntries(
     ITEMS.map(it=>[
       it.id,
@@ -142,7 +133,6 @@ function init(){
       }
     ])
   );
-
   return {
     user:null,
     role:null,
@@ -154,11 +144,104 @@ function init(){
   };
 }
 
+function normalize(d){
+  const base=defaultState();
+  d=d||{};
+  d={...base,...d};
+  d.movements=d.movements||[];
+  d.notifications=d.notifications||[];
+  d.records=d.records||[];
+  d.items=d.items&&d.items.length?d.items:ITEMS;
+  d.settings=d.settings||base.settings;
+  for(const it of d.items){
+    if(!d.settings[it.id]){
+      d.settings[it.id]={
+        min:Math.max(10,it.pack*5),
+        max:Math.max(20,it.pack*12)
+      };
+    }
+  }
+  return d;
+}
+
+function init(){
+  const saved=localStorage.getItem(STORE);
+  if(saved){
+    try{
+      return normalize(JSON.parse(saved));
+    }catch(e){}
+  }
+  return defaultState();
+}
+
 let db=init();
 let formState=[];
+let cloudReady=false;
+let saveTimer=null;
+
+function cloudPayload(){
+  return {
+    settings:db.settings,
+    records:db.records,
+    movements:db.movements,
+    notifications:db.notifications,
+    items:db.items
+  };
+}
+
+async function loadCloud(){
+  const url=`${SUPABASE_URL}/rest/v1/app_state?id=eq.${encodeURIComponent(STATE_ID)}&select=data`;
+  const res=await fetch(url,{
+    headers:{
+      apikey:SUPABASE_KEY,
+      Authorization:`Bearer ${SUPABASE_KEY}`
+    }
+  });
+  if(!res.ok)throw new Error(await res.text());
+
+  const rows=await res.json();
+  if(rows&&rows[0]&&rows[0].data){
+    const localUser=db.user;
+    const localRole=db.role;
+    db=normalize({
+      ...db,
+      ...rows[0].data,
+      user:localUser,
+      role:localRole
+    });
+    localStorage.setItem(STORE,JSON.stringify(db));
+  }
+  cloudReady=true;
+}
+
+async function saveCloudNow(){
+  if(!cloudReady)return;
+  const res=await fetch(`${SUPABASE_URL}/rest/v1/app_state`,{
+    method:'POST',
+    headers:{
+      apikey:SUPABASE_KEY,
+      Authorization:`Bearer ${SUPABASE_KEY}`,
+      'Content-Type':'application/json',
+      Prefer:'resolution=merge-duplicates,return=minimal'
+    },
+    body:JSON.stringify({
+      id:STATE_ID,
+      data:cloudPayload(),
+      updated_at:new Date().toISOString()
+    })
+  });
+  if(!res.ok)throw new Error(await res.text());
+}
 
 function save(){
   localStorage.setItem(STORE,JSON.stringify(db));
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{
+    saveCloudNow().catch(e=>{
+      console.error(e);
+      alert('Supabaseへの保存に失敗しました。SQLで app_state テーブルを作成済みか確認してください。');
+    });
+  },300);
 }
 
 function yen(n){
@@ -231,10 +314,10 @@ function latestTotal(itemId){
 
 function esc(s){
   return String(s??'').replace(/[&<>"]/g,c=>({
-    '&':'&amp;',
-    '<':'&lt;',
-    '>':'&gt;',
-    '"':'&quot;'
+    '&':'&',
+    '<':'<',
+    '>':'>',
+    '"':'"'
   }[c]));
 }
 
@@ -254,7 +337,6 @@ function pageShell(title,sub,body){
 
 function login(){
   const grouped={};
-
   USERS.forEach(u=>{
     grouped[u.group]=grouped[u.group]||[];
     grouped[u.group].push(u);
@@ -268,22 +350,18 @@ function login(){
 
   pageShell(
     '石岡青果センター 在庫管理デモ',
-    '画面確認用の公開デモ',
+    cloudReady?'Supabase保存版':'読み込み中、または一時的にブラウザ保存版',
     `<div class="card">
       <div class="notice">
-        これはデモアプリです。入力データはこのブラウザ内に保存されます。
+        これはデモアプリです。入力データはSupabaseに保存され、別端末でも共有されます。
       </div>
-
       <label class="label">ログインユーザー</label>
       <select id="loginUser" class="input">
         ${options}
       </select>
-
       <br><br>
-
       <button class="btn btn3" style="width:100%" onclick="doLogin()">ログイン</button>
     </div>
-
     <div class="card small">
       <b>権限の違い</b><br>
       管理者：全操作、適正在庫設定、修正履歴削除、初期化<br>
@@ -297,10 +375,8 @@ function login(){
 function doLogin(){
   const id=document.getElementById('loginUser').value;
   const u=USERS.find(x=>x.id===id);
-
   db.user=u.name;
   db.role=u.role;
-
   save();
   home();
 }
@@ -314,11 +390,10 @@ function home(){
 
   pageShell(
     '在庫管理デモ',
-    `${esc(db.user)}さん / ${ROLE_LABEL[db.role]}`,
+    `${esc(db.user)}さん / ${ROLE_LABEL[db.role]} / ${cloudReady?'Supabase保存':'ブラウザ保存'}`,
     `<div class="notice">
       適正在庫は「下限kg〜上限kg」で設定できます。下限を下回ると不足、上限を超えると過多としてLINEコピペ用に表示します。
     </div>
-
     <div class="card stockGrid">
       <div class="box">
         <span class="small">不足品目</span>
@@ -337,7 +412,6 @@ function home(){
         <b>${db.records.length}件</b>
       </div>
     </div>
-
     <div class="menu">
       <button class="btn btn3" onclick="inventory()" ${canEdit()?'':'disabled'}>在庫入力（19品目一括）</button>
       <button class="btn btnBlue" onclick="stocks()">在庫一覧・入庫出庫</button>
@@ -350,7 +424,6 @@ function home(){
       <button class="btn btn2" onclick="resetDemo()" ${canAdmin()?'':'disabled'}>デモデータ初期化（管理者）</button>
       <button class="btn btnRed" onclick="db.user=null;db.role=null;save();login()">ログアウト</button>
     </div>
-
     ${!canEdit()?'<div class="warn">この権限では在庫の変更はできません。</div>':''}`
   );
 }
@@ -360,7 +433,6 @@ function inventory(){
     alert('この権限では在庫入力できません');
     return;
   }
-
   formState=db.items.map(it=>({
     itemId:it.id,
     lines:[
@@ -370,7 +442,6 @@ function inventory(){
       }
     ]
   }));
-
   renderInventory();
 }
 
@@ -378,15 +449,12 @@ function renderInventory(msg='',err=''){
   const cards=formState.map((r,idx)=>{
     const it=db.items.find(x=>x.id===r.itemId);
     const s=db.settings[it.id];
-
     const total=yen(
       r.lines.reduce((a,l)=>
         l.pack!==''&&l.cases!=='' ? a+Number(l.pack)*Number(l.cases) : a
       ,0)
     );
-
     const st=total?judge(total,s):'unset';
-
     return `<section class="card">
       <div class="itemHead">
         <div>
@@ -395,28 +463,23 @@ function renderInventory(msg='',err=''){
         </div>
         <span class="badge ${total?st:'unset'}">${total?label(st):'未入力'}</span>
       </div>
-
       ${r.lines.map((l,j)=>`
         <div class="line">
           <div>
             <label class="label">入れ数kg</label>
             <input class="input" inputmode="decimal" value="${esc(l.pack)}" placeholder="例 ${it.pack}" onchange="formState[${idx}].lines[${j}].pack=this.value;renderInventory()">
           </div>
-
           <div>
             <label class="label">ケース数</label>
             <input class="input" inputmode="decimal" value="${esc(l.cases)}" placeholder="空欄可" onchange="formState[${idx}].lines[${j}].cases=this.value;renderInventory()">
           </div>
-
           <div class="kg">
             小計 ${l.pack!==''&&l.cases!==''?fmt(Number(l.pack)*Number(l.cases))+'kg':'-'}
             ${j>0?`<button class="btn btn2" style="padding:6px 8px;margin-left:6px" onclick="formState[${idx}].lines.splice(${j},1);renderInventory()">削除</button>`:''}
           </div>
         </div>
       `).join('')}
-
       <button class="btn btn2" onclick="formState[${idx}].lines.push({pack:'',cases:''});renderInventory()">＋ 入れ数を追加</button>
-
       <div class="total">
         <span>合計</span>
         <span>${total?fmt(total)+'kg':'- kg'}</span>
@@ -429,13 +492,10 @@ function renderInventory(msg='',err=''){
     '19品目をまとめて入力',
     `${msg?`<div class="ok">${msg}</div>`:''}
     ${err?`<div class="err">${err}</div>`:''}
-
     <div class="notice">
       登録後、不足・過多があれば自動で「LINEコピペ用」画面を開きます。
     </div>
-
     ${cards}
-
     <button class="btn btn3 bottom" onclick="submitInventory()">まとめて登録</button>`
   );
 }
@@ -443,31 +503,24 @@ function renderInventory(msg='',err=''){
 function submitInventory(){
   try{
     const results=[];
-
     for(const r of formState){
       const it=db.items.find(x=>x.id===r.itemId);
       const lines=[];
-
       for(const l of r.lines){
         const hp=l.pack!=='';
         const hc=l.cases!=='';
-
         if(!hp&&hc){
           throw new Error(`${it.name}: ケース数だけ入力されています。入れ数も入力してください。`);
         }
-
         if(hp&&hc){
           const p=Number(l.pack);
           const c=Number(l.cases);
-
           if(!(p>0)){
             throw new Error(`${it.name}: 入れ数は0より大きくしてください。`);
           }
-
           if(!(c>=0)){
             throw new Error(`${it.name}: ケース数は0以上にしてください。`);
           }
-
           lines.push({
             pack:p,
             cases:c,
@@ -475,13 +528,11 @@ function submitInventory(){
           });
         }
       }
-
       if(lines.length){
         const before=latestTotal(it.id);
         const total=yen(lines.reduce((a,l)=>a+l.subtotal,0));
         const s=db.settings[it.id];
         const st=judge(total,s);
-
         const rec={
           id:newId(),
           kind:'一括入力',
@@ -495,9 +546,7 @@ function submitInventory(){
           role:db.role,
           createdAt:nowIso()
         };
-
         results.push(rec);
-
         db.movements.push({
           id:newId(),
           recordId:rec.id,
@@ -524,7 +573,6 @@ function submitInventory(){
       .map(r=>makeNotification(r));
 
     db.notifications.push(...alerts);
-
     save();
 
     if(alerts.length){
@@ -532,7 +580,6 @@ function submitInventory(){
     }else{
       renderInventory(`登録しました。入力品目：${results.length}件。不足・過多はありません。`,``);
     }
-
   }catch(e){
     renderInventory('',e.message);
   }
@@ -557,7 +604,6 @@ function lineMessage(r){
   const diff=r.status==='shortage'
     ? r.setting.min-r.total
     : r.total-r.setting.max;
-
   return `${r.status==='shortage'?'【在庫不足】':'【在庫過多】'} ${r.itemName} ${fmt(r.total)}kg（適正 ${r.setting.min}kg〜${r.setting.max}kg / ${r.status==='shortage'?'不足':'超過'} ${fmt(diff)}kg）`;
 }
 
@@ -565,52 +611,40 @@ function makeLineCopyText(){
   const latest=latestMap();
   const excess=[];
   const shortage=[];
-
   db.items.forEach(it=>{
     const r=latest[it.id];
-
     if(!r)return;
-
     const s=db.settings[it.id];
     const st=judge(Number(r.total||0),s);
-
     if(st==='excess'){
       excess.push(`${it.name} ${fmt(r.total)}kg`);
     }
-
     if(st==='shortage'){
       shortage.push(`${it.name} ${fmt(r.total)}kg`);
     }
   });
-
   return `過多品目
 ${excess.length?excess.join('\n'):'なし'}
-
 不足品目
 ${shortage.length?shortage.join('\n'):'なし'}`;
 }
 
 function lineCopyPage(msg=''){
   const text=makeLineCopyText();
-
   pageShell(
     'LINEコピペ用',
     '現在の不足・過多品目をそのままコピーできます',
     `${msg?`<div class="ok">${msg}</div>`:''}
-
     <div class="card">
       <div class="notice">
         在庫入力後、下限kg未満は不足、上限kg超過は過多として下にまとめます。
       </div>
-
       <textarea id="lineCopyText" class="textarea">${esc(text)}</textarea>
-
       <div class="row" style="margin-top:10px">
         <button class="btn btnBlue" onclick="copyLineCopyText()">コピー</button>
         <button class="btn btn2" onclick="shareLineCopyText()">LINE共有を開く</button>
       </div>
     </div>
-
     <div class="card small">
       <b>表示例</b><br>
       過多品目<br>
@@ -623,7 +657,6 @@ function lineCopyPage(msg=''){
 
 async function copyLineCopyText(){
   const t=document.getElementById('lineCopyText').value;
-
   try{
     await navigator.clipboard.writeText(t);
     alert('コピーしました。LINEに貼り付けて送れます。');
@@ -638,13 +671,11 @@ function shareLineCopyText(){
 
 function stocks(){
   const latest=latestMap();
-
   const body=db.items.map(it=>{
     const r=latest[it.id];
     const total=r?Number(r.total):0;
     const s=db.settings[it.id];
     const st=r?judge(total,s):'unset';
-
     return `<div class="card">
       <div class="itemHead">
         <div>
@@ -656,7 +687,6 @@ function stocks(){
         </div>
         <span class="badge ${st}">${r?label(st):'未入力'}</span>
       </div>
-
       <div class="stockGrid">
         <div class="box">
           <span class="small">現在庫</span>
@@ -667,9 +697,7 @@ function stocks(){
           <b>${st==='shortage'?fmt(s.min-total)+'kg不足':st==='excess'?fmt(total-s.max)+'kg過多':'-'}</b>
         </div>
       </div>
-
       ${r&&r.lines?`<div class="small" style="margin-top:8px">内訳：${r.lines.map(l=>`${l.pack}kg×${l.cases}ケース`).join('、')}</div>`:''}
-
       <div class="miniBtns">
         <button class="btn btn3" onclick="moveForm('${it.id}','入庫')" ${canEdit()?'':'disabled'}>入庫</button>
         <button class="btn btnOrange" onclick="moveForm('${it.id}','出庫')" ${canEdit()?'':'disabled'}>出庫</button>
@@ -691,10 +719,8 @@ function moveForm(itemId,type){
     alert('この権限では在庫修正できません');
     return;
   }
-
   const it=db.items.find(x=>x.id===itemId);
   const total=latestTotal(itemId);
-
   pageShell(
     `${type}入力`,
     `${it.name} / 現在庫 ${fmt(total)}kg`,
@@ -702,12 +728,9 @@ function moveForm(itemId,type){
       <div class="notice">
         ${type==='調整'?'調整は「現在庫をこの数量に置き換える」処理です。':'入れ数kg × ケース数で在庫を増減します。'}
       </div>
-
       <label class="label">品目</label>
       <input class="input" value="${it.name}" disabled>
-
       <br><br>
-
       <div class="row">
         <div>
           <label class="label">入れ数kg</label>
@@ -718,14 +741,10 @@ function moveForm(itemId,type){
           <input id="mvCases" class="input" inputmode="decimal" value="1">
         </div>
       </div>
-
       <br>
-
       <label class="label">理由・メモ</label>
       <input id="mvMemo" class="input" placeholder="例：朝入荷、出荷分、棚卸調整">
-
       <br><br>
-
       <button class="btn ${type==='入庫'?'btn3':type==='出庫'?'btnOrange':'btn2'}" style="width:100%" onclick="applyMove('${itemId}','${type}')">
         ${type}を登録する
       </button>
@@ -743,7 +762,6 @@ function applyMove(itemId,type){
     alert('入れ数kgは0より大きくしてください');
     return;
   }
-
   if(!(cases>=0)){
     alert('ケース数は0以上にしてください');
     return;
@@ -752,7 +770,6 @@ function applyMove(itemId,type){
   const before=latestTotal(itemId);
   const qty=yen(pack*cases);
   let after=before;
-
   if(type==='入庫')after=yen(before+qty);
   if(type==='出庫')after=yen(Math.max(0,before-qty));
   if(type==='調整')after=qty;
@@ -781,7 +798,6 @@ function applyMove(itemId,type){
   };
 
   db.records.push(rec);
-
   db.movements.push({
     id:newId(),
     recordId:rec.id,
@@ -816,12 +832,9 @@ function applyMove(itemId,type){
 function startOfWeek(d){
   const x=new Date(d);
   x.setHours(0,0,0,0);
-
   const day=x.getDay();
   const diff=(day+6)%7;
-
   x.setDate(x.getDate()-diff);
-
   return x;
 }
 
@@ -832,15 +845,12 @@ function weekKey(iso){
 function weekLabel(key){
   const s=new Date(key+'T00:00:00');
   const e=new Date(s);
-
   e.setDate(e.getDate()+6);
-
   return `${ymd(s)}〜${ymd(e)}`;
 }
 
 function weeklyData(){
   const groups={};
-
   db.records.forEach(r=>{
     const k=weekKey(r.createdAt);
     groups[k]=groups[k]||[];
@@ -855,13 +865,10 @@ function weeklyData(){
     keys.length
       ? keys.map(k=>{
           const rows=groups[k].slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-
           const latestWeek={};
           groups[k].forEach(r=>latestWeek[r.itemId]=r);
-
           const shortage=Object.values(latestWeek).filter(r=>r.status==='shortage').length;
           const excess=Object.values(latestWeek).filter(r=>r.status==='excess').length;
-
           return `<div class="card">
             <div class="itemHead">
               <div>
@@ -870,7 +877,6 @@ function weeklyData(){
               </div>
               <button class="btn btn2" onclick="toggleWeek('${k}')">開閉</button>
             </div>
-
             <div id="week_${k}" style="display:none;margin-top:12px">
               <table class="table">
                 <thead>
@@ -910,7 +916,6 @@ function toggleWeek(k){
 
 function moveHistory(){
   const rows=db.movements.slice().reverse();
-
   pageShell(
     '修正履歴',
     '誰が・いつ・何を直したか確認',
@@ -928,12 +933,10 @@ function moveHistory(){
                 ${m.diffKg>0?'+':''}${fmt(m.diffKg)}kg
               </span>
             </div>
-
             <div class="total">
               <span>${fmt(m.beforeTotal)}kg → ${fmt(m.afterTotal)}kg</span>
               <span>${m.pack?`${m.pack}kg×${m.cases}ケース`:''}</span>
             </div>
-
             ${m.memo?`<div class="small">メモ：${esc(m.memo)}</div>`:''}
           </div>
         `).join('')}`
@@ -946,7 +949,6 @@ function clearMovements(){
     alert('管理者のみです');
     return;
   }
-
   if(confirm('修正履歴を削除しますか？')){
     db.movements=[];
     save();
@@ -956,7 +958,6 @@ function clearMovements(){
 
 function notifications(){
   const history=db.notifications.slice().reverse();
-
   pageShell(
     '通知履歴',
     '不足・過多になった記録',
@@ -985,28 +986,23 @@ function settings(){
     `<div class="notice">
       下限kgを下回ったら不足、上限kgを超えたら過多です。
     </div>
-
     ${db.items.map(it=>{
       const s=db.settings[it.id];
-
       return `<div class="card row">
         <div>
           <b>${it.name}</b>
           <div class="small">初期入れ数 ${it.pack}kg</div>
         </div>
-
         <div>
           <label class="label">下限kg</label>
           <input id="min_${it.id}" class="input" inputmode="decimal" value="${s.min}">
         </div>
-
         <div>
           <label class="label">上限kg</label>
           <input id="max_${it.id}" class="input" inputmode="decimal" value="${s.max}">
         </div>
       </div>`;
     }).join('')}
-
     <button class="btn btn3 bottom" onclick="saveSettings()">設定を保存</button>`
   );
 }
@@ -1020,12 +1016,10 @@ function saveSettings(){
   for(const it of db.items){
     const min=Number(document.getElementById('min_'+it.id).value);
     const max=Number(document.getElementById('max_'+it.id).value);
-
     if(!(min>=0)||!(max>=0)||min>max){
       alert(`${it.name}の設定を確認してください。下限kgは上限kg以下にしてください。`);
       return;
     }
-
     db.settings[it.id]={
       min,
       max
@@ -1059,14 +1053,31 @@ function resetDemo(){
     return;
   }
 
-  if(confirm('このブラウザ内のデモデータを初期化しますか？')){
-    localStorage.removeItem(STORE);
-    db=init();
-    login();
+  if(confirm('Supabase上の共有デモデータを初期化しますか？')){
+    const keepUser=db.user;
+    const keepRole=db.role;
+    db=defaultState();
+    db.user=keepUser;
+    db.role=keepRole;
+    save();
+    home();
   }
 }
 
-login();
+async function boot(){
+  document.getElementById('app').innerHTML='<main class="wrap"><div class="card notice">Supabaseから読み込み中です...</div></main>';
+  try{
+    await loadCloud();
+  }catch(e){
+    console.error(e);
+    document.getElementById('app').innerHTML='<main class="wrap"><div class="card warn">Supabaseに接続できませんでした。SQLで app_state テーブルを作成済みか確認してください。いったんブラウザ保存で開きます。</div></main>';
+    setTimeout(()=>login(),1200);
+    return;
+  }
+  login();
+}
+
+boot();
 </script>
 </body>
 </html>
