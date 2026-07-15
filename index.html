@@ -94,6 +94,74 @@ body{
 }
 /* ===== /SEIKA＋ fine tune v3 ===== */
 
+
+
+/* ===== SEIKA＋ declutter v4 ===== */
+.headin{padding:18px 16px 14px!important;gap:10px!important}
+.title{font-size:32px!important;line-height:1.05!important}
+.sub{font-size:18px!important;margin-top:8px!important}
+.sync{font-size:18px!important;margin-top:10px!important}
+.topBtns{margin-top:16px!important;display:flex!important;gap:10px!important;justify-content:flex-start!important;flex-wrap:wrap!important}
+.headAction{min-height:44px!important;padding:9px 18px!important;font-size:18px!important;border-radius:999px!important;background:#eef3f8!important;color:#0f172a!important;border:0!important;box-shadow:none!important}
+.headAction.primary{background:#eef3f8!important;border:0!important}
+.seikaActionGrid{grid-template-columns:1fr 1fr!important;gap:12px!important;margin:18px 0!important}
+.seikaActionGrid .btn{min-height:74px!important;border-radius:20px!important;background:#fff!important;color:var(--seika-navy)!important;border:2px solid #e2e8f0!important;box-shadow:0 6px 14px rgba(16,38,83,.07)!important;font-size:22px!important}
+.seikaActionGrid .btn:disabled{background:#f1f5f9!important;color:#94a3b8!important}
+.seikaActionGrid .green{border-color:rgba(17,99,61,.25)!important;color:#11633d!important}
+.seikaActionGrid .blue{border-color:rgba(35,120,201,.24)!important;color:#1869bb!important}
+.seikaActionGrid .orange{border-color:rgba(242,138,19,.26)!important;color:#c76405!important}
+.seikaActionGrid .purpleBtn{border-color:rgba(52,50,111,.26)!important;color:#34326f!important}
+.inventoryTableButton{background:#fff!important;box-shadow:0 6px 14px rgba(16,38,83,.07)!important}
+.menu .btn.btn2{box-shadow:none!important;background:#edf3f8!important;color:#0f172a!important}
+.meshHomeCard{box-shadow:none!important}
+@media(max-width:560px){
+  .headin{padding:18px 20px 16px!important}
+  .topBtns{display:grid!important;grid-template-columns:repeat(2,1fr)!important;gap:10px!important}
+  .headAction{font-size:17px!important;padding:10px 8px!important}
+  .seikaActionGrid .btn{font-size:21px!important;min-height:72px!important}
+}
+/* ===== /SEIKA＋ declutter v4 ===== */
+
+
+
+/* ===== SEIKA＋ simple home v5 ===== */
+.homeSummary{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 16px}
+.homeSummary .summaryBox{background:#fff;border:1px solid #e5eaf0;border-radius:18px;padding:15px 12px;text-align:center;box-shadow:0 4px 12px rgba(16,38,83,.05)}
+.homeSummary .summaryLabel{font-size:15px;font-weight:900;color:#64748b}.homeSummary .summaryValue{font-size:32px;font-weight:900;line-height:1.1;margin-top:4px;color:#0f172a}.homeSummary .summarySub{font-size:13px;font-weight:800;color:#64748b;margin-top:2px}
+.homePrimary{display:grid;gap:12px;margin:12px 0 18px}.homePrimary .btn{min-height:72px!important;font-size:23px!important;border-radius:22px!important;box-shadow:0 8px 18px rgba(16,38,83,.10)!important}.homePrimary .subBtn{background:#fff!important;color:var(--seika-navy)!important;border:2px solid #dbe3ec!important;box-shadow:none!important}
+.homeMoreTitle{font-size:14px;font-weight:900;color:#64748b;margin:18px 2px 8px}.homeMore{display:grid;grid-template-columns:1fr 1fr;gap:10px}.homeMore .btn{min-height:54px!important;font-size:16px!important;border-radius:16px!important;background:#eef3f8!important;color:#0f172a!important;box-shadow:none!important;border:0!important}
+.homeNoticeCompact{background:#eef3f8;border-radius:16px;padding:12px 14px;margin:0 0 14px;color:#334155;font-size:15px;line-height:1.45}.homeNoticeCompact b{color:#0f172a}
+.metricGrid,.seikaActionGrid{display:none!important}
+@media(max-width:560px){.homeSummary{gap:10px}.homeMore{grid-template-columns:1fr 1fr}.homeMore .btn{font-size:16px!important}.homePrimary .btn{font-size:23px!important}}
+.meshHomeCard.subBtn{background:#fff!important;color:var(--seika-navy)!important;border:2px solid #dbe3ec!important}
+/* ===== /SEIKA＋ simple home v5 ===== */
+
+
+
+/* ===== SEIKA＋ final home/logo v6 ===== */
+.softLogoTitle{font-family:"Arial Rounded MT Bold","Avenir Next Rounded","Hiragino Maru Gothic ProN","Yu Gothic",sans-serif;font-weight:800;letter-spacing:.08em;color:#2f3f46;display:inline-flex;align-items:baseline;gap:1px;line-height:.95;text-shadow:0 2px 7px rgba(16,38,83,.05)}
+.softLogoTitle .titleLogoPlus{color:#58a889!important;font-size:1.08em;font-weight:900;letter-spacing:0;margin-left:1px}
+.seikaLogo{font-family:"Arial Rounded MT Bold","Avenir Next Rounded","Hiragino Maru Gothic ProN","Yu Gothic",sans-serif!important;color:#2f3f46!important;font-weight:800!important;letter-spacing:.08em!important}
+.seikaLogo .plusWrap{color:#58a889!important;font-weight:900!important}
+.homeNoticeCompact{background:linear-gradient(135deg,#d9f4ef,#ccefed)!important;border-left:9px solid #78d39f!important;border-radius:16px!important;padding:17px 18px!important;margin:4px 0 18px!important;color:#0f172a!important;font-size:20px!important;font-weight:900!important;line-height:1.55!important;box-shadow:none!important}
+.homeSummary{display:grid!important;grid-template-columns:1fr 1fr!important;gap:14px!important;margin:0 0 18px!important;background:transparent!important}
+.homeSummary .summaryBox{background:#fff!important;border:0!important;border-radius:16px!important;padding:18px 16px!important;text-align:left!important;box-shadow:0 5px 13px rgba(16,38,83,.13)!important;min-height:112px!important}
+.homeSummary .summaryLabel{font-size:20px!important;font-weight:900!important;color:#0f172a!important;line-height:1.15!important}
+.homeSummary .summaryValue{font-size:34px!important;font-weight:900!important;line-height:1.1!important;margin-top:8px!important;color:#000!important;letter-spacing:-.02em!important}
+.homeSummary .summarySub{font-size:20px!important;font-weight:800!important;color:#475569!important;margin-top:0!important;display:inline!important}
+.homePrimary{display:grid!important;gap:12px!important;margin:12px 0 26px!important}
+.homePrimary .btn{min-height:74px!important;font-size:28px!important;border-radius:15px!important;box-shadow:0 6px 13px rgba(16,38,83,.18)!important;color:#fff!important;border:0!important}
+.homePrimary .homeBtnStock{background:linear-gradient(135deg,#2fac60,#5dbb8b)!important}
+.homePrimary .homeBtnCheck{background:linear-gradient(135deg,#2580ca,#39a5e7)!important}
+.homePrimary .homeBtnTable{background:linear-gradient(135deg,#193a7a,#102b6c)!important}
+.homePrimary .homeBtnItems{background:linear-gradient(135deg,#8332a8,#a842b8)!important}
+.homePrimary .homeBtnSettings{background:linear-gradient(135deg,#f17910,#ff981f)!important}
+.homeMoreTitle{font-size:24px!important;font-weight:900!important;color:#000!important;margin:10px 2px 12px!important}
+.homeMore{display:grid!important;grid-template-columns:1fr 1fr!important;gap:13px!important}.homeMore .btn{min-height:58px!important;font-size:22px!important;border-radius:13px!important;background:linear-gradient(180deg,#edf0f2,#dfe4e8)!important;color:#000!important;box-shadow:none!important;border:0!important}
+.metricGrid,.seikaActionGrid{display:none!important}
+@media(max-width:560px){.title{font-size:34px!important}.homeNoticeCompact{font-size:20px!important}.homePrimary .btn{font-size:28px!important}.homeMore .btn{font-size:22px!important}.homeSummary .summaryBox{min-height:112px!important}.homeSummary .summaryLabel{font-size:20px!important}.homeSummary .summaryValue{font-size:34px!important}.homeSummary .summarySub{font-size:20px!important}}
+/* ===== /SEIKA＋ final home/logo v6 ===== */
+
 </style></head><body><div id="app"></div><script>
 
 const SUPABASE_URL='https://hsuofxvcxgmsplwdigpr.supabase.co';
@@ -155,7 +223,7 @@ function ensureMeshContainers(){db.meshContainers=db.meshContainers||{};db.meshC
 function meshContainerLatest(){ensureMeshContainers();return db.meshContainers.records.slice().sort((a,b)=>new Date(b.checkedAt||0)-new Date(a.checkedAt||0))[0]||null}
 function meshShortDate(iso){const d=iso?new Date(iso):new Date('2026-07-15T12:00:00+09:00');return d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit'})}
 function meshFullDate(iso){const d=iso?new Date(iso):new Date();return d.toLocaleDateString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit'})}
-function meshContainerHomeCard(){const latest=meshContainerLatest();return `<button class="btn meshHomeCard" onclick="meshContainerPage()"><span class="left"><span><span class="meshTitle">網コンテナ</span><span class="meshSub">最終確認 ${meshShortDate(latest&&latest.checkedAt)}</span></span></span></button>`}
+function meshContainerHomeCard(){const latest=meshContainerLatest();return `<button class="btn meshHomeCard subBtn" onclick="meshContainerPage()"><span class="left"><span><span class="meshTitle">網コンテナ</span><span class="meshSub">最終確認 ${meshShortDate(latest&&latest.checkedAt)}</span></span></span></button>`}
 function meshContainerPage(msg=''){setScreen('meshContainerPage',[msg]);ensureMeshContainers();const latest=meshContainerLatest();const values=latest&&latest.values?latest.values:{};pageShell('網コンテナ在庫',`最終確認 ${meshFullDate(latest&&latest.checkedAt)} / ${esc((latest&&latest.user)||db.user||'')}`,`${okHtml(msg)}<div class="card"><div class="grid"><div class="box"><span class="small">最終確認</span><b>${meshFullDate(latest&&latest.checkedAt)}</b></div><div class="box"><span class="small">入力者</span><b>${esc((latest&&latest.user)||db.user||'')}</b></div></div></div><div class="card">${MESH_CONTAINER_ITEMS.map(it=>`<label class="meshRow"><span class="meshRowName">${esc(it.name)}</span><input id="mesh_${it.id}" class="input meshQty" inputmode="numeric" type="number" min="0" placeholder="0" value="${esc(values[it.id]??'')}"></label>`).join('')}<label class="label" style="margin-top:14px">メモ</label><textarea id="meshMemo" class="textarea" placeholder="必要があればメモを入力">${esc((latest&&latest.memo)||'')}</textarea><button class="btn green" style="width:100%;margin-top:16px" onclick="saveMeshContainer()">保存する</button></div>`)}
 function saveMeshContainer(){ensureMeshContainers();const values={};for(const it of MESH_CONTAINER_ITEMS){values[it.id]=document.getElementById('mesh_'+it.id).value}db.meshContainers.records.push({id:newId(),values,memo:document.getElementById('meshMemo').value.trim(),user:db.user,userId:db.userId,checkedAt:nowIso()});save();meshContainerPage('保存しました。')}
 function judge(total,s){if(!s)return'unset';if(total<s.min)return'shortage';if(total>s.max)return'excess';return'normal'}function label(st){return st==='shortage'?'不足':st==='excess'?'過多':st==='normal'?'適正':'未設定'}
@@ -196,30 +264,30 @@ function coldRoomForSpecialItem(tableId,it){if(it&&validColdRoom(it.room))return
 function roomLabel(room){return COLD_ROOM_LABELS[room]||COLD_ROOM_LABELS.other}
 function roomSectionHtml(room,kind,count){const note=kind==='optimal'?'適正在庫対象':kind==='kataoka'?'その他（片岡）（最下部）':'適正在庫設定外';return `<div class="card notice"><b>${roomLabel(room)}：${note}</b><div class="small">${count}品</div></div>`}
 function setStockSearch(v){stockSearch=String(v||'');stocks()}
-function pageShell(title,sub,body,opts={}){if(db.user&&title==='在庫管理'&&canAdmin())body=monthlyHomeNoticeHtml()+body;const showBack=db.user&&!opts.noBack&&title!=='在庫管理';const displayTitle=title==='SEIKA＋'?'SEIKA<span class="titleLogoPlus">＋</span>':title;document.getElementById('app').innerHTML=`<div class="head"><div class="headin"><div><div class="title">${displayTitle}</div><div class="sub">${sub||''}</div><div class="sync" id="syncInfo">${syncText()}</div></div><div class="topBtns">${db.user?`${showBack?`<button class="headAction primary" onclick="goBack()">戻る</button>`:''}<button class="headAction primary" onclick="home()">ホーム</button><button class="headAction" onclick="refreshData()">再読込</button><button class="headAction" onclick="accountMenu()">メニュー</button>`:''}</div></div></div><main class="wrap">${body}</main>`}
+function pageShell(title,sub,body,opts={}){if(db.user&&title==='在庫管理'&&canAdmin())body=monthlyHomeNoticeHtml()+body;const showBack=db.user&&!opts.noBack&&title!=='在庫管理';const isHomeTitle=title==='SEIKA＋'&&opts.noBack;const displayTitle=title==='SEIKA＋'?'<span class="softLogoTitle"><span>SEIKA</span><span class="titleLogoPlus">＋</span></span>':title;document.getElementById('app').innerHTML=`<div class="head"><div class="headin"><div><div class="title">${displayTitle}</div><div class="sub">${sub||''}</div><div class="sync" id="syncInfo">${syncText()}</div></div><div class="topBtns">${db.user?`${showBack?`<button class="headAction primary" onclick="goBack()">戻る</button>`:''}${!isHomeTitle&&!showBack?`<button class="headAction primary" onclick="home()">ホーム</button>`:''}<button class="headAction" onclick="refreshData()">再読込</button><button class="headAction" onclick="accountMenu()">メニュー</button>`:''}</div></div></div><main class="wrap">${body}</main>`}
 function goBack(){home()}
 function login(){
 setScreen('login');
 const grouped={};activeUsers().forEach(u=>{grouped[u.group]=grouped[u.group]||[];grouped[u.group].push(u)});
 const options=Object.keys(grouped).map(g=>`<optgroup label="${g}">${grouped[g].map(u=>`<option value="${u.id}">${u.name}</option>`).join('')}</optgroup>`).join('');
-pageShell('SEIKA＋',cloudReady?'Supabase保存':'ブラウザ保存',`<div class="loginBrand">${seikaLogoHtml()}<p class="loginCatch">青果在庫を、もっと見える化。</p><p class="loginDesc">入力・確認・共有をスムーズにする<br>在庫管理アプリ</p><p class="loginSite">石岡青果センター向け現場アプリ</p></div><div class="card loginPanel"><label class="label">名前選択</label><select id="loginUser" class="input"><option value="" selected disabled>名前選択</option>${options}</select><br><br><label class="label">パスワード</label><input id="loginPass" class="input" type="password" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter')doLogin()"><br><br><button class="btn green loginButton" onclick="doLogin()">ログイン</button></div>`,{noBack:true})
+pageShell('SEIKA＋','',`<div class="loginBrand">${seikaLogoHtml()}<p class="loginCatch">青果在庫を、もっと見える化。</p><p class="loginDesc">入力・確認・共有をスムーズにする<br>在庫管理アプリ</p><p class="loginSite">石岡青果センター向け現場アプリ</p></div><div class="card loginPanel"><label class="label">名前選択</label><select id="loginUser" class="input"><option value="" selected disabled>名前選択</option>${options}</select><br><br><label class="label">パスワード</label><input id="loginPass" class="input" type="password" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter')doLogin()"><br><br><button class="btn green loginButton" onclick="doLogin()">ログイン</button></div>`,{noBack:true})
 }
 function doLogin(){const uid=document.getElementById('loginUser').value,pass=document.getElementById('loginPass').value;if(!uid){alert('名前を選択してください');return}const u=findUser(uid);if(!u||u.active===false||pass!==u.password){alert('パスワードが違います');return}u.displaySettings=normalizeDisplaySettings(u.displaySettings);db.user=u.name;db.userId=u.id;db.role=u.role;applyDisplaySettings(u.displaySettings);localStorage.setItem(STORE,JSON.stringify(db));home()}
 function home(){
 setScreen('home');
 if(!db.user)return login();
 ensureMeshContainers();
-const todayEntered=Object.keys(todayLatestMap()).filter(id=>activeItems().some(it=>it.id===id)).length;
-const shortageCount=activeItems().filter(it=>judge(latestTotal(it.id),db.settings[it.id])==='shortage').length;
-const excessCount=activeItems().filter(it=>judge(latestTotal(it.id),db.settings[it.id])==='excess').length;
-const lastInput=db.records.length?db.records.slice().sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0]:null;
-const lastInputTime=lastInput?new Date(lastInput.createdAt).toLocaleString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'未入力';
-const lastInputName=lastInput?esc(lastInput.user||''):'-';
-const brand='';
+const latest=latestMap(),today=todayKey();
+let shortageCount=0,excessCount=0,todayEntered=0,lastInputTime='--:--',lastInputName='記録なし',lastInputAt=null;
+activeItems().forEach(it=>{const r=latest[it.id];if(r){if(isToday(r.createdAt))todayEntered++;if(!lastInputAt||new Date(r.createdAt)>new Date(lastInputAt)){lastInputAt=r.createdAt;lastInputTime=new Date(r.createdAt).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});lastInputName=r.user||'記録なし'}const st=judge(Number(r.total||0),db.settings[it.id]);if(st==='shortage')shortageCount++;if(st==='excess')excessCount++;}});
+const missing=todayMissingItems();
+const noticeText=canWorkerReport()&&missing.length?`本日未入力：${missing.length}品<br>${esc(missing.slice(0,8).map(it=>it.name).join('、'))}${missing.length>8?' ほか':''}`:'最新の情報を確認する場合は、再読込を押してください。';
+const simpleNotice=`<div class="homeNoticeCompact">${noticeText}</div>`;
+const lastInputHtml=`<span>${lastInputTime}</span>${lastInputName&&lastInputName!=='記録なし'?` <span class="summarySub">/ ${esc(lastInputName)}</span>`:''}`;
 if(db.role==='buyer'){
-const myRows=orderCandidatesForBuyer(db.userId),myItems=activeItems().filter(it=>isMyBuyerItem(it.id)),memoCount=myItems.filter(it=>(db.purchaseMemos&&db.purchaseMemos[it.id])).length;
-pageShell('SEIKA＋',`${esc(db.user)} / ${ROLE[db.role]} / ${cloudReady?'クラウド保存':'ブラウザ保存'}`,`${brand}<div class="notice">他の人が入力した内容を確認する場合は、画面上部の「再読込」を押してください。</div><div class="metricGrid"><div class="metricCard"><div class="metricLabel">自分の発注候補</div><div class="metricValue">${myRows.length}</div><div class="metricSub">品</div></div><div class="metricCard"><div class="metricLabel">担当品目</div><div class="metricValue">${myItems.length}</div><div class="metricSub">品</div></div><div class="metricCard"><div class="metricLabel">メモ入力済み</div><div class="metricValue">${memoCount}</div><div class="metricSub">/${myItems.length}品</div></div><div class="metricCard"><div class="metricLabel">最終入力</div><div class="metricValue">${lastInputTime}</div><div class="metricSub">${lastInputName}</div></div></div><div class="menu"><button class="btn orange" onclick="orderCandidatePage()">自分の発注候補</button><button class="btn inventoryTableButton" onclick="weeklyData()">▦　在庫表</button>${meshContainerHomeCard()}<button class="btn btn2" onclick="marketMemoPage()">市場動向・産地状況メモ</button><button class="btn btn2" onclick="stocks()">在庫確認</button><button class="btn btn2" onclick="settings()">適正在庫設定</button><button class="btn btn2" onclick="itemsPage()">品目設定</button><button class="btn btn2" onclick="notifications()">通知履歴</button></div><div class="warn">仕入れ担当者は在庫入力・在庫修正はできません。</div>`,{noBack:true});return}
-pageShell('SEIKA＋',`${esc(db.user)} / ${ROLE[db.role]} / ${cloudReady?'クラウド保存':'ブラウザ保存'}`,`${brand}<div class="notice">他の人が入力した内容を確認する場合は、画面上部の「再読込」を押してください。</div>${canWorkerReport()?missingAlertHtml():''}<div class="metricGrid">${canBuyerView()?`<div class="metricCard"><div class="metricLabel">発注候補</div><div class="metricValue">${shortageCount}</div><div class="metricSub">発注候補</div></div>`:''}${canWorkerReport()?`<div class="metricCard"><div class="metricLabel">過多品目</div><div class="metricValue">${excessCount}</div><div class="metricSub">過多品目</div></div>`:''}<div class="metricCard"><div class="metricLabel">最終入力</div><div class="metricValue">${lastInputTime}</div><div class="metricSub">${lastInputName}</div></div><div class="metricCard"><div class="metricLabel">本日入力済み</div><div class="metricValue">${todayEntered}</div><div class="metricSub">/${activeItems().length}品</div></div></div>${specialHomeStatusHtml()}<div class="seikaActionGrid"><button class="btn green" onclick="inventory()" ${canEdit()?'':'disabled'}>在庫入力</button><button class="btn blue" onclick="stocks()">在庫修正</button>${canWorkerReport()?`<button class="btn purpleBtn" onclick="lineCopyPage()">在庫報告コピー</button>`:''}${canBuyerView()?`<button class="btn orange" onclick="orderCandidatePage()">発注候補</button>`:''}</div><div class="menu"><button class="btn inventoryTableButton" onclick="weeklyData()">▦　在庫表</button>${meshContainerHomeCard()}<button class="btn btn2" onclick="marketMemoPage()">市場動向・産地状況メモ</button><button class="btn btn2" onclick="moveHistory()">修正履歴</button><button class="btn btn2" onclick="notifications()">通知履歴</button><button class="btn btn2" onclick="settings()" ${canSetSettings()?'':'disabled'}>適正在庫設定</button><button class="btn btn2" onclick="itemsPage()" ${canManageItems()?'':'disabled'}>品目設定</button></div>${!canEdit()?'<div class="warn">この権限では在庫の変更はできません。</div>':''}`,{noBack:true})
+const myRows=orderCandidatesForBuyer(db.userId),myItems=activeItems().filter(it=>isMyBuyerItem(it.id));
+pageShell('SEIKA＋',`${esc(db.user)} / ${ROLE[db.role]}`,`${simpleNotice}<div class="homeSummary"><div class="summaryBox"><div class="summaryLabel">発注候補</div><div class="summaryValue">${myRows.length}</div></div><div class="summaryBox"><div class="summaryLabel">担当品目</div><div class="summaryValue">${myItems.length}<span class="summarySub"> 品</span></div></div></div><div class="homePrimary"><button class="btn homeBtnSettings" onclick="orderCandidatePage()">発注候補を見る</button><button class="btn homeBtnTable" onclick="weeklyData()">在庫表</button><button class="btn homeBtnCheck" onclick="stocks()">在庫確認</button><button class="btn homeBtnItems" onclick="marketMemoPage()">市場メモ</button><button class="btn homeBtnSettings" onclick="settings()">適正在庫設定</button></div><div class="homeMoreTitle">その他</div><div class="homeMore"><button class="btn" onclick="meshContainerPage()">網コンテナ</button><button class="btn" onclick="notifications()">通知履歴</button></div>`,{noBack:true});return}
+pageShell('SEIKA＋',`${esc(db.user)} / ${ROLE[db.role]}`,`${simpleNotice}<div class="homeSummary"><div class="summaryBox"><div class="summaryLabel">本日入力済み</div><div class="summaryValue">${todayEntered}<span class="summarySub">/${activeItems().length}</span></div></div><div class="summaryBox"><div class="summaryLabel">発注候補</div><div class="summaryValue">${shortageCount}</div></div><div class="summaryBox"><div class="summaryLabel">過多品目</div><div class="summaryValue">${excessCount}</div></div><div class="summaryBox"><div class="summaryLabel">最終入力</div><div class="summaryValue">${lastInputHtml}</div></div></div><div class="homePrimary"><button class="btn homeBtnStock" onclick="inventory()" ${canEdit()?'':'disabled'}>在庫入力</button><button class="btn homeBtnCheck" onclick="stocks()">在庫確認・修正</button><button class="btn homeBtnTable" onclick="weeklyData()">在庫表</button><button class="btn homeBtnItems" onclick="itemsPage()" ${canManageItems()?'':'disabled'}>品目設定</button><button class="btn homeBtnSettings" onclick="settings()" ${canSetSettings()?'':'disabled'}>適正在庫設定</button></div><div class="homeMoreTitle">その他</div><div class="homeMore"><button class="btn" onclick="meshContainerPage()">網コンテナ</button>${canWorkerReport()?`<button class="btn" onclick="lineCopyPage()">報告コピー</button>`:''}<button class="btn" onclick="marketMemoPage()">市場メモ</button><button class="btn" onclick="notifications()">通知履歴</button></div>`,{noBack:true})
 }
 function accountMenu(){setScreen('accountMenu');pageShell('メニュー',`${esc(db.user)} / ${ROLE[db.role]}`,`<div class="menu">${canAdmin()?`<button class="btn orange" onclick="monthlyArchivePage()">月次Excel・履歴管理</button><button class="btn btn2" onclick="duplicateAdminPage()">重複データ確認・削除</button><button class="btn btn2" onclick="oldHistoryCleanupPage()">90日超 修正履歴整理</button>`:''}<button class="btn btn2" onclick="displaySettingsPage()">表示設定</button><button class="btn btn2" onclick="changePasswordPage()">パスワード変更</button>${canAdmin()?`<button class="btn btn2" onclick="userAdminPage()">ユーザー登録・管理</button>`:''}<button class="btn red" onclick="logout()">ログアウト</button></div>`)}
 
