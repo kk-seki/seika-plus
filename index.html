@@ -404,6 +404,38 @@ body{
 :root[data-theme="dark"] .homePrimary .homeBtnWasteList{background:linear-gradient(135deg,#b45309,#f59e0b)!important}
 /* ===== /SEIKA＋ waste feature v7 ===== */
 
+
+
+/* ===== SEIKA＋ disabled button visibility v24：薄すぎる無効ボタンを見やすく ===== */
+.btn:disabled,
+.btn2:disabled,
+button:disabled{
+  opacity:1!important;
+  background:#dbe5f1!important;
+  color:#334155!important;
+  border:2px solid #bfccda!important;
+  box-shadow:none!important;
+  text-shadow:none!important;
+}
+.btn:disabled::before,
+.btn2:disabled::before{color:inherit!important}
+:root[data-theme="dark"] .btn:disabled,
+:root[data-theme="dark"] .btn2:disabled,
+:root[data-theme="dark"] button:disabled{
+  opacity:1!important;
+  background:#334155!important;
+  color:#f1f5f9!important;
+  border:2px solid #64748b!important;
+  box-shadow:none!important;
+  text-shadow:none!important;
+}
+/* 在庫入力内の追加・移動ボタンは、押せない状態でも文字をはっきり表示 */
+.card .btn:disabled,
+.card .btn2:disabled{
+  font-weight:900!important;
+}
+/* ===== /SEIKA＋ disabled button visibility v24 ===== */
+
 </style></head><body><div id="app"></div><script>
 
 const SUPABASE_URL='https://hsuofxvcxgmsplwdigpr.supabase.co';
