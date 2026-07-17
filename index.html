@@ -81,7 +81,7 @@ function currentTimeLabel(){return new Date().toLocaleString('ja-JP',{month:'2-d
 function okHtml(msg){return msg?`<div class="ok flash">✅ ${esc(msg)}</div>`:''}
 function isDetailItem(it){return !!(it&&it.useSpec===true)}
 function detailTemplate(itemId){db.itemDetails=db.itemDetails||{};db.itemDetails[itemId]=db.itemDetails[itemId]||[];return db.itemDetails[itemId].filter(x=>x.active!==false).sort((a,b)=>(a.sort||0)-(b.sort||0))}
-function parseNums(v){return String(v||'').replace(/[０-９．]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0)).split('/').map(x=>Number(String(x).replace(/[^0-9.\-]/g,''))).filter(n=>!Number.isNaN(n))}
+function parseNums(v){const text=String(v||'').replace(/[０-９．]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0));const nums=[];for(const part of text.split('/')){const m=String(part).match(/-?\d+(?:\.\d+)?/g);if(m)for(const x of m){const n=Number(x);if(!Number.isNaN(n))nums.push(n)}}return nums}
 function packsFromSpec(spec){const nums=parseNums(spec);return nums.length?nums:[5]}
 function detailSubtotal(l){const packs=packsFromSpec(l.spec),qs=parseNums(l.qty);if(!qs.length)return 0;return yen(qs.reduce((a,q,i)=>a+(packs[Math.min(i,packs.length-1)]||packs[0]||0)*q,0))}
 function inventoryLineHasInput(l){return l&&l.detail?String(l.qty||'').trim()!==''&&parseNums(l.qty).length>0:l.pack!==''&&l.cases!==''}
