@@ -749,7 +749,8 @@ async function deleteQrCleanupCandidates(){if(!canAdmin())return alert('管理�
 
 関連する操作履歴・読取ログも削除します。元に戻せません。
 過去に削除済みのデータはExcel未出力でも削除されます。`))return;const word=prompt(`最終確認です。${lots.length}件を完全削除します。
-「QR完全削除」と入力してください。`);if(word!=='QR完全削除')return alert('削除を中止しました');let deleted=0;const failures=[];for(const lot of lots){try{await qrPhysicalDeleteLot(lot);deleted++}catch(e){failures.push(`${lot.item_name||'-'} / ${lot.lot_no||lot.qr_key||lot.id}: ${e.message}`)}}addOperationLog('qr_cleanup',{inactive:candidates.inactive.length,oldZero:candidates.oldZero.length},{deleted,failed:failures.length},operationMeta('qr_cleanup',{targetCount:lots.length}));if(failures.length){console.error('QR cleanup failures',failures);alert(`${deleted}件を完全削除しました。${failures.length}件は削除できませんでした。画面を再読込して再実行してください。`)}qrHistoryCleanupPage(`QRロットと関連履歴を${deleted}件完全削除しました。${failures.length?`未完了：${failures.length}件`:''}`)}
+「QR完全削除」と入力してください。`);if(word!=='QR完全削除')return alert('削除を中止しました');try{const result=await callRpc('cleanup_qr_lots',{}),deleted=Number(result?.deleted_count||0);addOperationLog('qr_cleanup',{inactive:candidates.inactive.length,oldZero:candidates.oldZero.length},{deleted},operationMeta('qr_cleanup',{targetCount:lots.length}));qrHistoryCleanupPage(`QRロットと関連履歴を${deleted}件完全削除しました。`)}catch(e){alert(`完全削除に失敗しました。Supabaseで cleanup_qr_lots RPC用SQLが実行済みか確認してください。
+${e.message||e}`)}}
 
 function latestOptimalStockChange(itemId){return(db.optimalStockChangeLogs||[]).filter(r=>r.itemId===itemId).sort((a,b)=>new Date(b.changedAt||0)-new Date(a.changedAt||0))[0]||null}
 function optimalStockLastText(itemId){const r=latestOptimalStockChange(itemId);return r?`前回更新：${dt(r.changedAt)} / ${esc(r.changedBy||'不明')}`:'前回更新：記録なし'}
