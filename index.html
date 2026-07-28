@@ -301,7 +301,7 @@ function qrManagedItemsPage(msg=''){setScreen('qrManagedItemsPage',[msg]);qrEnsu
 function qrAddManagedItem(){if(!canQrOperate())return alert('設定権限がありません');const name=document.getElementById('qrManagedName')?.value.trim()||'',match=document.getElementById('qrManagedMatch')?.value||'exact',aliases=String(document.getElementById('qrManagedAliases')?.value||'').split(/[、,\n]/).map(x=>x.trim()).filter(Boolean);if(!name)return alert('品目名・グループ名を入力してください');qrEnsureMasters();db.qrManagedItems.push({name,match,aliases});save();qrManagedItemsPage('QR管理対象品目を追加しました')}
 function qrRemoveManagedItem(i){if(!canQrOperate())return alert('設定権限がありません');qrEnsureMasters();if(!confirm('このQR管理対象設定を削除しますか？'))return;db.qrManagedItems.splice(i,1);save();qrManagedItemsPage('削除しました')}
 function qrLotDeleteFilters(lot){const filters=[];if(lot.id!==null&&lot.id!==undefined&&lot.id!=='')filters.push(['lot_id',lot.id]);if(lot.qr_key)filters.push(['qr_key',lot.qr_key]);if(lot.lot_no)filters.push(['lot_no',lot.lot_no]);return filters}
-async function qrPhysicalDeleteLot(lot){if(!canAdmin())throw new Error('QRロットの完全削除は管理者のみ実行できます');const filters=qrLotDeleteFilters(lot);for(const[field,value]of filters)await qrDelete('qr_lot_movements',`${field}=eq.${encodeURIComponent(String(value))}`);for(const[field,value]of filters.filter(x=>x[0]!=='lot_no'))await qrDelete('qr_scan_logs',`${field}=eq.${encodeURIComponent(String(value))}`);const deleted=await qrDelete('qr_lots',`id=eq.${encodeURIComponent(String(lot.id))}`);const remains=await qrSelect('qr_lots',`select=id&id=eq.${encodeURIComponent(String(lot.id))}&limit=1`);if(remains.length)throw new Error('ロット本体を削除できませんでした。再読込して状態を確認してください');return deleted[0]||lot}
+async function qrPhysicalDeleteLot(lot){if(!canAdmin())throw new Error('QRロットの完全削除は管理者のみ実行できます');const ans=await callRpc('delete_qr_lot_v182',{p_qr_key:lot.qr_key,p_operation_id:newId(),p_confirm:'完全削除'});if(!ans?.ok)throw new Error(ans?.message||'ロット本体を削除できませんでした');return ans}
 async function qrDeleteLot(q){if(!canAdmin())return alert('QRロットの完全削除は管理者のみです');const lot=await qrFindLot(q);if(!lot)return alert('ロットが見つかりません');if(!confirm(`${lot.item_name}
 ロット番号：${lot.lot_no}
 
@@ -1015,4 +1015,5 @@ boot();
 
 
 const V181_QR_DELETE_CASE_UNIT_FIX=true;
+const V182_QR_COMPLETE_DELETE_RPC=true;
 </script></body></html>
