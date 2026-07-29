@@ -1,0 +1,30 @@
+name: Provision SEIKA Auth users
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or verify 19 Auth users
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node <<'NODE'
+          const BASE='https://hsuofxvcxgmsplwdigpr.supabase.co';
+          const EXPECTED=[{"id":"hirata","name":"平田 祐希","email":"hirata@seika-plus.invalid","role":"admin"},{"id":"yokosuka_ryo","name":"横須賀 良太","email":"yokosuka_ryo@seika-plus.invalid","role":"admin"},{"id":"hitomi","name":"人見 和之","email":"hitomi@seika-plus.invalid","role":"worker"},{"id":"kurosawa","name":"黒澤 正行","email":"kurosawa@seika-plus.invalid","role":"worker"},{"id":"yokosuka_ru","name":"横須賀 瑠河","email":"yokosuka_ru@seika-plus.invalid","role":"worker"},{"id":"saito_yuji","name":"斎藤 雄二","email":"saito_yuji@seika-plus.invalid","role":"worker"},{"id":"seki_hiroshi","name":"関 宏世","email":"seki_hiroshi@seika-plus.invalid","role":"buyer"},{"id":"araki","name":"荒木 貴裕","email":"araki@seika-plus.invalid","role":"buyer"},{"id":"saito_dai","name":"斎藤 大明","email":"saito_dai@seika-plus.invalid","role":"buyer"},{"id":"yoshida","name":"吉田 智彦","email":"yoshida@seika-plus.invalid","role":"buyer"},{"id":"sakamoto","name":"坂本 美穂","email":"sakamoto@seika-plus.invalid","role":"buyer"},{"id":"sales_saito_ayaka","name":"斎藤 綾香","email":"sales_saito_ayaka@seika-plus.invalid","role":"sales"},{"id":"sales_warabioka_aki","name":"蕨岡 愛姫","email":"sales_warabioka_aki@seika-plus.invalid","role":"sales"},{"id":"sales_hamamatsu_junko","name":"浜松 淳子","email":"sales_hamamatsu_junko@seika-plus.invalid","role":"sales"},{"id":"sales_yatsuda_hiromu","name":"八ツ田 紘睦","email":"sales_yatsuda_hiromu@seika-plus.invalid","role":"sales"},{"id":"clerk_iizuka_miyuki","name":"飯塚 美由紀","email":"clerk_iizuka_miyuki@seika-plus.invalid","role":"clerk"},{"id":"clerk_kase_yoko","name":"加瀬 洋子","email":"clerk_kase_yoko@seika-plus.invalid","role":"clerk"},{"id":"clerk_shirata_nozomi","name":"白田 望実","email":"clerk_shirata_nozomi@seika-plus.invalid","role":"clerk"},{"id":"office_haga","name":"芳賀 克則","email":"office_haga@seika-plus.invalid","role":"office_viewer"}];
+          const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+          if(!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
+          const headers={apikey:key,Authorization:`Bearer ${key}`,'Content-Type':'application/json'};
+          const api=async(path,options={})=>{const r=await fetch(BASE+path,{...options,headers:{...headers,...(options.headers||{})}});const text=await r.text();let data=null;try{data=text?JSON.parse(text):null}catch{}if(!r.ok)throw new Error(`${path} failed (${r.status}): ${data?.code||data?.msg||data?.message||'request error'}`);return data};
+          const states=await api('/rest/v1/app_state?select=data&id=eq.ishioka_inventory_production_v2');
+          if(!Array.isArray(states)||states.length!==1)throw new Error('Production app_state was not found');
+          const legacy=new Map((states[0].data?.users||[]).map(u=>[u.id,u]));
+          const fallback=new Map([['seki_hiroshi','seki_kosei'],['saito_dai','saito_hiroaki']]);
+          const prepared=EXPECTED.map(e=>{const direct=legacy.get(e.id),old=legacy.get(fallback.get(e.id));if(direct&&old)throw new Error(`Ambiguous legacy account for ${e.id}`);const source=direct||old;if(!source?.password)throw new Error(`Legacy password missing for ${e.id}`);return{...e,password:source.password}});
+          const existing=[];for(let page=1;;page++){const data=await api(`/auth/v1/admin/users?page=${page}&per_page=100`);const batch=data?.users||[];existing.push(...batch);if(batch.length<100)break}
+          const byEmail=new Map(existing.map(u=>[String(u.email||'').toLowerCase(),u]));let created=0,verified=0;
+          for(const e of prepared){const found=byEmail.get(e.email.toLowerCase());if(found){const m=found.user_metadata||{};if(m.legacy_user_id!==e.id||m.app_role!==e.role)throw new Error(`Existing metadata mismatch for ${e.id}`);verified++;continue}await api('/auth/v1/admin/users',{method:'POST',body:JSON.stringify({email:e.email,password:e.password,email_confirm:true,user_metadata:{legacy_user_id:e.id,display_name:e.name,app_role:e.role}})});created++}
+          console.log(`SUCCESS: ${created} created, ${verified} verified, ${EXPECTED.length} total.`);
+          NODE
