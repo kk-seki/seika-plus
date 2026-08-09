@@ -4803,7 +4803,15 @@
         background: rgba(52, 211, 153, 0.14);
       }
     </style>
-  </head>
+  
+    <style id="v1111QrFlowFix">
+      .v1111QrPdfOverlay{position:fixed;inset:0;z-index:100000;background:rgba(8,20,40,.72);display:flex;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(4px)}
+      .v1111QrPdfDialog{width:min(620px,100%);max-height:calc(100dvh - 36px);overflow:auto;background:#fff;border-radius:18px;padding:20px;box-shadow:0 24px 70px rgba(0,0,0,.45);color:#0f172a}
+      .v1111QrPdfDialog .btn{position:static!important;z-index:auto!important}
+      .v1111RequiredMark{color:#dc2626;font-weight:900}
+      .v1111PendingQuality{border:3px solid #dc2626;background:#fff1f2;color:#881337}
+    </style>
+</head>
   <body>
     <div id="app"></div>
     <script>
@@ -7120,7 +7128,7 @@
           function sheet(def) {
             return `<main class="pdfSheet ${large ? "largePoster" : "normalPoster"}"><section class="pdfPoster"><div class="posterLeft"><div class="posterBrand">SEIKA＋ QRロット管理</div><div class="posterRows">${rows(def)}</div></div><aside class="posterRight"><img class="posterQr" src="${def.qrSrc}" alt="QRコード"><div class="posterScan">QRを読み取って<br>残数・履歴を確認</div><div class="posterLot">${lotNoText}${def.palletNo ? " / パレット" + def.palletNo : ""}</div></aside></section></main>`;
           }
-          const posterCss = `*{box-sizing:border-box}.pdfRenderRoot{position:fixed;left:0;top:0;width:1122px;background:#fff;z-index:-1;pointer-events:none}.pdfSheet{width:1122px;height:794px;background:#fff;padding:34px;overflow:hidden}.pdfPoster{width:100%;height:100%;border:18px solid #000;padding:22px 30px;display:grid;grid-template-columns:minmax(0,1fr) 158px;column-gap:16px;overflow:hidden;color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.posterLeft{min-width:0;height:100%;display:flex;flex-direction:column}.posterBrand{font-size:40px;font-weight:900;margin-bottom:7px;line-height:1.05}.posterRows{min-height:0;flex:1;display:grid;gap:3px}.largePoster .posterRows{grid-template-rows:repeat(7,minmax(0,1fr))}.normalPoster .posterRows{grid-template-rows:repeat(6,minmax(0,1fr))}.posterRow{display:grid;grid-template-columns:166px minmax(0,1fr);align-items:center;border-bottom:5px solid #000;padding:3px 0;min-height:0;overflow:hidden}.posterLabel{font-size:39px;font-weight:900}.posterValue{min-width:0;font-size:50px;font-weight:900;line-height:.98;overflow-wrap:anywhere;max-height:2em;overflow:hidden}.posterValue.item{font-size:67px}.posterValue.date{font-size:80px}.posterValue.strong{font-size:68px}.posterValue.qty,.posterValue.pack{font-size:74px}.posterRight{width:158px;display:flex;flex-direction:column;align-items:center;background:#fff}.posterQr{width:142px;height:142px;image-rendering:pixelated}.posterScan{margin-top:6px;font-size:16px;font-weight:900;text-align:center;line-height:1.2}.posterLot{margin-top:6px;font-size:13px;font-weight:900;text-align:center;overflow-wrap:anywhere;line-height:1.18}.normalPoster .posterBrand{font-size:43px;margin-bottom:6px}.normalPoster .posterRow{grid-template-columns:166px minmax(0,1fr);padding:4px 0}.normalPoster .posterLabel{font-size:43px}.normalPoster .posterValue{font-size:56px}.normalPoster .posterValue.item{font-size:74px}.normalPoster .posterValue.date{font-size:86px}.normalPoster .posterValue.strong{font-size:75px}.normalPoster .posterValue.qty,.normalPoster .posterValue.pack{font-size:82px}`;
+          const posterCss = `*{box-sizing:border-box}.pdfRenderRoot{position:fixed;left:-20000px;top:0;width:1122px;background:#fff;z-index:0;pointer-events:none}.pdfSheet{width:1122px;height:794px;background:#fff;padding:34px;overflow:hidden}.pdfPoster{width:100%;height:100%;border:18px solid #000;padding:22px 30px;display:grid;grid-template-columns:minmax(0,1fr) 158px;column-gap:16px;overflow:hidden;color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.posterLeft{min-width:0;height:100%;display:flex;flex-direction:column}.posterBrand{font-size:40px;font-weight:900;margin-bottom:7px;line-height:1.05}.posterRows{min-height:0;flex:1;display:grid;gap:3px}.largePoster .posterRows{grid-template-rows:repeat(7,minmax(0,1fr))}.normalPoster .posterRows{grid-template-rows:repeat(6,minmax(0,1fr))}.posterRow{display:grid;grid-template-columns:166px minmax(0,1fr);align-items:center;border-bottom:5px solid #000;padding:3px 0;min-height:0;overflow:hidden}.posterLabel{font-size:39px;font-weight:900}.posterValue{min-width:0;font-size:50px;font-weight:900;line-height:.98;overflow-wrap:anywhere;max-height:2em;overflow:hidden}.posterValue.item{font-size:67px}.posterValue.date{font-size:80px}.posterValue.strong{font-size:68px}.posterValue.qty,.posterValue.pack{font-size:74px}.posterRight{width:158px;display:flex;flex-direction:column;align-items:center;background:#fff}.posterQr{width:142px;height:142px;image-rendering:pixelated}.posterScan{margin-top:6px;font-size:16px;font-weight:900;text-align:center;line-height:1.2}.posterLot{margin-top:6px;font-size:13px;font-weight:900;text-align:center;overflow-wrap:anywhere;line-height:1.18}.normalPoster .posterBrand{font-size:43px;margin-bottom:6px}.normalPoster .posterRow{grid-template-columns:166px minmax(0,1fr);padding:4px 0}.normalPoster .posterLabel{font-size:43px}.normalPoster .posterValue{font-size:56px}.normalPoster .posterValue.item{font-size:74px}.normalPoster .posterValue.date{font-size:86px}.normalPoster .posterValue.strong{font-size:75px}.normalPoster .posterValue.qty,.normalPoster .posterValue.pack{font-size:82px}`;
           renderRoot = document.createElement("div");
           renderRoot.className = "pdfRenderRoot";
           renderRoot.setAttribute("aria-hidden", "true");
@@ -15692,23 +15700,42 @@ ${e.message || e}`);
           throw e;
         }
       };
-      /* v1.102 最終再送処理：通常キューとQR訂正履歴キューを両方処理 */
+      /* v1.111 再送完了後のキュー・ボタン確実解除 */
+      let v1111RetryPendingRunning = false;
       retryPendingSync = async function () {
-        if (v161SyncRunning) return;
+        if (v161SyncRunning || v1111RetryPendingRunning) return;
         const pending = v161ReadQueue()[0],
-          hasNormal = !!v161PendingCount(),
-          hasHistory = !!v193QrEditHistoryPendingCount(),
-          isConflict = hasNormal && (syncState === "競合" || v161IsConflictError(pending?.lastError) || Number(pending?.attempts || 0) > 0);
+          hasAppQueue = v161ReadQueue().length > 0,
+          hasTableHistory = v188HistoryPending(),
+          hasQrEditHistory = v193QrEditHistoryPendingCount() > 0,
+          isConflict = hasAppQueue && (syncState === "競合" || v161IsConflictError(pending?.lastError) || Number(pending?.attempts || 0) > 0);
+        v1111RetryPendingRunning = true;
         v161ShowProcessing(isConflict ? "他端末の最新データと未同期データを安全に統合しています" : "端末に保持したデータをクラウドへ再送しています");
+        const retryButton = document.getElementById("syncRetryBtn");
+        if (retryButton) {
+          retryButton.disabled = true;
+          retryButton.textContent = "再送中…";
+        }
         try {
           let result = { ok: true, merged: 0 };
-          if (hasNormal) result = isConflict ? await v178ResolvePendingInventoryConflict() : (await saveCloudNow(), { ok: !v161PendingCount(), merged: 0 });
-          if (!result.ok || v161PendingCount()) throw new Error("クラウド保存が完了していません");
-          const historyCount = hasHistory ? await v193RetryQrEditHistories() : 0;
+          if (hasAppQueue) {
+            result = isConflict ? await v178ResolvePendingInventoryConflict() : (await saveCloudNow(), { ok: v161ReadQueue().length === 0, merged: 0 });
+            if (!result.ok || v161ReadQueue().length) throw new Error("通常データのクラウド保存が完了していません");
+          }
+          if (hasTableHistory && v188HistoryPending()) {
+            await saveHistoryTablesNow();
+            v188SetHistoryPending(false);
+          }
+          const historyCount = hasQrEditHistory ? await v193RetryQrEditHistories() : 0;
+          await v188IdbFlush();
+          if (v161ReadQueue().length) throw new Error("通常データの再送が完了していません");
+          if (v188HistoryPending()) throw new Error("履歴データの再送が完了していません");
           if (v193QrEditHistoryPendingCount()) throw new Error("訂正履歴の再送が完了していません");
           setSyncState("保存済み", "クラウド保存完了");
-          updateSyncDisplay();
           await renderCurrent();
+          document.getElementById("syncRetryBtn")?.remove();
+          document.getElementById("syncDiscardBtn")?.remove();
+          document.querySelectorAll(".syncSafetyNotice").forEach((element) => element.remove());
           updateSyncDisplay();
           alert(
             historyCount
@@ -15719,9 +15746,10 @@ ${e.message || e}`);
           );
         } catch (e) {
           const conflict = v161IsConflictError(e) || isConflict;
-          setSyncState(conflict ? "競合" : "失敗", "全入力データを端末に保持しています");
-          alert(`保存できませんでした。\n${v161ErrorText(e)}\n\n入力データはこの端末に保持されています。通信状況を確認し、もう一度「再送」を押してください。`);
+          setSyncState(conflict ? "競合" : "失敗", "未同期データを端末に保持しています");
+          alert(`保存できませんでした。\n${v161ErrorText(e)}\n\n未送信データはこの端末に保持されています。通信状況を確認し、もう一度「再送」を押してください。`);
         } finally {
+          v1111RetryPendingRunning = false;
           v161HideProcessing();
           updateSyncDisplay();
         }
@@ -18491,6 +18519,167 @@ ${e.message || e}`);
       const V188_QR_LAYOUT_PAPER_BAG_USER_ADMIN = true;
       const V188_CLERK_WASTE_SAVE_FIX = true;
       const V188_ALL_INPUT_SYNC_PROTECTION = true;
-    </script>
+    
+      /* ===== QR葉物在庫表・印刷・必須品質評価・入庫必須項目修正 ===== */
+      const V1111_REQUIRED_QUALITY_KEY = "seika_v1111_required_quality_qr";
+      let v1111RequiredQualityCreating = false;
+
+      function v1111RuleNormalItem(rule, items = activeItems()) {
+        if (!rule) return null;
+        const names = [rule.name || rule.item_name, ...(rule.aliases || [])].map(qrNormalizeName).filter(Boolean),
+          matches = items.filter((item) => names.includes(qrNormalizeName(item.name)));
+        return matches.length === 1 ? matches[0] : null;
+      }
+
+      const v1111QrResolveInventoryItemCore = qrResolveInventoryItem;
+      qrResolveInventoryItem = function (lot) {
+        const resolved = v1111QrResolveInventoryItemCore(lot);
+        if (resolved.item) return resolved;
+        const rule = resolved.rule || qrManagedRuleForName(lot?.item_name),
+          item = v1111RuleNormalItem(rule);
+        return item ? { item, rule, method: "QR正式名・通常在庫名対応" } : resolved;
+      };
+
+      const v1111QrFindItemByNameCore = qrFindItemByName;
+      qrFindItemByName = function (name) {
+        const exact = v1111QrFindItemByNameCore(name);
+        if (exact) return exact;
+        return v1111RuleNormalItem(qrManagedRuleForName(name));
+      };
+
+      function v1111RequiredLabel(id, text) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.required = true;
+        const label = el.closest("div")?.querySelector(":scope > .label") || el.previousElementSibling;
+        if (label?.classList?.contains("label") && !label.querySelector(".v1111RequiredMark"))
+          label.insertAdjacentHTML("beforeend", ' <span class="v1111RequiredMark">必須</span>');
+      }
+
+      function v1111MarkQrEntryRequiredFields() {
+        [
+          ["qrReceivedDate", "入庫日"],
+          ["qrItemName", "品目"],
+          ["qrPurchaseStaff", "仕入れ担当者"],
+          ["qrContainerType", "荷姿"],
+          ["qrQty", "数量"],
+          ["qrSupplier", "仕入先"],
+          ["qrOrigin", "産地"],
+          ["qrLoc", "保管場所"],
+        ].forEach(([id, text]) => v1111RequiredLabel(id, text));
+      }
+
+      const v1111QrCreatePageCore = qrCreatePage;
+      qrCreatePage = async function () {
+        const result = await v1111QrCreatePageCore();
+        v1111MarkQrEntryRequiredFields();
+        const pending = localStorage.getItem(V1111_REQUIRED_QUALITY_KEY) || "";
+        if (pending && v1102CanEvaluate())
+          document.querySelector(".qrCreateForm")?.insertAdjacentHTML(
+            "afterbegin",
+            `<div class="card v1111PendingQuality"><b>前回のQR入庫で品質評価が未完了です</b><div class="small">先に品質評価を完了してください。</div><button class="btn red" style="width:100%;margin-top:8px" onclick="v1102QualityPage('${esc(pending)}')">未完了の品質評価へ</button></div>`,
+          );
+        return result;
+      };
+
+      const v1111QrRenderContainerFieldsCore = qrRenderContainerFields;
+      qrRenderContainerFields = function () {
+        const result = v1111QrRenderContainerFieldsCore();
+        v1111MarkQrEntryRequiredFields();
+        return result;
+      };
+
+      function v1111RequiredValue(id, message) {
+        const element = document.getElementById(id);
+        if (!element) return true;
+        const value = element.value?.trim() || "";
+        return value ? true : v161FocusField(id, message);
+      }
+
+      const v1111QrSaveLotCore = qrSaveLot;
+      qrSaveLot = async function () {
+        if (!v1111RequiredValue("qrReceivedDate", "入庫日を入力してください。")) return;
+        if (!v1111RequiredValue("qrItemName", "品目を選択してください。")) return;
+        if (!v1111RequiredValue("qrPurchaseStaff", "仕入れ担当者を入力してください。")) return;
+        if (!v1111RequiredValue("qrContainerType", "荷姿を選択してください。")) return;
+        if (!v1111RequiredValue("qrQty", "数量を入力してください。")) return;
+        if (!v1111RequiredValue("qrSupplier", "仕入先を入力してください。")) return;
+        if (!v1111RequiredValue("qrOrigin", "産地を入力してください。")) return;
+        if (!v1111RequiredValue("qrLoc", "保管場所を選択してください。")) return;
+        return v1111QrSaveLotCore();
+      };
+
+      function v1111CloseQrPdfPanel() {
+        document.getElementById("v1111QrPdfOverlay")?.remove();
+      }
+
+      function v1111ShowQrPdfPanel(message, type = "ok", url = "", fileName = "") {
+        v1111CloseQrPdfPanel();
+        const overlay = document.createElement("div");
+        overlay.id = "v1111QrPdfOverlay";
+        overlay.className = "v1111QrPdfOverlay";
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+        const open = url
+          ? `<a class="btn blue" style="display:block;width:100%;margin-top:12px;text-align:center;text-decoration:none" href="${esc(url)}" target="_blank" rel="noopener">PDFを開く・印刷</a>`
+          : "";
+        overlay.innerHTML = `<div class="v1111QrPdfDialog"><div class="${type}">${message}</div>${open}<button class="btn btn2" style="width:100%;margin-top:10px" onclick="v1111CloseQrPdfPanel()">閉じる</button></div>`;
+        document.body.appendChild(overlay);
+      }
+
+      qrPdfStatus = function (message, type = "notice", url = "", fileName = "") {
+        let host = document.getElementById("qrPdfStatus");
+        if (!host) {
+          host = document.createElement("div");
+          host.id = "qrPdfStatus";
+          (document.querySelector(".wrap") || document.querySelector(".appShell") || document.body).prepend(host);
+        }
+        host.innerHTML = `<div class="${type}">${message}</div>`;
+        if (!url) return;
+        if (v1111RequiredQualityCreating) return;
+        v1111ShowQrPdfPanel(message, type, url, fileName);
+      };
+
+      const v1111QrSaveLotBaseCore = qrSaveLotBase;
+      qrSaveLotBase = async function () {
+        v1111RequiredQualityCreating = true;
+        try {
+          await v1111QrSaveLotBaseCore();
+          const key = v1102PendingQualityQrKey || "";
+          if (!key) return;
+          localStorage.setItem(V1111_REQUIRED_QUALITY_KEY, key);
+          v1111CloseQrPdfPanel();
+          v1102QualityPage(key);
+        } finally {
+          v1111RequiredQualityCreating = false;
+        }
+      };
+
+      const v1111V1102SaveQualityCore = v1102SaveQuality;
+      v1102SaveQuality = async function (q, supersedesId = "") {
+        const requiredKey = localStorage.getItem(V1111_REQUIRED_QUALITY_KEY) || "";
+        await v1111V1102SaveQualityCore(q, supersedesId);
+        if (!supersedesId && requiredKey && requiredKey === q && !v1102PendingQualityQrKey) {
+          localStorage.removeItem(V1111_REQUIRED_QUALITY_KEY);
+          if (qrLastPdfUrl)
+            setTimeout(
+              () => v1111ShowQrPdfPanel("品質評価を登録しました。QR貼り紙PDFを開いて印刷してください。", "ok", qrLastPdfUrl, qrLastPdfFileName),
+              350,
+            );
+        }
+      };
+
+      const v1111QrHomeCore = qrHome;
+      qrHome = async function (msg = "") {
+        const result = await v1111QrHomeCore(msg);
+        const pending = localStorage.getItem(V1111_REQUIRED_QUALITY_KEY) || "";
+        if (pending && v1102CanEvaluate())
+          document.querySelector(".wrap")?.insertAdjacentHTML(
+            "afterbegin",
+            `<div class="card v1111PendingQuality"><b>QR入庫の品質評価が未完了です</b><div class="small">入庫フローを完了するため、品質評価を登録してください。</div><button class="btn red" style="width:100%;margin-top:8px" onclick="v1102QualityPage('${esc(pending)}')">品質評価を続ける</button></div>`,
+          );
+        return result;
+      };
+</script>
   </body>
 </html>
