@@ -17414,3 +17414,1083 @@ ${e.message || e}`);
           limit = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
         return String(key).slice(0, 7) <= limit;
       }
+      async function v1101Purge(module, key) {
+        if (!canAdmin()) return alert("履歴削除は管理者のみです");
+        if (!v1101Deletable(key)) return alert("3か月分の保持期間が終わっていません");
+        if (
+          !confirm(
+            `${monthLabel(v1101MonthDate(key))}の${v1101ModuleName(module)}をデータベースから削除します。\nExcelファイルが保存済みであることを再確認してください。\nこの操作は取り消せません。`,
+          )
+        )
+          return;
+        try {
+          const ans = await callRpc("purge_monthly_archive_v1101", {
+            p_module: module,
+            p_target_month: v1101MonthDate(key),
+          });
+          if (module === "waste") {
+            const start = v1101MonthDate(key),
+              end = monthRangeFromMonthValue(String(key).slice(0, 7)).end;
+            db.wasteRecords = (db.wasteRecords || []).filter((r) => !r.date || r.date < start || r.date > end);
+            v188PersistDb();
+          }
+          await v1101ArchivePage(`${monthLabel(v1101MonthDate(key))}の${v1101ModuleName(module)}を${Number(ans?.deleted_count || 0).toLocaleString()}件削除しました。`);
+        } catch (e) {
+          alert(`削除できませんでした。\n${e.message || e}`);
+        }
+      }
+      function v1101ArchiveCard(module, a) {
+        const key = String(a.target_month || "").slice(0, 7),
+          saved = a.status === "excel_saved",
+          deleted = a.status === "deleted",
+          created = !!a.excel_created_at;
+        return `<div class="box" style="margin:10px 0;${deleted ? "opacity:.72" : ""}"><div class="itemHead"><div><b>${monthLabel(v1101MonthDate(key))}</b><div class="small">対象件数：${Number(a.row_count || 0).toLocaleString()}件${created ? ` / 作成：${dt(a.excel_created_at)}` : ""}${a.excel_saved_at ? `<br>保存確認：${dt(a.excel_saved_at)} / ${esc(a.excel_saved_by_name || "")}` : ""}${a.deleted_at ? `<br>DB削除：${dt(a.deleted_at)} / ${Number(a.deleted_count || 0).toLocaleString()}件` : ""}</div></div><span class="badge ${deleted ? "normal" : saved ? "normal" : created ? "excess" : "unset"}">${v1101ArchiveStatusLabel(a.status)}</span></div>${!deleted ? `<button class="btn blue" style="width:100%;margin-top:10px" onclick="v1101DownloadArchive('${module}','${key}')">Excelを作成してダウンロード</button>${created && !saved && canAdmin() ? `<label class="switch" style="margin-top:10px"><input id="v1101Saved_${module}_${key}" type="checkbox"> Excelファイルをデスクネッツ文書管理の該当フォルダへ保管したことを確認しました</label><button class="btn green" style="width:100%;margin-top:10px" onclick="v1101ConfirmSaved('${module}','${key}')">Excel保存済みとして記録</button>` : created && !saved ? '<div class="notice" style="margin-top:10px">管理者の保存確認待ちです。</div>' : ""}${saved && v1101Deletable(key) && canAdmin() ? `<button class="btn danger" style="width:100%;margin-top:10px" onclick="v1101Purge('${module}','${key}')">3か月経過データを削除</button>` : ""}` : ""}</div>`;
+      }
+      async function v1101DownloadArchive(module, key) {
+        if (!v1101CanModule(module)) return alert("このExcelを出力する権限がありません");
+        if (module === "waste") {
+          const r = monthRangeFromMonthValue(key),
+            rows = wasteRowsForPeriod(r.start, r.end).sort(
+              (a, b) => String(a.date || "").localeCompare(String(b.date || "")) || new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
+            );
+          if (!rows.length) return alert("対象月の廃棄記録はありません");
+          const fileName = `廃棄一覧_${key}.xlsx`;
+          downloadWasteXlsx(r.start, r.end, rows, fileName);
+          try {
+            await v1101RecordCreated(module, key, fileName, rows.length);
+            await v1101ArchivePage(`${monthLabel(v1101MonthDate(key))}の廃棄Excelを作成しました。デスクネッツ文書管理の該当フォルダへ保管後、管理者が保存確認を記録してください。`);
+          } catch (e) {
+            alert(`Excelは作成しましたが、作成済み記録を保存できませんでした。\n${e.message || e}`);
+          }
+          return;
+        }
+        document.body.dataset.v1101ArchiveMonth = key;
+        document.body.dataset.v1101ArchiveMode = "1";
+        v199QrExcelPage();
+        document.getElementById("v199QrExcelMonth").value = key;
+        await v199DownloadQrMonthlyExcel();
+      }
+      function v1101DesknetPath(folder) {
+        return `<div class="notice" style="margin-top:10px"><b>Excel保管先：${esc(folder)}</b><div class="small">デスクネッツ → 文書管理 → 石岡青果Cの［＋］ → SEIKA＋（在庫管理アプリ）の［＋］ → ${esc(folder)}</div></div>`;
+      }
+      function v1101DownloadSelected(module) {
+        const el = document.getElementById(`v1101Month_${module}`),
+          key = el?.value || previousMonthKey();
+        if (key > previousMonthKey()) return alert("月次保存は前月以前を選択してください");
+        v1101DownloadArchive(module, key);
+      }
+      function v1101InventoryArchiveSection() {
+        if (!canAdmin()) return "";
+        const exports = monthlyExportTasks(),
+          deletes = monthlyDeleteTasks(),
+          archives = db.monthlyArchives || {},
+          history = Object.keys(archives).sort().reverse().slice(0, 24),
+          defaultMonth = monthInputValue(new Date());
+        return `<section class="card"><h2 style="margin-top:0">在庫表履歴</h2><div class="small">「在庫入力」画面で登録したデータを月単位で出力します。入庫・出庫・調整などの修正履歴は含めません。</div>${v1101DesknetPath("在庫履歴")}<div class="box" style="margin-top:12px"><b>月を選んでExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="inventoryHistoryMonth" class="input" type="month" value="${defaultMonth}"></div><div><button class="btn blue" onclick="downloadInventoryHistoryBySelectedMonth()">選択月をExcel出力</button></div></div></div>${exports.length ? `<h3>Excel保存が必要な月</h3>${exports.map((t) => monthlyExportCard(t)).join("")}` : '<div class="notice" style="margin-top:12px">Excel保存が必要な月はありません。</div>'}${deletes.length ? `<h3>履歴削除候補</h3>${deletes.map((t) => monthlyDeleteCard(t)).join("")}` : '<div class="notice" style="margin-top:12px">削除できる古い履歴はありません。</div>'}${
+          history.length
+            ? `<details style="margin-top:12px"><summary class="btn btn2" style="display:block;cursor:pointer">月次処理履歴を表示</summary><table class="table" style="margin-top:10px"><tr><th>対象月</th><th>状態</th><th>件数</th><th>日時</th></tr>${history
+                .map((k) => {
+                  const a = archives[k];
+                  return `<tr><td>${monthLabel(k)}</td><td>${monthlyStatusLabel(a.status)}</td><td>${a.excelRowCount ?? recordsForMonth(k).length}</td><td>${a.deletedAt ? dt(a.deletedAt) : a.excelSavedAt ? dt(a.excelSavedAt) : a.excelCreatedAt ? dt(a.excelCreatedAt) : "-"}</td></tr>`;
+                })
+                .join("")}</table></details>`
+            : ""
+        }</section>`;
+      }
+
+      let v1102QualityArchives = [];
+      async function v1102LoadQualityArchives() {
+        if (!["admin", "worker", "clerk"].includes(db.role)) return [];
+        const ans = await callRpc("list_monthly_quality_archives_v1102", {});
+        v1102QualityArchives = ans?.archives || [];
+        return v1102QualityArchives;
+      }
+      function v1102ArrayBufferToBase64(buf) {
+        const bytes = new Uint8Array(buf);
+        let out = "";
+        for (let i = 0; i < bytes.length; i += 32768) out += String.fromCharCode(...bytes.subarray(i, i + 32768));
+        return btoa(out);
+      }
+      async function v1102PhotoBase64(path) {
+        const url = await v1102SignedPhotoUrl(path),
+          res = await fetch(url);
+        if (!res.ok) throw new Error("品質写真を取得できませんでした");
+        const blob = await res.blob(),
+          canvas = document.createElement("canvas"),
+          img = await v1102LoadImage(new File([blob], "quality", { type: blob.type || "image/jpeg" })),
+          max = 240,
+          scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        const out = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.78));
+        if (!out) throw new Error("品質写真をExcel用に変換できませんでした");
+        return {
+          base64: "data:image/jpeg;base64," + v1102ArrayBufferToBase64(await out.arrayBuffer()),
+          width: canvas.width,
+          height: canvas.height,
+        };
+      }
+      async function v1102DownloadQualityExcel(key) {
+        if (!["admin", "worker", "clerk"].includes(db.role)) return alert("品質評価Excelを出力する権限がありません");
+        if (typeof ExcelJS === "undefined") return alert("Excel作成ライブラリを読み込めません。通信状況を確認して再読込してください。");
+        v161ShowProcessing("品質評価と写真を読み込み、Excelを作成しています");
+        try {
+          if (!key || key > previousMonthKey()) return alert("前月以前を選択してください");
+          const ans = await callRpc("get_monthly_quality_export_v1102", { p_target_month: v1101MonthDate(key) }),
+            rows = ans?.evaluations || [];
+          if (!rows.length) return alert("対象月の品質評価はありません");
+          const wb = new ExcelJS.Workbook();
+          wb.creator = "SEIKA＋";
+          wb.created = new Date();
+          const ws = wb.addWorksheet("品質評価履歴", { views: [{ state: "frozen", ySplit: 1 }] });
+          ws.columns = [
+            { header: "評価日時", key: "date", width: 21 },
+            { header: "品名", key: "item", width: 18 },
+            { header: "ロット番号", key: "lot", width: 22 },
+            { header: "QRキー", key: "qr", width: 28 },
+            { header: "判定", key: "grade", width: 10 },
+            { header: "状態", key: "issues", width: 28 },
+            { header: "メモ", key: "memo", width: 34 },
+            { header: "評価者", key: "user", width: 16 },
+            { header: "訂正理由", key: "correction", width: 28 },
+            { header: "訂正前", key: "old", width: 10 },
+            { header: "写真1", key: "p1", width: 22 },
+            { header: "写真2", key: "p2", width: 22 },
+            { header: "写真3", key: "p3", width: 22 },
+          ];
+          ws.getRow(1).height = 25;
+          ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+          ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF102653" } };
+          ws.getRow(1).alignment = { horizontal: "center", vertical: "middle" };
+          let photoCount = 0;
+          for (const x of rows) {
+            const row = ws.addRow({
+              date: new Date(x.evaluated_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }),
+              item: x.item_name || "",
+              lot: x.lot_no || "",
+              qr: x.qr_key || "",
+              grade: v1102GradeLabel(x.grade),
+              issues: (x.issues || []).join("、"),
+              memo: x.memo || "",
+              user: x.evaluated_by_name || "",
+              correction: x.correction_reason || "",
+              old: x.is_superseded ? "訂正前" : "",
+            });
+            row.alignment = { vertical: "top", wrapText: true };
+            const photos = x.photos || [];
+            if (photos.length) {
+              row.height = 105;
+              for (let i = 0; i < Math.min(3, photos.length); i++) {
+                const image = await v1102PhotoBase64(photos[i].storage_path),
+                  id = wb.addImage({ base64: image.base64, extension: "jpeg" });
+                ws.addImage(id, {
+                  tl: { col: 10 + i, row: row.number - 1 },
+                  ext: { width: 150, height: 95 },
+                  editAs: "oneCell",
+                });
+                photoCount++;
+              }
+            }
+          }
+          ws.autoFilter = { from: "A1", to: "M1" };
+          const info = wb.addWorksheet("出力情報");
+          info.addRows([
+            ["対象月", key],
+            ["評価件数", rows.length],
+            ["写真枚数", photoCount],
+            ["作成日時", new Date().toLocaleString("ja-JP")],
+            ["保管先", "デスクネッツ → 文書管理 → 石岡青果C → SEIKA＋（在庫管理アプリ）→ QR在庫履歴"],
+            ["注意", "写真を1枚でも取得できなかった場合は作成済みに記録しません。"],
+          ]);
+          info.getColumn(1).width = 18;
+          info.getColumn(2).width = 80;
+          info.getColumn(1).font = { bold: true };
+          const buffer = await wb.xlsx.writeBuffer(),
+            fileName = `QR品質評価履歴_${key}.xlsx`,
+            blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+            url = URL.createObjectURL(blob),
+            a = document.createElement("a");
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          await callRpc("mark_monthly_quality_archive_created_v1102", {
+            p_target_month: v1101MonthDate(key),
+            p_file_name: fileName,
+            p_row_count: rows.length,
+            p_photo_count: photoCount,
+          });
+          await v1101ArchivePage(`${monthLabel(v1101MonthDate(key))}の品質評価Excel（写真${photoCount}枚）を作成しました。デスクネッツの「QR在庫履歴」へ保管してください。`);
+        } catch (e) {
+          alert("品質評価Excelを作成できませんでした。\n" + (e.message || e));
+        } finally {
+          v161HideProcessing();
+        }
+      }
+      async function v1102ConfirmQualitySaved(key) {
+        if (!canAdmin()) return alert("保存確認は管理者のみです");
+        const check = document.getElementById(`v1102QualitySaved_${key}`);
+        if (!check?.checked) return alert("Excelをデスクネッツの「QR在庫履歴」へ保管したことを確認し、チェックしてください");
+        try {
+          await callRpc("confirm_monthly_quality_archive_saved_v1102", { p_target_month: v1101MonthDate(key) });
+          await v1101ArchivePage(`${monthLabel(v1101MonthDate(key))}の品質評価Excelを保存済みとして記録しました。`);
+        } catch (e) {
+          alert("保存確認を記録できませんでした。\n" + (e.message || e));
+        }
+      }
+      async function v1102StorageDelete(path) {
+        if (!(await authEnsure())) throw new Error("再ログインしてください");
+        const encoded = path.split("/").map(encodeURIComponent).join("/"),
+          res = await fetch(`${SUPABASE_URL}/storage/v1/object/qr-quality-photos/${encoded}`, {
+            method: "DELETE",
+            headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + authToken() },
+          });
+        if (!res.ok && res.status !== 404) throw new Error(await res.text());
+      }
+      async function v1102PurgeQuality(key) {
+        if (!canAdmin()) return alert("履歴削除は管理者のみです");
+        if (!v1101Deletable(key)) return alert("3か月分の保持期間が終わっていません");
+        if (
+          !confirm(
+            `${monthLabel(v1101MonthDate(key))}の品質評価と写真を削除します。\nExcelがデスクネッツへ保管済みであることを確認してください。\nQRロット本体と在庫数量は削除しません。`,
+          )
+        )
+          return;
+        v161ShowProcessing("品質写真と評価履歴を安全に整理しています");
+        try {
+          const prep = await callRpc("prepare_monthly_quality_purge_v1102", { p_target_month: v1101MonthDate(key) });
+          for (const path of prep?.storage_paths || []) await v1102StorageDelete(path);
+          const ans = await callRpc("finalize_monthly_quality_purge_v1102", { p_target_month: v1101MonthDate(key) });
+          await v1101ArchivePage(
+            `${monthLabel(v1101MonthDate(key))}の品質評価${Number(ans?.deleted_count || 0)}件・写真${Number(ans?.deleted_photo_count || 0)}枚を削除しました。QRロット本体は残しています。`,
+          );
+        } catch (e) {
+          alert("品質評価履歴を整理できませんでした。\n" + (e.message || e) + "\n\n途中で止まった場合は同じ削除ボタンを再度押してください。");
+        } finally {
+          v161HideProcessing();
+        }
+      }
+      function v1102QualityArchiveCard(a) {
+        const key = String(a.target_month || "").slice(0, 7),
+          saved = a.status === "excel_saved",
+          deleted = a.status === "deleted",
+          created = !!a.excel_created_at,
+          deleting = a.status === "deleting";
+        return `<div class="box" style="margin:10px 0;${deleted ? "opacity:.72" : ""}"><div class="itemHead"><div><b>${monthLabel(v1101MonthDate(key))}</b><div class="small">評価：${Number(a.row_count || 0)}件 / 写真：${Number(a.photo_count || 0)}枚${a.excel_created_at ? `<br>作成：${dt(a.excel_created_at)}` : ""}${a.excel_saved_at ? `<br>保存確認：${dt(a.excel_saved_at)} / ${esc(a.excel_saved_by_name || "")}` : ""}</div></div><span class="badge ${deleted || saved ? "normal" : created ? "excess" : "unset"}">${deleting ? "削除処理中" : v1101ArchiveStatusLabel(a.status)}</span></div>${!deleted ? `<button class="btn blue" style="width:100%;margin-top:10px" onclick="v1102DownloadQualityExcel('${key}')">写真付きExcelを作成してダウンロード</button>${created && !saved && canAdmin() ? `<label class="switch" style="margin-top:10px"><input id="v1102QualitySaved_${key}" type="checkbox"> Excelをデスクネッツの「QR在庫履歴」へ保管しました</label><button class="btn green" style="width:100%;margin-top:10px" onclick="v1102ConfirmQualitySaved('${key}')">Excel保存済みとして記録</button>` : created && !saved ? '<div class="notice">管理者の保存確認待ちです。</div>' : ""}${(saved || deleting) && v1101Deletable(key) && canAdmin() ? `<button class="btn danger" style="width:100%;margin-top:10px" onclick="v1102PurgeQuality('${key}')">3か月経過データと写真を削除</button>` : ""}` : ""}</div>`;
+      }
+      function v1102QualityArchiveSection() {
+        if (!["admin", "worker", "clerk"].includes(db.role)) return "";
+        const rows = v1102QualityArchives.filter((x) => String(x.target_month || "").slice(0, 7) < monthInputValue(new Date())).slice(0, 36);
+        return `<section class="card"><h2 style="margin-top:0">QR品質評価履歴</h2><div class="small">品質評価と写真を月ごとに1つのExcelへ出力します。写真は各評価の行へ最大3枚埋め込みます。</div>${v1101DesknetPath("QR在庫履歴")}<div class="box" style="margin-top:12px"><b>月を選んで写真付きExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="v1102QualityMonth" class="input" type="month" max="${previousMonthKey()}" value="${previousMonthKey()}"></div><div><button class="btn blue" onclick="v1102DownloadQualityExcel(document.getElementById('v1102QualityMonth').value)">選択月をExcel出力</button></div></div></div>${rows.length ? rows.map(v1102QualityArchiveCard).join("") : '<div class="notice" style="margin-top:12px">対象履歴はありません。</div>'}</section>`;
+      }
+
+      async function v1101ArchivePage(msg = "") {
+        setScreen("v1101ArchivePage", [msg]);
+        const modules = ["qr", "waste"].filter(v1101CanModule),
+          qualityAllowed = ["admin", "worker", "clerk"].includes(db.role);
+        try {
+          await Promise.all([...modules.map(v1101LoadArchives), ...(qualityAllowed ? [v1102LoadQualityArchives()] : [])]);
+        } catch (e) {
+          return pageShell(
+            "月次Excel・履歴管理",
+            "設定が必要です",
+            `<div class="err">${esc(e.message || e)}<div class="small">Supabaseでv1.101 SQLを実行してください。</div></div>`,
+          );
+        }
+        const names = { qr: "QR在庫履歴", waste: "廃棄履歴" },
+          folders = { qr: "QR在庫履歴", waste: "廃棄履歴" },
+          sections = modules
+            .map((module) => {
+              const rows = v1101ArchiveRows(module),
+                prev = monthInputValue(new Date()),
+                visible = rows.filter((x) => String(x.target_month || "").slice(0, 7) < prev).slice(0, 36);
+              return `<section class="card"><h2 style="margin-top:0">${names[module]}</h2><div class="small">前月以前の月ごとにExcel出力・文書管理への保管確認・3か月経過後のDB整理を管理します。${module === "qr" ? "QRロット本体は削除せず、操作履歴だけを整理します。" : ""}</div>${v1101DesknetPath(folders[module])}<div class="box" style="margin-top:12px"><b>月を選んでExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="v1101Month_${module}" class="input" type="month" max="${previousMonthKey()}" value="${previousMonthKey()}"></div><div><button class="btn blue" onclick="v1101DownloadSelected('${module}')">選択月をExcel出力</button></div></div></div>${visible.length ? visible.map((a) => v1101ArchiveCard(module, a)).join("") : '<div class="notice" style="margin-top:12px">対象履歴はありません。</div>'}</section>`;
+            })
+            .join("");
+        pageShell(
+          "月次Excel・履歴管理",
+          "在庫表・QR・廃棄・品質評価を同じ画面で出力・保管・整理",
+          `${okHtml(msg)}<div class="notice"><b>月次処理の順番</b><div class="small">Excel出力 → デスクネッツ文書管理の履歴別フォルダへ保管 → 管理者が保存済み記録 → 対象月から3か月保持 → 管理者がDB整理。削除条件はSupabase側でも再確認します。</div></div>${v1101InventoryArchiveSection()}${sections}${v1102QualityArchiveSection()}`,
+        );
+      }
+      const v1101LegacyMonthlyArchivePage = monthlyArchivePage,
+        v1101AccountMenuCore = accountMenu;
+      monthlyArchivePage = function (msg = "") {
+        return v1101ArchivePage(msg);
+      };
+      accountMenu = function () {
+        v1101AccountMenuCore();
+        const menu = document.querySelector(".menu");
+        if (!menu) return;
+        menu.querySelectorAll("button").forEach((b) => {
+          if ((b.getAttribute("onclick") || "").includes("monthlyArchivePage")) b.remove();
+        });
+        if (["admin", "worker", "sales", "clerk"].includes(db.role) && !document.getElementById("v1101ArchiveMenu"))
+          menu.insertAdjacentHTML("afterbegin", '<button id="v1101ArchiveMenu" class="btn orange" onclick="v1101ArchivePage()">月次Excel・履歴管理</button>');
+      };
+
+      const v1101QrSecondaryActionsCore = qrSecondaryActions;
+      qrSecondaryActions = function (lot) {
+        if (!canQrOperate()) return "";
+        return `<details style="margin-top:12px"><summary class="btn btn2" style="display:block;cursor:pointer">その他の操作</summary><div class="qrMoreActions"><button class="btn btn2" onclick="qrPrintLot('${esc(lot.qr_key)}')">QR貼り紙PDF</button><button class="btn btn2" onclick="qrEditLotPage('${esc(lot.qr_key)}')">ロット編集</button></div></details>`;
+      };
+      qrDeleteLot = function () {
+        alert("QRロット本体の完全削除は停止しました。古い操作履歴は「月次Excel・履歴管理」から整理してください。");
+      };
+      deleteQrCleanupCandidates = function () {
+        alert("QRロット本体の一括完全削除は停止しました。古い操作履歴は「月次Excel・履歴管理」から整理してください。");
+      };
+      qrCleanupCandidates = async function () {
+        return { inactive: [], oldZero: [] };
+      };
+      const v1101QrHomeUnifiedCore = qrHome;
+      qrHome = function () {
+        v1101QrHomeUnifiedCore();
+        document.querySelectorAll("button").forEach((b) => {
+          if ((b.getAttribute("onclick") || "").includes("v199QrExcelPage")) b.remove();
+        });
+      };
+
+      /* ===== v1.102 QRロット品質評価 ===== */
+      const V1102_QUALITY_ISSUES = ["傷み", "変色", "腐敗", "カビ", "打撲・傷", "しおれ", "異臭", "規格外", "温度異常", "その他"];
+      const V1102_QUALITY_GRADES = {
+        good: { label: "良好", cls: "normal" },
+        review: { label: "要確認", cls: "excess" },
+        bad: { label: "不良", cls: "unset" },
+      };
+      let v1102QualityPhotos = [],
+        v1102QualitySaving = false,
+        v1102PendingQualityQrKey = "";
+      function v1102CanEvaluate() {
+        return ["admin", "worker"].includes(db.role);
+      }
+      function v1102GradeLabel(v) {
+        return V1102_QUALITY_GRADES[v]?.label || String(v || "-");
+      }
+      function v1102GradeBadge(v) {
+        const g = V1102_QUALITY_GRADES[v] || { label: v || "未評価", cls: "unset" };
+        return `<span class="badge ${g.cls}">${esc(g.label)}</span>`;
+      }
+      async function v1102QualityList(q) {
+        const ans = await callRpc("list_qr_quality_evaluations_v1102", { p_qr_key: q });
+        return Array.isArray(ans?.evaluations) ? ans.evaluations : [];
+      }
+      function v1102QualityIssuesHtml(selected = []) {
+        return V1102_QUALITY_ISSUES.map(
+          (x) => `<label class="switch"><input type="checkbox" name="v1102Issue" value="${esc(x)}" ${selected.includes(x) ? "checked" : ""}> ${esc(x)}</label>`,
+        ).join("");
+      }
+      function v1102ToggleQualityFields() {
+        const grade = document.querySelector('input[name="v1102Grade"]:checked')?.value || "",
+          problem = grade === "review" || grade === "bad",
+          box = document.getElementById("v1102ProblemFields");
+        if (box) box.style.display = problem ? "block" : "none";
+        if (!problem) {
+          document.querySelectorAll('input[name="v1102Issue"]').forEach((x) => (x.checked = false));
+          v1102QualityPhotos = [];
+          v1102RenderPhotoList();
+        }
+      }
+      function v1102QualityPhotoInput() {
+        document.getElementById("v1102QualityPhoto")?.click();
+      }
+      function v1102RenderPhotoList() {
+        const box = document.getElementById("v1102QualityPhotoList");
+        if (!box) return;
+        box.innerHTML = v1102QualityPhotos.length
+          ? v1102QualityPhotos
+              .map(
+                (p, i) =>
+                  `<div class="box"><div class="itemHead"><div><b>写真 ${i + 1}</b><div class="small">${Math.ceil(p.blob.size / 1024)}KB</div></div><button class="btn red" onclick="v1102RemovePhoto(${i})">外す</button></div><img src="${p.preview}" alt="品質写真${i + 1}" style="width:100%;max-height:220px;object-fit:contain;margin-top:8px;border-radius:8px"></div>`,
+              )
+              .join("")
+          : '<div class="small">写真は未選択です。問題が分かる写真だけ登録してください。</div>';
+      }
+      function v1102RemovePhoto(i) {
+        const p = v1102QualityPhotos.splice(i, 1)[0];
+        if (p?.preview) URL.revokeObjectURL(p.preview);
+        v1102RenderPhotoList();
+      }
+      async function v1102LoadImage(file) {
+        const url = URL.createObjectURL(file);
+        try {
+          return await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error("この写真形式を読み込めませんでした。"));
+            img.src = url;
+          });
+        } finally {
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+      }
+      async function v1102CompressPhoto(file) {
+        if (!file?.type?.startsWith("image/")) throw new Error("画像ファイルを選択してください。");
+        if (file.size > 20 * 1024 * 1024) throw new Error("元写真が大きすぎます。20MB以下の写真を選択してください。");
+        const img = await v1102LoadImage(file),
+          ow = img.naturalWidth || img.width,
+          oh = img.naturalHeight || img.height;
+        if (!ow || !oh) throw new Error("写真の大きさを確認できませんでした。");
+        let scale = Math.min(1, 1280 / Math.max(ow, oh)),
+          quality = 0.82,
+          blob = null;
+        for (let n = 0; n < 8; n++) {
+          const w = Math.max(1, Math.round(ow * scale)),
+            h = Math.max(1, Math.round(oh * scale)),
+            canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", quality));
+          if (blob && blob.size <= 512000)
+            return {
+              blob,
+              name: (file.name || "quality").replace(/\.[^.]+$/, "") + ".jpg",
+              preview: URL.createObjectURL(blob),
+            };
+          if (quality > 0.55) quality -= 0.09;
+          else scale *= 0.82;
+        }
+        throw new Error("500KB以下に圧縮できませんでした。別の写真を選択してください。");
+      }
+      async function v1102SelectPhotos(input) {
+        const files = [...(input.files || [])];
+        input.value = "";
+        if (v1102QualityPhotos.length + files.length > 3) return alert("写真は最大3枚です。");
+        v161ShowProcessing("写真を圧縮しています");
+        try {
+          for (const file of files) v1102QualityPhotos.push(await v1102CompressPhoto(file));
+          v1102RenderPhotoList();
+        } catch (e) {
+          alert(e.message || e);
+        } finally {
+          v161HideProcessing();
+        }
+      }
+      function v1102QualityPage(q, supersedesId = "") {
+        if (!v1102CanEvaluate()) return alert("品質評価を登録できるのは管理者・青果社員です。");
+        setScreen("v1102QualityPage", [q, supersedesId]);
+        v1102QualityPhotos.forEach((x) => x.preview && URL.revokeObjectURL(x.preview));
+        v1102QualityPhotos = [];
+        qrFindLot(q)
+          .then(async (lot) => {
+            if (!lot) throw new Error("QRロットが見つかりません");
+            let prior = null;
+            if (supersedesId) {
+              const rows = await v1102QualityList(lot.qr_key);
+              prior = rows.find((x) => x.id === supersedesId);
+              if (!prior) throw new Error("訂正対象の評価が見つかりません");
+            }
+            pageShell(
+              supersedesId ? "品質評価を訂正" : "QR品質評価",
+              `${esc(lot.item_name)} / ${esc(lot.lot_no)}`,
+              `${qrLotCard(lot, false)}<div class="notice"><b>在庫数量は変わりません</b><div class="small">品質状態だけをロットへ記録します。不良品を在庫から減らす場合は、評価後にQR廃棄を登録してください。</div></div><div class="card"><label class="label">総合判定 <span style="color:#dc2626">必須</span></label><div class="grid"><label class="box"><input type="radio" name="v1102Grade" value="good" onchange="v1102ToggleQualityFields()" ${prior?.grade === "good" ? "checked" : ""}> <b>良好</b></label><label class="box"><input type="radio" name="v1102Grade" value="review" onchange="v1102ToggleQualityFields()" ${prior?.grade === "review" ? "checked" : ""}> <b>要確認</b></label><label class="box"><input type="radio" name="v1102Grade" value="bad" onchange="v1102ToggleQualityFields()" ${prior?.grade === "bad" ? "checked" : ""}> <b>不良</b></label></div><div id="v1102ProblemFields" style="display:none"><label class="label">確認された状態（複数選択可）</label><div class="grid">${v1102QualityIssuesHtml(prior?.issues || [])}</div><label class="label">写真（任意・最大3枚）</label><div class="small">問題時のみ登録します。長辺1280px、1枚500KB以下へ自動圧縮します。</div><input id="v1102QualityPhoto" type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="v1102SelectPhotos(this)"><button class="btn blue" type="button" style="width:100%;margin-top:8px" onclick="v1102QualityPhotoInput()">写真を撮影・選択</button><div id="v1102QualityPhotoList" style="margin-top:8px"></div></div><label class="label">メモ（任意）</label><textarea id="v1102QualityMemo" class="textarea" maxlength="1000" placeholder="品質状態や確認内容">${esc(prior?.memo || "")}</textarea>${supersedesId ? '<label class="label">訂正理由 <span style="color:#dc2626">必須</span></label><input id="v1102CorrectionReason" class="input" maxlength="500" placeholder="例：判定項目の選択間違い">' : ""}<button id="v1102QualitySave" class="btn green" style="width:100%;margin-top:14px" onclick="v1102SaveQuality('${esc(lot.qr_key)}','${esc(supersedesId)}')">${supersedesId ? "訂正した評価を登録" : "品質評価を登録"}</button></div>`,
+            );
+            v1102ToggleQualityFields();
+            v1102RenderPhotoList();
+          })
+          .catch((e) => pageShell("QR品質評価", "エラー", `<div class="err">${esc(e.message || e)}</div>`));
+      }
+      async function v1102StorageUpload(path, blob) {
+        if (!(await authEnsure())) throw new Error("再ログインしてください");
+        const encoded = path.split("/").map(encodeURIComponent).join("/"),
+          res = await fetch(`${SUPABASE_URL}/storage/v1/object/qr-quality-photos/${encoded}`, {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: "Bearer " + authToken(),
+              "Content-Type": blob.type,
+              "x-upsert": "false",
+            },
+            body: blob,
+          });
+        if (!res.ok) throw new Error(await res.text());
+        return await res.json();
+      }
+      async function v1102SignedPhotoUrl(path) {
+        if (!(await authEnsure())) throw new Error("再ログインしてください");
+        const encoded = path.split("/").map(encodeURIComponent).join("/"),
+          res = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/qr-quality-photos/${encoded}`, {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: "Bearer " + authToken(),
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ expiresIn: 300 }),
+          });
+        if (!res.ok) throw new Error(await res.text());
+        const ans = await res.json(),
+          signed = ans.signedURL || ans.signedUrl;
+        if (!signed) throw new Error("写真URLを作成できません");
+        return signed.startsWith("http") ? signed : SUPABASE_URL + "/storage/v1" + signed;
+      }
+      async function v1102AddPhotosPage(q, evaluationId) {
+        if (!v1102CanEvaluate()) return alert("写真を追加できるのは管理者・青果社員です。");
+        const rows = await v1102QualityList(q).catch(() => []),
+          ev = rows.find((x) => x.id === evaluationId);
+        if (!ev || !ev.can_add_photos) return alert("この評価には写真を追加できません。");
+        v1102QualityPhotos.forEach((x) => x.preview && URL.revokeObjectURL(x.preview));
+        v1102QualityPhotos = [];
+        setScreen("v1102AddPhotosPage", [q, evaluationId]);
+        const remain = Math.max(0, 3 - (ev.photos?.length || 0));
+        pageShell(
+          "品質写真を追加",
+          `${v1102GradeLabel(ev.grade)} / 残り${remain}枚`,
+          `${v1102QualityHistoryHtml([ev], q)}<div class="card"><div class="notice">評価は登録済みです。同じ評価へ写真だけ追加します。</div><input id="v1102QualityPhoto" type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="v1102SelectPhotos(this)"><button class="btn blue" style="width:100%" onclick="v1102QualityPhotoInput()">写真を撮影・選択</button><div id="v1102QualityPhotoList" style="margin-top:8px"></div><button id="v1102QualitySave" class="btn green" style="width:100%;margin-top:12px" onclick="v1102SaveAdditionalPhotos('${esc(q)}','${esc(evaluationId)}',${remain})">写真を追加保存</button></div>`,
+        );
+        v1102RenderPhotoList();
+      }
+      async function v1102SaveAdditionalPhotos(q, evaluationId, remain) {
+        if (v1102QualitySaving) return;
+        if (!v1102QualityPhotos.length) return alert("写真を選択してください。");
+        if (v1102QualityPhotos.length > remain) return alert(`追加できる写真は残り${remain}枚です。`);
+        v1102QualitySaving = true;
+        v161ShowProcessing("品質写真を保存しています");
+        try {
+          let uploaded = 0;
+          for (const photo of v1102QualityPhotos) {
+            let reserve = null;
+            try {
+              reserve = await callRpc("create_qr_quality_photo_upload_v1102", {
+                p_evaluation_id: evaluationId,
+                p_original_name: photo.name,
+                p_content_type: "image/jpeg",
+                p_byte_size: photo.blob.size,
+              });
+              await v1102StorageUpload(reserve.storage_path, photo.blob);
+              await callRpc("finalize_qr_quality_photo_upload_v1102", { p_photo_id: reserve.photo_id });
+              uploaded++;
+            } catch (e) {
+              if (reserve?.photo_id) {
+                if (reserve.storage_path) await v1102StorageDelete(reserve.storage_path).catch(() => {});
+                await callRpc("cancel_qr_quality_photo_upload_v1102", { p_photo_id: reserve.photo_id }).catch(() => {});
+              }
+              throw e;
+            }
+          }
+          v1102QualityPhotos.forEach((x) => x.preview && URL.revokeObjectURL(x.preview));
+          v1102QualityPhotos = [];
+          qrLotDetail(q, `品質写真を${uploaded}枚追加しました`);
+        } catch (e) {
+          alert("写真を追加できませんでした。\n" + (e.message || e));
+        } finally {
+          v1102QualitySaving = false;
+          v161HideProcessing();
+        }
+      }
+      async function v1102SaveQuality(q, supersedesId = "") {
+        if (v1102QualitySaving) return;
+        if (!v1102CanEvaluate()) return alert("品質評価を登録できるのは管理者・青果社員です。");
+        const grade = document.querySelector('input[name="v1102Grade"]:checked')?.value || "",
+          issues = [...document.querySelectorAll('input[name="v1102Issue"]:checked')].map((x) => x.value),
+          memo = document.getElementById("v1102QualityMemo")?.value.trim() || "",
+          correction = document.getElementById("v1102CorrectionReason")?.value.trim() || "",
+          btn = document.getElementById("v1102QualitySave");
+        if (!grade) return alert("総合判定を選択してください。");
+        if (grade === "good" && (issues.length || v1102QualityPhotos.length)) return alert("良好の場合、問題項目と写真は登録できません。");
+        if ((grade === "review" || grade === "bad") && !issues.length) return alert("要確認・不良の場合は状態を1つ以上選択してください。");
+        if (issues.includes("その他") && !memo) return alert("その他の内容をメモへ入力してください。");
+        if (supersedesId && !correction) return alert("訂正理由を入力してください。");
+        if (
+          !confirm(
+            `品質評価の確認\n\n判定：${v1102GradeLabel(grade)}\n状態：${issues.join("、") || "なし"}\n写真：${v1102QualityPhotos.length}枚\n\n登録後も在庫数量は変わりません。登録しますか？`,
+          )
+        )
+          return;
+        v1102QualitySaving = true;
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "登録中...";
+        }
+        v161ShowProcessing("品質評価を保存しています");
+        try {
+          const ans = await callRpc("create_qr_quality_evaluation_v1102", {
+              p_qr_key: q,
+              p_grade: grade,
+              p_issues: issues,
+              p_memo: memo || null,
+              p_correction_reason: correction || null,
+              p_supersedes_id: supersedesId || null,
+              p_evaluated_at: new Date().toISOString(),
+            }),
+            evaluationId = ans?.evaluation_id;
+          if (!evaluationId) throw new Error("品質評価IDを取得できません");
+          let uploaded = 0,
+            photoError = null;
+          for (const photo of v1102QualityPhotos) {
+            let reserve = null;
+            try {
+              reserve = await callRpc("create_qr_quality_photo_upload_v1102", {
+                p_evaluation_id: evaluationId,
+                p_original_name: photo.name,
+                p_content_type: "image/jpeg",
+                p_byte_size: photo.blob.size,
+              });
+              await v1102StorageUpload(reserve.storage_path, photo.blob);
+              await callRpc("finalize_qr_quality_photo_upload_v1102", { p_photo_id: reserve.photo_id });
+              uploaded++;
+            } catch (e) {
+              photoError = e;
+              if (reserve?.photo_id) {
+                if (reserve.storage_path) await v1102StorageDelete(reserve.storage_path).catch(() => {});
+                await callRpc("cancel_qr_quality_photo_upload_v1102", { p_photo_id: reserve.photo_id }).catch(() => {});
+              }
+              break;
+            }
+          }
+          v1102QualityPhotos.forEach((x) => x.preview && URL.revokeObjectURL(x.preview));
+          v1102QualityPhotos = [];
+          v1102PendingQualityQrKey = "";
+          if (photoError)
+            alert(
+              `品質評価は登録されました。写真は${uploaded}枚保存済みで、残りは保存できませんでした。評価を重複登録せず、管理者へ連絡してください。\n${photoError.message || photoError}`,
+            );
+          qrLotDetail(q, `品質評価を登録しました${uploaded ? "（写真" + uploaded + "枚）" : ""}${photoError ? "（一部写真エラー）" : ""}`);
+        } catch (e) {
+          alert("品質評価の保存に失敗しました。\n" + (e.message || e));
+        } finally {
+          v1102QualitySaving = false;
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = supersedesId ? "訂正した評価を登録" : "品質評価を登録";
+          }
+          v161HideProcessing();
+        }
+      }
+      function v1102QualityHistoryHtml(rows, q) {
+        const current = rows.find((x) => !x.is_superseded),
+          cards = rows
+            .map(
+              (x, i) =>
+                `<div class="box" style="margin-top:10px;${x.is_superseded ? "opacity:.68" : ""}"><div class="itemHead"><div>${v1102GradeBadge(x.grade)} ${x.is_superseded ? '<span class="badge">訂正前</span>' : ""}<div class="small">${dt(x.evaluated_at)} / ${esc(x.evaluated_by_name || "-")}</div></div>${!x.is_superseded && v1102CanEvaluate() ? `<button class="btn btn2" onclick="v1102QualityPage('${esc(q)}','${esc(x.id)}')">訂正</button>` : ""}</div>${x.issues?.length ? `<div style="margin-top:8px"><b>状態：</b>${x.issues.map(esc).join("、")}</div>` : ""}${x.memo ? `<div class="memo"><b>メモ：</b>${esc(x.memo)}</div>` : ""}${x.correction_reason ? `<div class="notice"><b>訂正理由：</b>${esc(x.correction_reason)}</div>` : ""}${x.photos?.length ? `<div style="margin-top:8px"><button class="btn blue" onclick="v1102ShowQualityPhotos('${esc(x.id)}')">写真を見る（${x.photos.length}枚）</button><div id="v1102Photos_${esc(x.id)}"></div></div>` : ""}${x.can_add_photos && v1102CanEvaluate() ? `<button class="btn btn2" style="margin-top:8px" onclick="v1102AddPhotosPage('${esc(q)}','${esc(x.id)}')">この評価へ写真を追加</button>` : ""}</div>`,
+            )
+            .join("");
+        return `<div class="card"><div class="itemHead"><div><b>品質評価</b><div class="small">最新判定：${current ? v1102GradeLabel(current.grade) : "未評価"}</div></div>${v1102CanEvaluate() ? `<button class="btn green" onclick="v1102QualityPage('${esc(q)}')">新しい評価</button>` : ""}</div>${rows.length ? cards : '<div class="notice" style="margin-top:10px">品質評価はまだありません。</div>'}</div>`;
+      }
+      async function v1102ShowQualityPhotos(evaluationId) {
+        const box = document.getElementById(`v1102Photos_${evaluationId}`);
+        if (!box) return;
+        box.innerHTML = '<div class="small">写真を読み込み中...</div>';
+        try {
+          const rows = await v1102QualityList(currentArgs?.[0] || ""),
+            ev = rows.find((x) => x.id === evaluationId);
+          if (!ev) throw new Error("評価が見つかりません");
+          const urls = [];
+          for (const ph of ev.photos || []) urls.push(await v1102SignedPhotoUrl(ph.storage_path));
+          box.innerHTML =
+            urls
+              .map(
+                (u, i) =>
+                  `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="品質写真${i + 1}" loading="lazy" style="width:100%;max-height:300px;object-fit:contain;margin-top:8px;border-radius:8px"></a>`,
+              )
+              .join("") || '<div class="small">写真はありません。</div>';
+        } catch (e) {
+          box.innerHTML = `<div class="err">${esc(e.message || e)}</div>`;
+        }
+      }
+      const v1102QrPdfStatusCore = qrPdfStatus;
+      qrPdfStatus = function (message, type = "notice", url = "", fileName = "") {
+        v1102QrPdfStatusCore(message, type, url, fileName);
+        if (url && v1102PendingQualityQrKey && v1102CanEvaluate()) {
+          const host = document.getElementById("qrPdfStatus"),
+            key = esc(v1102PendingQualityQrKey);
+          host
+            ?.querySelector("." + type)
+            ?.insertAdjacentHTML(
+              "beforeend",
+              `<button class="btn green" style="width:100%;margin-top:8px" onclick="v1102QualityPage('${key}')">続けて品質評価を登録</button><div class="small" style="margin-top:5px">良好・要確認・不良を記録します。問題時は写真を最大3枚登録できます。</div>`,
+            );
+        }
+      };
+      const v1102QrSaveLotBaseCore = qrSaveLotBase;
+      qrSaveLotBase = async function () {
+        v1102PendingQualityQrKey = "";
+        const originalMake = qrMakeKey;
+        let made = "";
+        qrMakeKey = function () {
+          made = originalMake();
+          return made;
+        };
+        try {
+          await v1102QrSaveLotBaseCore();
+          v1102PendingQualityQrKey = made;
+          if (made) {
+            const host = document.getElementById("qrPdfStatus");
+            if (host && !host.innerText.includes("品質評価"))
+              host.insertAdjacentHTML(
+                "beforeend",
+                `<button class="btn green" style="width:100%;margin-top:8px" onclick="v1102QualityPage('${esc(made)}')">続けて品質評価を登録</button>`,
+              );
+          }
+        } finally {
+          qrMakeKey = originalMake;
+        }
+      };
+      const v1102QrSecondaryActionsCore = qrSecondaryActions;
+      qrSecondaryActions = function (lot) {
+        const html = v1102QrSecondaryActionsCore(lot);
+        if (!v1102CanEvaluate()) return html;
+        return html.replace("</div></details>", `<button class="btn green" onclick="v1102QualityPage('${esc(lot.qr_key)}')">品質評価</button></div></details>`);
+      };
+      const v1102QrLotDetailCore = qrLotDetail;
+      qrLotDetail = async function (q, msg = "") {
+        await v1102QrLotDetailCore(q, msg);
+        const wrap = document.querySelector(".wrap");
+        if (!wrap) return;
+        try {
+          const rows = await v1102QualityList(q),
+            html = v1102QualityHistoryHtml(rows, q),
+            cards = wrap.querySelectorAll(":scope > .card");
+          if (cards.length > 1) cards[1].insertAdjacentHTML("afterend", html);
+          else wrap.insertAdjacentHTML("beforeend", html);
+        } catch (e) {
+          wrap.insertAdjacentHTML(
+            "beforeend",
+            `<div class="card err"><b>品質評価を読み込めません</b><div class="small">品質評価SQL v1.102をSupabaseで実行してください。${esc(e.message || e)}</div></div>`,
+          );
+        }
+      };
+      for (const role of ["admin", "worker"]) {
+        const g = V195_ROLE_GUIDES[role];
+        if (g?.sections && !g.sections.some((x) => x.title === "QRロットの品質を評価する"))
+          g.sections.splice(2, 0, {
+            title: "QRロットの品質を評価する",
+            where: "QR入庫完了後、またはQRロット詳細 → その他の操作 → 品質評価",
+            steps: [
+              "対象ロットの品名・ロット番号を確認します。",
+              "総合判定を「良好・要確認・不良」から選びます。",
+              "要確認・不良の場合は、傷み・変色・腐敗などの状態を選択します。",
+              "問題が分かる写真が必要な場合だけ、最大3枚まで撮影・選択します。写真は自動圧縮されます。",
+              "メモを確認して登録します。訂正時は最新評価の「訂正」から理由を入力します。",
+            ],
+            check: "QRロット詳細に最新判定、評価者、日時、写真枚数が表示されることを確認します。",
+            caution: "品質評価だけでは在庫数量は変わりません。不良品を減らす場合は、別途QR廃棄を登録します。良好時は写真を登録しません。",
+          });
+      }
+
+      for (const role of ["admin", "worker", "clerk"]) {
+        const g = V195_ROLE_GUIDES[role];
+        if (g?.sections && !g.sections.some((x) => x.title === "品質評価の月次Excelを保存する"))
+          g.sections.push({
+            title: "品質評価の月次Excelを保存する",
+            where: "メニュー → 月次Excel・履歴管理 → QR品質評価履歴",
+            steps: [
+              "前月以前の月を選び、写真付きExcelを出力します。",
+              "評価履歴、訂正履歴、写真が正しく入っているか確認します。",
+              "デスクネッツ文書管理の「QR在庫履歴」フォルダへ保管します。",
+              "管理者が保存済みを記録します。3か月保持後は管理者が評価データと写真を整理できます。",
+            ],
+            check: "評価件数・写真枚数・対象月を確認してください。",
+            caution: "写真を1枚でも取得できなかった場合は作成済みになりません。削除してもQRロット本体と在庫数量は残ります。",
+          });
+      }
+
+      /* ===== v1.103 品質評価一覧・仕入れ担当者低評価アラート ===== */
+      let v1103QualityRows = [],
+        v1103QualityTotal = 0,
+        v1103BuyerAlerts = [],
+        v1103QualityLoading = false;
+      function v1103QualityBuyerOptions(selected = "") {
+        const users = (db.users || []).filter((x) => x.role === "buyer" && x.active !== false).sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ja"));
+        return `<option value="">すべて</option>${users.map((x) => `<option value="${esc(x.id)}" ${x.id === selected ? "selected" : ""}>${esc(x.name)}</option>`).join("")}`;
+      }
+      function v1103QualityFilterValues() {
+        return {
+          month: document.getElementById("v1103QualityMonth")?.value || "",
+          grade: document.getElementById("v1103QualityGrade")?.value || "",
+          item: document.getElementById("v1103QualityItem")?.value.trim() || "",
+          buyer: document.getElementById("v1103QualityBuyer")?.value || "",
+          unack: !!document.getElementById("v1103QualityUnack")?.checked,
+        };
+      }
+      function v1103QualityStatusHtml(x) {
+        if (!["review", "bad"].includes(x.grade)) return '<span class="badge normal">確認不要</span>';
+        return x.acknowledged_at
+          ? `<span class="badge normal">確認済み</span><div class="small">${dt(x.acknowledged_at)} / ${esc(x.acknowledged_by_name || "")}</div>`
+          : '<span class="badge excess">未確認</span>';
+      }
+      function v1103QualityCard(x, fromHome = false) {
+        const buyers =
+            (x.buyers || [])
+              .map((b) => b.display_name || b.legacy_user_id)
+              .filter(Boolean)
+              .join("、") || "担当未設定",
+          canAck =
+            !x.acknowledged_at &&
+            ["review", "bad"].includes(x.grade) &&
+            (db.role === "admin" || (db.role === "buyer" && (x.buyers || []).some((b) => b.legacy_user_id === db.userId)));
+        return `<div class="box" style="margin:10px 0;border-left:7px solid ${x.grade === "bad" ? "#dc2626" : x.grade === "review" ? "#f59e0b" : "#16a34a"}"><div class="itemHead"><div><b>${esc(x.item_name || "-")}</b><div class="small">${esc(x.lot_no || "-")} / ${dt(x.evaluated_at)}</div></div>${v1102GradeBadge(x.grade)}</div><div style="margin-top:8px"><b>状態：</b>${(x.issues || []).map(esc).join("、") || "なし"}</div>${x.memo ? `<div class="memo"><b>メモ：</b>${esc(x.memo)}</div>` : ""}<div class="small" style="margin-top:7px">評価者：${esc(x.evaluated_by_name || "-")}<br>仕入れ担当：${esc(buyers)} / 写真：${(x.photos || []).length}枚</div><div style="margin-top:8px">${v1103QualityStatusHtml(x)}</div><div class="grid" style="margin-top:9px"><button class="btn blue" onclick="qrLotDetail('${esc(x.qr_key)}')">QRロット詳細</button>${(x.photos || []).length ? `<button class="btn btn2" onclick="v1103ShowPhotos('${esc(x.id)}','${fromHome ? "home" : "list"}')">写真を見る</button>` : ""}${canAck ? `<button class="btn green" onclick="v1103Acknowledge('${esc(x.id)}','${fromHome ? "home" : "list"}')">確認済みにする</button>` : ""}</div><div id="v1103Photos_${esc(x.id)}_${fromHome ? "home" : "list"}"></div></div>`;
+      }
+      async function v1103QualityListPage(msg = "", preserve = false) {
+        setScreen("v1103QualityListPage", [msg, preserve]);
+        const old = preserve ? v1103QualityFilterValues() : { month: "", grade: "", item: "", buyer: "", unack: false };
+        pageShell(
+          "品質評価一覧",
+          "QRロットごとの最新評価を検索・確認",
+          `${okHtml(msg)}<div class="card"><div class="grid"><div><label class="label">評価月</label><input id="v1103QualityMonth" class="input" type="month" value="${esc(old.month)}"></div><div><label class="label">判定</label><select id="v1103QualityGrade" class="select"><option value="">すべて</option><option value="good" ${old.grade === "good" ? "selected" : ""}>良好</option><option value="review" ${old.grade === "review" ? "selected" : ""}>要確認</option><option value="bad" ${old.grade === "bad" ? "selected" : ""}>不良</option></select></div><div><label class="label">品名</label><input id="v1103QualityItem" class="input" maxlength="100" value="${esc(old.item)}" placeholder="品名の一部"></div><div><label class="label">仕入れ担当者</label><select id="v1103QualityBuyer" class="select">${v1103QualityBuyerOptions(old.buyer)}</select></div></div><label class="switch" style="margin-top:10px"><input id="v1103QualityUnack" type="checkbox" ${old.unack ? "checked" : ""}> 未確認の評価だけ表示</label><button class="btn blue" style="width:100%;margin-top:10px" onclick="v1103LoadQualityList()">検索</button></div><div id="v1103QualitySummary" class="notice">評価を読み込んでいます...</div><div id="v1103QualityResults"></div>`,
+        );
+        await v1103LoadQualityList();
+      }
+      async function v1103LoadQualityList() {
+        if (v1103QualityLoading) return;
+        v1103QualityLoading = true;
+        const f = v1103QualityFilterValues(),
+          summary = document.getElementById("v1103QualitySummary"),
+          box = document.getElementById("v1103QualityResults");
+        if (summary) summary.textContent = "評価を読み込んでいます...";
+        try {
+          const ans = await callRpc("list_qr_quality_evaluations_v1103", {
+            p_target_month: f.month ? `${f.month}-01` : null,
+            p_grade: f.grade || null,
+            p_item_query: f.item || null,
+            p_buyer_legacy_user_id: f.buyer || null,
+            p_unacknowledged_only: f.unack,
+            p_limit: 500,
+            p_offset: 0,
+          });
+          v1103QualityRows = ans?.evaluations || [];
+          v1103QualityTotal = Number(ans?.total_count || v1103QualityRows.length);
+          if (summary)
+            summary.innerHTML = `<b>${v1103QualityTotal.toLocaleString()}件</b><div class="small">不良を先頭に、要確認・良好の順で表示します。訂正前の評価は除外し、最新評価だけを表示しています。</div>`;
+          if (box)
+            box.innerHTML = v1103QualityRows.length
+              ? v1103QualityRows.map((x) => v1103QualityCard(x, false)).join("")
+              : '<div class="card notice">条件に一致する品質評価はありません。</div>';
+        } catch (e) {
+          if (summary) summary.innerHTML = `<div class="err">${esc(e.message || e)}<div class="small">Supabaseでv1.103追加SQLを実行してください。</div></div>`;
+          if (box) box.innerHTML = "";
+        } finally {
+          v1103QualityLoading = false;
+        }
+      }
+      async function v1103ShowPhotos(id, source) {
+        const rows = source === "home" ? v1103BuyerAlerts : v1103QualityRows,
+          x = rows.find((v) => v.id === id),
+          box = document.getElementById(`v1103Photos_${id}_${source}`);
+        if (!x || !box) return;
+        box.innerHTML = '<div class="small">写真を読み込み中...</div>';
+        try {
+          const urls = [];
+          for (const ph of x.photos || []) urls.push(await v1102SignedPhotoUrl(ph.storage_path));
+          box.innerHTML =
+            urls
+              .map(
+                (u, i) =>
+                  `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="品質写真${i + 1}" loading="lazy" style="width:100%;max-height:300px;object-fit:contain;margin-top:8px;border-radius:8px"></a>`,
+              )
+              .join("") || '<div class="small">写真はありません。</div>';
+        } catch (e) {
+          box.innerHTML = `<div class="err">${esc(e.message || e)}</div>`;
+        }
+      }
+      async function v1103Acknowledge(id, source) {
+        if (!confirm("この低評価を確認済みにしますか？\n評価データや写真は削除されません。")) return;
+        v161ShowProcessing("確認済みを記録しています");
+        try {
+          await callRpc("acknowledge_qr_quality_evaluation_v1103", { p_evaluation_id: id });
+          if (source === "home") {
+            v1103BuyerAlerts = v1103BuyerAlerts.filter((x) => x.id !== id);
+            v1103RenderBuyerAlerts();
+            updateSyncDisplay();
+          } else await v1103LoadQualityList();
+        } catch (e) {
+          alert("確認済みにできませんでした。\n" + (e.message || e));
+        } finally {
+          v161HideProcessing();
+        }
+      }
+      async function v1103LoadBuyerAlerts() {
+        if (!["buyer", "admin"].includes(db.role)) return [];
+        try {
+          const ans = await callRpc("list_my_unacknowledged_low_quality_evaluations_v1103", { p_limit: 100 });
+          v1103BuyerAlerts = ans?.evaluations || [];
+          v1103RenderBuyerAlerts();
+          return v1103BuyerAlerts;
+        } catch (e) {
+          const box = document.getElementById("v1103BuyerQualityAlerts");
+          if (box) box.innerHTML = `<div class="err">低評価を読み込めませんでした。${esc(e.message || e)}</div>`;
+          return [];
+        }
+      }
+      function v1103RenderBuyerAlerts() {
+        const box = document.getElementById("v1103BuyerQualityAlerts");
+        if (!box) return;
+        const bad = v1103BuyerAlerts.filter((x) => x.grade === "bad").length,
+          review = v1103BuyerAlerts.filter((x) => x.grade === "review").length;
+        box.innerHTML = `<div class="itemHead"><div><h2 style="margin:0">${db.role === "buyer" ? "担当品目の" : "全品目の"}未確認低評価</h2><div class="small">不良 ${bad}件 / 要確認 ${review}件</div></div><button class="btn blue" onclick="v1103QualityListPage()">一覧を開く</button></div>${
+          v1103BuyerAlerts.length
+            ? v1103BuyerAlerts
+                .slice(0, 10)
+                .map((x) => v1103QualityCard(x, true))
+                .join("")
+            : '<div class="notice" style="margin-top:10px">未確認の低評価はありません。</div>'
+        }${v1103BuyerAlerts.length > 10 ? `<button class="btn btn2" style="width:100%;margin-top:10px" onclick="v1103QualityListPage()">残り${v1103BuyerAlerts.length - 10}件を一覧で確認</button>` : ""}`;
+      }
+      const v1103AccountMenuCore = accountMenu;
+      accountMenu = function () {
+        v1103AccountMenuCore();
+        document.getElementById("v1103QualityListMenu")?.remove();
+      };
+      const v1103HomeCore = home;
+      home = function () {
+        v1103HomeCore();
+        document.getElementById("v1103BuyerQualityAlerts")?.remove();
+      };
+      const v1104QrQualityHomeCore = qrHome;
+      qrHome = async function (msg = "") {
+        await v1104QrQualityHomeCore(msg);
+        const wrap = document.querySelector(".wrap");
+        if (!wrap || document.getElementById("v1104QrQualityArea")) return;
+        const area = document.createElement("section");
+        area.id = "v1104QrQualityArea";
+        area.className = "card";
+        area.innerHTML = `<div class="itemHead"><div><h2 style="margin:0">QR品質評価</h2><div class="small">評価一覧・写真・未確認の低評価を確認します。</div></div><button class="btn blue" onclick="v1103QualityListPage()">品質評価一覧</button></div>${["buyer", "admin"].includes(db.role) ? '<div id="v1103BuyerQualityAlerts" style="margin-top:12px"><div class="small">未確認の低評価を読み込んでいます...</div></div>' : ""}`;
+        const firstCard = wrap.querySelector(".card");
+        if (firstCard) firstCard.insertAdjacentElement("beforebegin", area);
+        else wrap.appendChild(area);
+        if (["buyer", "admin"].includes(db.role)) v1103LoadBuyerAlerts();
+      };
+      async function v1104DiscardQrEditHistory() {
+        if (!canAdmin()) return alert("不要な訂正履歴を破棄できるのは管理者だけです。");
+        const queue = v193ReadQrEditHistoryQueue();
+        if (!queue.length) {
+          updateSyncDisplay();
+          return alert("端末に保持されている訂正履歴はありません。");
+        }
+        const dates = queue
+            .map((x) => x.createdAt)
+            .filter(Boolean)
+            .sort(),
+          period = dates.length ? `${dt(dates[0])}${dates.length > 1 ? " ～ " + dt(dates[dates.length - 1]) : ""}` : "日時不明";
+        if (
+          !confirm(
+            `端末に残っている訂正履歴 ${queue.length}件を確認しました。\n保持日時：${period}\n\nこの操作は訂正履歴だけを端末から破棄し、クラウドへ再送しません。通常の未同期入力データは残します。\n\n本当に破棄しますか？`,
+          )
+        )
+          return;
+        const answer = prompt(`最終確認です。\n訂正履歴 ${queue.length}件は元に戻せません。\n破棄する場合は「破棄」と入力してください。`, "");
+        if (answer !== "破棄") return alert("破棄を中止しました。");
+        v193WriteQrEditHistoryQueue([]);
+        document.querySelectorAll(".syncSafetyNotice").forEach((el) => el.remove());
+        updateSyncDisplay();
+        alert(`不要な訂正履歴 ${queue.length}件を端末から破棄しました。\n通常の未同期入力データには触れていません。`);
+      }
+      const v1104DiscardSyncDisplayCore = updateSyncDisplay;
+      updateSyncDisplay = function () {
+        v1104DiscardSyncDisplayCore();
+        const retry = document.getElementById("syncRetryBtn"),
+          historyCount = v193QrEditHistoryPendingCount();
+        let discard = document.getElementById("qrEditHistoryDiscardBtn");
+        if (historyCount && canAdmin() && retry) {
+          if (!discard) {
+            discard = document.createElement("button");
+            discard.id = "qrEditHistoryDiscardBtn";
+            discard.type = "button";
+            discard.onclick = v1104DiscardQrEditHistory;
+            discard.textContent = "不要な訂正履歴を破棄";
+            discard.style.cssText =
+              "display:block;width:min(100%,520px);margin:8px 0 0;padding:11px 14px;border:2px solid #991b1b;border-radius:12px;background:#fff;color:#991b1b;font-weight:800;font-size:.95rem;cursor:pointer";
+            retry.insertAdjacentElement("afterend", discard);
+          }
+          discard.disabled = v161SyncRunning;
+          discard.style.opacity = discard.disabled ? ".55" : "1";
+        } else if (discard) discard.remove();
+      };
+      const V1105_MENU_GROUPS = {
+        work: {
+          title: "業務・履歴",
+          sub: "Excel出力と履歴の確認・整理",
+          items: [
+            { label: "月次Excel・履歴管理", fn: "v1101ArchivePage()", roles: ["admin", "worker", "sales", "clerk"] },
+            { label: "重複データ確認・削除", fn: "duplicateAdminPage()", roles: ["admin"] },
+            { label: "90日超 修正履歴整理", fn: "oldHistoryCleanupPage()", roles: ["admin"] },
+          ],
+        },
+        support: {
+          title: "サポート",
+          sub: "使い方の確認と連絡",
+          items: [
+            { label: "操作ガイド", fn: "v195RoleGuidePage()" },
+            { label: "不具合・エラー報告", fn: "v195FeedbackPage()" },
+            { label: "連絡内容を確認", fn: "v195AdminFeedbackPage()", roles: ["admin"], badge: true },
+          ],
+        },
+        settings: {
+          title: "管理・設定",
+          sub: "表示・アカウント・データ保全",
+          items: [
+            { label: "表示設定", fn: "displaySettingsPage()" },
+            { label: "パスワード変更", fn: "changePasswordPage()" },
+            { label: "ユーザー登録・管理", fn: "userAdminPage()", roles: ["admin"] },
+            { label: "通常在庫・設定をバックアップ", fn: "downloadFullBackup()", roles: ["admin"] },
+            { label: "バックアップから復元", fn: "selectBackupRestore()", roles: ["admin"] },
+          ],
+        },
+      };
+      function v1105MenuItems(key) {
+        return (V1105_MENU_GROUPS[key]?.items || []).filter((x) => !x.roles || x.roles.includes(db.role));
+      }
+      function v1105MenuGroupPage(key) {
+        const group = V1105_MENU_GROUPS[key];
+        if (!group) return accountMenu();
+        const items = v1105MenuItems(key);
+        setScreen("v1105MenuGroupPage", [key]);
+        pageShell(
+          group.title,
+          group.sub,
+          `<div class="v1105MenuList">${items.map((x) => `<button class="btn v1105MenuItem" onclick="${x.fn}">${esc(x.label)}${x.badge ? ' <span class="badge v195FeedbackCount normal">確認中</span>' : ""}</button>`).join("")}</div>${key === "settings" && canAdmin() ? '<div class="card notice"><b>バックアップについて</b><div class="small">復元前には現在データのバックアップも自動作成します。QRロット本体はSupabase側バックアップの対象です。</div></div>' : ""}`,
+        );
+        if (key === "support" && canAdmin()) v195RefreshAdminFeedbackBadge();
+      }
+      function v1105RenderTopMenu() {
+        const menu = document.querySelector(".menu");
+        if (!menu) return;
+        const groups = ["work", "support", "settings"].filter((k) => v1105MenuItems(k).length);
+        menu.innerHTML = `<div class="v1105MenuTop">${groups.map((k) => `<button class="btn v1105MenuGroup" onclick="v1105MenuGroupPage('${k}')"><span>${esc(V1105_MENU_GROUPS[k].title)}</span><small>${esc(V1105_MENU_GROUPS[k].sub)}</small></button>`).join("")}<button class="btn red v1105Logout" onclick="logout()">ログアウト</button></div>`;
+      }
+      const v1105AccountMenuCore = accountMenu;
+      accountMenu = function () {
+        v1105AccountMenuCore();
+        v1105RenderTopMenu();
+      };
+      for (const role of Object.keys(V195_ROLE_GUIDES)) {
+        const g = V195_ROLE_GUIDES[role];
+        if (g?.sections && !g.sections.some((x) => x.title === "品質評価を一覧で確認する"))
+          g.sections.push({
+            title: "品質評価を一覧で確認する",
+            where: "ホーム → QR在庫管理 → 品質評価一覧",
+            steps: [
+              "評価月、判定、品名、仕入れ担当者、未確認のみを必要に応じて選びます。",
+              "検索を押し、最新の品質評価を確認します。",
+              "QRロット詳細または写真を見るを押して内容を確認します。",
+            ],
+            check: "訂正前ではなく、現在有効な最新評価が表示されます。",
+            caution: "確認済みは評価や写真の削除ではありません。低評価の確認済み操作は担当仕入れ担当者または管理者だけが行えます。",
+          });
+      }
+
+      boot().catch((e) => {
+        console.error("SEIKA＋の起動に失敗しました", e);
+        const app = document.getElementById("app");
+        if (app)
+          app.innerHTML =
+            '<main class="wrap"><div class="card err"><h2 style="margin-top:0">起動中にエラーが発生しました</h2><p>再読込しても改善しない場合は、管理者へ連絡してください。</p><button class="btn blue" style="width:100%" onclick="location.reload()">再読込</button></div></main>';
+      });
+
+      const V181_QR_DELETE_CASE_UNIT_FIX = true;
+      const V182_QR_COMPLETE_DELETE_RPC = true;
+      const V183_PRINT_QR_CANDIDATES_WASTE_FIX = true;
+      const V184_PC_PRINT_FIT_COOP_FILTER = true;
+      const V185_PERMANENT_ROLLBACK_PREVENTION = true;
+      const V186_QR_DAILY_STOCK_HISTORY_FIX = true;
+      const V187_AUTH_SECURITY_MIGRATION = true;
+      const V188_QR_LAYOUT_PAPER_BAG_USER_ADMIN = true;
+      const V188_CLERK_WASTE_SAVE_FIX = true;
+      const V188_ALL_INPUT_SYNC_PROTECTION = true;
+    </script>
+  </body>
+</html>
