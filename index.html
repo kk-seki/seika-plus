@@ -18660,6 +18660,66 @@ ${e.message || e}`);
         }
       };
 
+
+      /* ===== v1.114 QR品質評価を1ロット1件へ制限 ===== */
+      function v1114CurrentQualityEvaluation(rows) {
+        return (Array.isArray(rows) ? rows : []).find((evaluation) => !evaluation?.is_superseded) || null;
+      }
+      async function v1114OpenNewQualityEvaluation(q) {
+        if (!v1102CanEvaluate()) return alert("品質評価を登録できるのは管理者・青果社員です。");
+        v161ShowProcessing("登録済みの品質評価を確認しています");
+        try {
+          const rows = await v1102QualityList(q),
+            current = v1114CurrentQualityEvaluation(rows);
+          if (current) {
+            alert("このロットは品質評価を登録済みです。新しい評価は追加できません。内容を直す場合は「訂正」、写真だけ追加する場合は「写真追加」を使用してください。");
+            return qrLotDetail(q);
+          }
+          return v1114QualityPageBase(q, "");
+        } catch (e) {
+          alert(`品質評価の登録状況を確認できませんでした。\n${v161ErrorText(e)}\n\n通信状況を確認して、もう一度お試しください。`);
+        } finally {
+          v161HideProcessing();
+        }
+      }
+      const v1114QualityPageBase = v1102QualityPage;
+      v1102QualityPage = function (q, supersedesId = "") {
+        return supersedesId ? v1114QualityPageBase(q, supersedesId) : v1114OpenNewQualityEvaluation(q);
+      };
+      const v1114SaveQualityBase = v1102SaveQuality;
+      v1102SaveQuality = async function (q, supersedesId = "") {
+        if (v1102QualitySaving) return;
+        try {
+          const rows = await v1102QualityList(q),
+            current = v1114CurrentQualityEvaluation(rows);
+          if (!supersedesId && current) {
+            alert("このロットは既に品質評価が登録されています。新しい評価は保存できません。ロット詳細から「訂正」または「写真追加」を使用してください。");
+            return qrLotDetail(q);
+          }
+          if (supersedesId && (!current || String(current.id || "") !== String(supersedesId))) {
+            alert("訂正対象が最新の品質評価ではありません。ロット詳細を再読み込みしてから訂正してください。");
+            return qrLotDetail(q);
+          }
+          return await v1114SaveQualityBase(q, supersedesId);
+        } catch (e) {
+          alert(`品質評価の登録状況を確認できませんでした。\n${v161ErrorText(e)}\n\n保存は行っていません。通信状況を確認してください。`);
+        }
+      };
+      const v1114QualityHistoryHtmlBase = v1102QualityHistoryHtml;
+      v1102QualityHistoryHtml = function (rows, q) {
+        const html = v1114QualityHistoryHtmlBase(rows, q),
+          current = v1114CurrentQualityEvaluation(rows);
+        if (!current) return html.replaceAll("v1102QualityPage(", "v1114OpenNewQualityEvaluation(");
+        const withoutNewButton = html.replace(
+          /<button[^>]*onclick="v1102QualityPage\('[^']*'\)"[^>]*>新しい評価<\/button>/g,
+          "",
+        );
+        return withoutNewButton.replace(
+          /<\/div>\s*$/,
+          '<div class="notice" style="margin-top:10px"><b>品質評価は登録済みです</b><div class="small">1ロットにつき品質評価は1件です。内容の変更は「訂正」、写真だけ追加する場合は「写真追加」を使用してください。</div></div></div>',
+        );
+      };
+
       boot().catch((e) => {
         console.error("SEIKA＋の起動に失敗しました", e);
         const app = document.getElementById("app");
