@@ -18501,6 +18501,78 @@ ${e.message || e}`);
           });
       }
 
+      /* ===== v1.112 営業・事務員の廃棄単価クラウド保存修正 ===== */
+      const v1112LoadHistoryTablesToDbBase = loadHistoryTablesToDb;
+      loadHistoryTablesToDb = async function () {
+        const role = db?.role;
+        if (role !== "sales" && role !== "clerk") return v1112LoadHistoryTablesToDbBase();
+        try {
+          const wasteRecords = await fetchHistoryTable(HISTORY_TABLES.wasteRecords);
+          db.wasteRecords = mergeHistoryById(db.wasteRecords, wasteRecords).sort(
+            (a, b) => new Date(a.date || a.createdAt || 0) - new Date(b.date || b.createdAt || 0),
+          );
+          historyTablesReady = true;
+          v188PersistDb();
+        } catch (e) {
+          historyTablesReady = false;
+          console.warn("waste history table fallback", e);
+        }
+      };
+
+      saveWasteUnitPricesBulk = async function () {
+        if (wastePriceBulkSaving) return;
+        if (!canWastePriceInput()) return alert("単価入力は営業・事務員・管理者のみです");
+        const entries = wastePriceDraftEntries();
+        if (!entries.length) return alert("変更された単価はありません");
+        for (const entry of entries) {
+          const price = wastePriceValue(entry.raw);
+          if (!Number.isFinite(price) || price < 0) {
+            document.getElementById("wastePrice_" + entry.id)?.focus();
+            return alert(`${entry.record.itemName}の単価は0以上で入力してください`);
+          }
+        }
+        if (!confirm(`変更した単価 ${entries.length}件をまとめてクラウドへ保存しますか？`)) return;
+        wastePriceBulkSaving = true;
+        refreshWastePriceDraftUi();
+        const originalDrafts = { ...wastePriceDrafts };
+        try {
+          const updatedAt = nowIso();
+          entries.forEach((entry) => {
+            const record = entry.record,
+              price = yen(wastePriceValue(entry.raw));
+            record.unitPrice = price;
+            record.amount = yen(Number(record.qty || 0) * price);
+            record.priceUser = db.user;
+            record.priceUserId = db.userId;
+            record.priceUpdatedAt = updatedAt;
+            record.updatedAt = updatedAt;
+          });
+          wastePriceDrafts = {};
+          v188SetHistoryPending(true);
+          save();
+          clearTimeout(saveTimer);
+          await saveCloudNow({ skipHistory: true });
+          await saveHistoryTablesNow();
+          v188SetHistoryPending(false);
+          historyTablesReady = true;
+          markSync();
+          setSyncState("保存済み", `廃棄単価 ${entries.length}件をクラウド保存`);
+          filterWasteList();
+          updateSyncDisplay();
+          alert(`${entries.length}件の単価をクラウドへ保存しました。`);
+        } catch (e) {
+          wastePriceDrafts = originalDrafts;
+          v188SetHistoryPending(true);
+          setSyncState("未同期", "廃棄単価を端末に保持・再送待ち");
+          filterWasteList();
+          updateSyncDisplay();
+          alert(`単価をクラウドへ保存できませんでした。\n${v161ErrorText(e)}\n\n入力内容はこの端末に保持しています。「再送」を押してください。`);
+        } finally {
+          wastePriceBulkSaving = false;
+          refreshWastePriceDraftUi();
+        }
+      };
+
       boot().catch((e) => {
         console.error("SEIKA＋の起動に失敗しました", e);
         const app = document.getElementById("app");
@@ -18680,6 +18752,7 @@ ${e.message || e}`);
           );
         return result;
       };
+
 </script>
   </body>
 </html>
