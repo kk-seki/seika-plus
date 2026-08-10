@@ -8141,13 +8141,40 @@
           to = s <= e ? e : s;
         return from === to ? from : `${from}〜${to}`;
       }
+      const V1113_WASTE_VIEW_KEY = STORE + "_waste_view_v1113";
+      function v1113ReadWasteView() {
+        try {
+          const value = JSON.parse(localStorage.getItem(V1113_WASTE_VIEW_KEY) || "null");
+          if (value?.start && value?.end) return value;
+        } catch (e) {}
+        const month = monthInputValue(new Date()),
+          range = monthRangeFromMonthValue(month);
+        return { month, start: range.start, end: range.end, scrollY: 0 };
+      }
+      function v1113WriteWasteView(start, end, scrollY = window.scrollY || 0) {
+        const from = String(start || ""),
+          to = String(end || ""),
+          month = /^\d{4}-\d{2}-01$/.test(from) && monthRangeFromMonthValue(from.slice(0, 7)).end === to ? from.slice(0, 7) : "";
+        try {
+          localStorage.setItem(V1113_WASTE_VIEW_KEY, JSON.stringify({ month, start: from, end: to, scrollY: Number(scrollY || 0) }));
+        } catch (e) {}
+      }
+      function applyWasteMonthFilter() {
+        const month = document.getElementById("wasteExportMonth")?.value || monthInputValue(new Date()),
+          range = monthRangeFromMonthValue(month),
+          start = document.getElementById("wasteStartDate"),
+          end = document.getElementById("wasteEndDate");
+        if (start) start.value = range.start;
+        if (end) end.value = range.end;
+        filterWasteList();
+      }
       function wasteListPage(msg = "") {
         setScreen("wasteListPage", [msg]);
         ensureWasteRecords();
-        const m = monthInputValue(new Date()),
-          range = monthRangeFromMonthValue(m),
-          defS = range.start,
-          defE = range.end;
+        const savedView = v1113ReadWasteView(),
+          m = savedView.month || String(savedView.start || "").slice(0, 7) || monthInputValue(new Date()),
+          defS = savedView.start,
+          defE = savedView.end;
         const periodRows = wasteRowsForPeriod(defS, defE),
           total = wasteTotals(periodRows);
         wastePriceDrafts = {};
@@ -8155,9 +8182,10 @@
         pageShell(
           "廃棄一覧",
           "月・期間を選択",
-          `${okHtml(msg)}<div class="card"><b>月を選択してExcel出力</b><div class="row" style="margin-top:12px"><div><label class="label">出力する月</label><input id="wasteExportMonth" class="input" type="month" value="${m}"></div><div>${canWasteExport() ? '<button class="btn blue" onclick="downloadWasteMonthExcel()">月単位でExcel出力</button>' : ""}</div></div></div><div class="card"><b>期間を選択して表示・Excel出力</b><div class="row" style="margin-top:12px"><div><label class="label">開始日</label><input id="wasteStartDate" class="input" type="date" value="${defS}" oninput="filterWasteList()"></div><div><label class="label">終了日</label><input id="wasteEndDate" class="input" type="date" value="${defE}" oninput="filterWasteList()"></div></div><div class="grid" style="margin-top:12px"><div class="box"><span class="small">選択期間の合計kg</span><b id="wasteTotalKgBox">${fmt(total.kg)}kg</b></div><div class="box"><span class="small">選択期間の廃棄金額</span><b id="wasteTotalAmountBox">${money(total.amount)}円</b></div></div><div class="grid" style="margin-top:12px">${canWasteInput() ? '<button class="btn green" onclick="wasteEntryPage()">廃棄を入力する</button>' : ""}${canWasteExport() ? '<button class="btn blue" onclick="downloadWasteExcel()">選択期間をExcel出力</button>' : ""}</div></div><div id="wasteListBox">${wasteListHtml(periodRows)}</div>`,
+          `${okHtml(msg)}<div class="card"><b>月を選択して表示・Excel出力</b><div class="row" style="margin-top:12px"><div><label class="label">表示する月</label><input id="wasteExportMonth" class="input" type="month" value="${m}" onchange="applyWasteMonthFilter()"></div><div>${canWasteExport() ? '<button class="btn blue" onclick="downloadWasteMonthExcel()">月単位でExcel出力</button>' : ""}</div></div></div><div class="card"><b>期間を選択して表示・Excel出力</b><div class="row" style="margin-top:12px"><div><label class="label">開始日</label><input id="wasteStartDate" class="input" type="date" value="${defS}" oninput="filterWasteList()"></div><div><label class="label">終了日</label><input id="wasteEndDate" class="input" type="date" value="${defE}" oninput="filterWasteList()"></div></div><div class="grid" style="margin-top:12px"><div class="box"><span class="small">選択期間の合計kg</span><b id="wasteTotalKgBox">${fmt(total.kg)}kg</b></div><div class="box"><span class="small">選択期間の廃棄金額</span><b id="wasteTotalAmountBox">${money(total.amount)}円</b></div></div><div class="grid" style="margin-top:12px">${canWasteInput() ? '<button class="btn green" onclick="wasteEntryPage()">廃棄を入力する</button>' : ""}${canWasteExport() ? '<button class="btn blue" onclick="downloadWasteExcel()">選択期間をExcel出力</button>' : ""}</div></div><div id="wasteListBox">${wasteListHtml(periodRows)}</div>`,
         );
         refreshWastePriceDraftUi();
+        requestAnimationFrame(() => window.scrollTo(0, Number(savedView.scrollY || 0)));
       }
       let wastePriceDrafts = {},
         wastePriceBulkSaving = false,
@@ -8269,6 +8297,10 @@
           wastePriceDrafts = {};
         }
         wastePriceFilterRange = nextRange;
+        v1113WriteWasteView(s, e);
+        const monthInput = document.getElementById("wasteExportMonth"),
+          matchingMonth = /^\d{4}-\d{2}-01$/.test(s) && monthRangeFromMonthValue(s.slice(0, 7)).end === e ? s.slice(0, 7) : "";
+        if (monthInput && matchingMonth) monthInput.value = matchingMonth;
         const rows = wasteRowsForPeriod(s, e),
           total = wasteTotals(rows);
         document.getElementById("wasteTotalKgBox").textContent = fmt(total.kg) + "kg";
@@ -18570,6 +18602,64 @@ ${e.message || e}`);
         } finally {
           wastePriceBulkSaving = false;
           refreshWastePriceDraftUi();
+        }
+      };
+
+
+      /* ===== v1.113 廃棄削除の永続化・表示月保持 ===== */
+      const v1113DeleteWasteRecordBase = deleteWasteRecord;
+      async function v1113DeleteWasteHistoryRow(id) {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/${HISTORY_TABLES.wasteRecords}?id=eq.${encodeURIComponent(String(id))}&select=id`, {
+          method: "DELETE",
+          headers: historyApiHeaders({ Prefer: "return=representation" }),
+        });
+        if (!response.ok) throw new Error((await response.text()) || "廃棄履歴を削除できませんでした");
+        const deleted = await response.json();
+        if (!Array.isArray(deleted) || !deleted.some((row) => String(row?.id || "") === String(id)))
+          throw new Error("クラウド上の廃棄記録を削除できませんでした。権限を確認してください");
+      }
+      deleteWasteRecord = async function (id) {
+        if (db?.role === "clerk") return v1113DeleteWasteRecordBase(id);
+        if (!canWasteEdit()) return alert("削除できません");
+        if (!confirm("この廃棄記録を削除しますか？")) return;
+        ensureWasteRecords();
+        const target = db.wasteRecords.find((record) => String(record?.id || "") === String(id));
+        if (!target) return alert("廃棄記録が見つかりません");
+        if (v161PendingCount() || v188HistoryPending())
+          return alert("未同期データがあります。先に「再送」を押して保存を完了してください。");
+        const view = {
+          start: document.getElementById("wasteStartDate")?.value || v1113ReadWasteView().start,
+          end: document.getElementById("wasteEndDate")?.value || v1113ReadWasteView().end,
+          scrollY: window.scrollY || 0,
+        };
+        v1113WriteWasteView(view.start, view.end, view.scrollY);
+        v161ShowProcessing("廃棄記録をクラウドから削除しています");
+        let historyDeleted = false;
+        try {
+          await v1113DeleteWasteHistoryRow(id);
+          historyDeleted = true;
+          db.wasteRecords = db.wasteRecords.filter((record) => String(record?.id || "") !== String(id));
+          v188PersistDb();
+          save();
+          clearTimeout(saveTimer);
+          await saveCloudNow({ skipHistory: true, requireRpc: true });
+          if (v161PendingCount()) throw new Error("削除後の状態をクラウドへ保存できませんでした");
+          v188WriteBase(v161Snapshot(), stateVersion);
+          markSync();
+          setSyncState("保存済み", "廃棄記録を削除しました");
+          wasteListPage("廃棄記録を削除しました");
+        } catch (e) {
+          if (historyDeleted) {
+            v188PersistDb();
+            setSyncState("未同期", "削除後の状態を端末に保持・再送待ち");
+            wasteListPage("クラウドの履歴は削除済みです。残りの同期は「再送」を押してください。");
+          } else {
+            setSyncState("失敗", "廃棄記録は削除していません");
+            alert(`削除できませんでした。\n${v161ErrorText(e)}\n\n画面の記録は削除していません。`);
+          }
+        } finally {
+          v161HideProcessing();
+          updateSyncDisplay();
         }
       };
 
