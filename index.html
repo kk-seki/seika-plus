@@ -8144,45 +8144,35 @@
       const V1113_WASTE_VIEW_KEY = STORE + "_waste_view_v1113";
       function v1113ReadWasteView() {
         try {
-          const value = JSON.parse(localStorage.getItem(V1113_WASTE_VIEW_KEY) || "null");
-          if (value?.start && value?.end) return value;
+          const value = JSON.parse(localStorage.getItem(V1113_WASTE_VIEW_KEY) || "null"),
+            month = value?.month || String(value?.start || "").slice(0, 7);
+          if (/^\d{4}-\d{2}$/.test(month)) return { month, scrollY: Number(value?.scrollY || 0) };
         } catch (e) {}
-        const month = monthInputValue(new Date()),
-          range = monthRangeFromMonthValue(month);
-        return { month, start: range.start, end: range.end, scrollY: 0 };
+        return { month: monthInputValue(new Date()), scrollY: 0 };
       }
-      function v1113WriteWasteView(start, end, scrollY = window.scrollY || 0) {
-        const from = String(start || ""),
-          to = String(end || ""),
-          month = /^\d{4}-\d{2}-01$/.test(from) && monthRangeFromMonthValue(from.slice(0, 7)).end === to ? from.slice(0, 7) : "";
+      function v1113WriteWasteView(month, scrollY = window.scrollY || 0) {
+        const value = /^\d{4}-\d{2}$/.test(String(month || "")) ? String(month) : monthInputValue(new Date());
         try {
-          localStorage.setItem(V1113_WASTE_VIEW_KEY, JSON.stringify({ month, start: from, end: to, scrollY: Number(scrollY || 0) }));
+          localStorage.setItem(V1113_WASTE_VIEW_KEY, JSON.stringify({ month: value, scrollY: Number(scrollY || 0) }));
         } catch (e) {}
       }
       function applyWasteMonthFilter() {
-        const month = document.getElementById("wasteExportMonth")?.value || monthInputValue(new Date()),
-          range = monthRangeFromMonthValue(month),
-          start = document.getElementById("wasteStartDate"),
-          end = document.getElementById("wasteEndDate");
-        if (start) start.value = range.start;
-        if (end) end.value = range.end;
         filterWasteList();
       }
       function wasteListPage(msg = "") {
         setScreen("wasteListPage", [msg]);
         ensureWasteRecords();
         const savedView = v1113ReadWasteView(),
-          m = savedView.month || String(savedView.start || "").slice(0, 7) || monthInputValue(new Date()),
-          defS = savedView.start,
-          defE = savedView.end;
-        const periodRows = wasteRowsForPeriod(defS, defE),
+          m = savedView.month,
+          range = monthRangeFromMonthValue(m),
+          periodRows = wasteRowsForPeriod(range.start, range.end),
           total = wasteTotals(periodRows);
         wastePriceDrafts = {};
-        wastePriceFilterRange = `${defS}__${defE}`;
+        wastePriceFilterRange = m;
         pageShell(
           "廃棄一覧",
-          "月・期間を選択",
-          `${okHtml(msg)}<div class="card"><b>月を選択して表示・Excel出力</b><div class="row" style="margin-top:12px"><div><label class="label">表示する月</label><input id="wasteExportMonth" class="input" type="month" value="${m}" onchange="applyWasteMonthFilter()"></div><div>${canWasteExport() ? '<button class="btn blue" onclick="downloadWasteMonthExcel()">月単位でExcel出力</button>' : ""}</div></div></div><div class="card"><b>期間を選択して表示・Excel出力</b><div class="row" style="margin-top:12px"><div><label class="label">開始日</label><input id="wasteStartDate" class="input" type="date" value="${defS}" oninput="filterWasteList()"></div><div><label class="label">終了日</label><input id="wasteEndDate" class="input" type="date" value="${defE}" oninput="filterWasteList()"></div></div><div class="grid" style="margin-top:12px"><div class="box"><span class="small">選択期間の合計kg</span><b id="wasteTotalKgBox">${fmt(total.kg)}kg</b></div><div class="box"><span class="small">選択期間の廃棄金額</span><b id="wasteTotalAmountBox">${money(total.amount)}円</b></div></div><div class="grid" style="margin-top:12px">${canWasteInput() ? '<button class="btn green" onclick="wasteEntryPage()">廃棄を入力する</button>' : ""}${canWasteExport() ? '<button class="btn blue" onclick="downloadWasteExcel()">選択期間をExcel出力</button>' : ""}</div></div><div id="wasteListBox">${wasteListHtml(periodRows)}</div>`,
+          "月を選択",
+          `${okHtml(msg)}<div class="card"><b>表示する月</b><div class="row" style="margin-top:12px"><div><label class="label">年月</label><input id="wasteExportMonth" class="input" type="month" value="${m}" onchange="applyWasteMonthFilter()"></div></div><div class="grid" style="margin-top:12px"><div class="box"><span class="small">選択月の合計kg</span><b id="wasteTotalKgBox">${fmt(total.kg)}kg</b></div><div class="box"><span class="small">選択月の廃棄金額</span><b id="wasteTotalAmountBox">${money(total.amount)}円</b></div></div><div class="grid" style="margin-top:12px">${canWasteInput() ? '<button class="btn green" onclick="wasteEntryPage()">廃棄を入力する</button>' : ""}${canWasteExport() ? '<button class="btn blue" onclick="downloadWasteMonthExcel()">選択月をExcel出力</button>' : ""}</div></div><div id="wasteListBox">${wasteListHtml(periodRows)}</div>`,
         );
         refreshWastePriceDraftUi();
         requestAnimationFrame(() => window.scrollTo(0, Number(savedView.scrollY || 0)));
@@ -8207,7 +8197,7 @@
         return `<div id="wastePriceBulkBar" class="card" style="position:sticky;bottom:12px;z-index:20;margin-top:12px;border:2px solid #11633d;box-shadow:0 8px 24px rgba(15,23,42,.2)"><div class="row" style="align-items:center"><div><b>単価のまとめ保存</b><div class="small">入力した明細だけ保存します。同条件への反映は「品目＋仕入先」が一致する表示中の明細だけです。</div><div id="wastePriceDraftStatus" style="margin-top:5px;font-weight:bold;color:#11633d">未保存 0件</div></div><button id="saveWastePricesBulkBtn" class="btn green" style="min-width:190px" onclick="saveWasteUnitPricesBulk()" disabled>変更した単価をまとめて保存</button></div></div>`;
       }
       function wasteListHtml(rows) {
-        if (!rows.length) return '<div class="notice">選択期間の廃棄記録はありません。</div>' + wastePriceBulkBarHtml();
+        if (!rows.length) return '<div class="notice">選択月の廃棄記録はありません。</div>' + wastePriceBulkBarHtml();
         return `<div class="card"><div class="weeklyWrap"><table class="table wasteTable"><thead><tr><th>日付</th><th>品名</th><th>数量(kg)</th><th>単価(円/kg)</th><th>金額</th><th>産地</th><th>仕入先</th><th>備考</th><th>入力者</th><th></th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.date || "")}</td><td><b>${esc(r.itemName)}</b></td><td>${fmt(r.qty)}</td><td>${wastePriceCell(r)}</td><td id="wasteAmount_${r.id}">${Number(r.unitPrice) > 0 ? money(wasteAmount(r)) + "円" : "-"}</td><td>${esc(r.origin || "-")}</td><td>${esc(r.supplier || "-")}</td><td>${esc(r.memo || "-")}</td><td>${esc(r.user || "-")}</td><td>${canWasteEdit() ? `<div style="display:grid;gap:6px"><button class="btn btn2" onclick="wasteEntryPage('', '${r.id}')">修正</button><button class="btn red" onclick="deleteWasteRecord('${r.id}')">削除</button></div>` : ""}</td></tr>`).join("")}</tbody></table></div></div>${wastePriceBulkBarHtml()}`;
       }
       function wasteVisiblePriceRows() {
@@ -8227,9 +8217,9 @@
           btn.disabled = !entries.length || wastePriceBulkSaving;
           btn.textContent = wastePriceBulkSaving ? "保存中..." : "変更した単価をまとめて保存";
         }
-        const s = document.getElementById("wasteStartDate")?.value || todayKey(),
-          e = document.getElementById("wasteEndDate")?.value || s,
-          rows = wasteRowsForPeriod(s, e),
+        const month = document.getElementById("wasteExportMonth")?.value || v1113ReadWasteView().month,
+          range = monthRangeFromMonthValue(month),
+          rows = wasteRowsForPeriod(range.start, range.end),
           amount = rows.reduce((sum, r) => {
             const raw = Object.prototype.hasOwnProperty.call(wastePriceDrafts, r.id) ? wastePriceDrafts[r.id] : r.unitPrice,
               p = wastePriceValue(raw);
@@ -8282,26 +8272,20 @@
       }
       function filterWasteList() {
         ensureWasteRecords();
-        const s = (document.getElementById("wasteStartDate") && document.getElementById("wasteStartDate").value) || todayKey(),
-          e = (document.getElementById("wasteEndDate") && document.getElementById("wasteEndDate").value) || s,
-          nextRange = `${s}__${e}`;
-        if (wastePriceFilterRange && wastePriceFilterRange !== nextRange && Object.keys(wastePriceDrafts).length) {
-          if (!confirm(`未保存の単価が ${Object.keys(wastePriceDrafts).length}件あります。\n\n保存せずに期間を変更して入力内容を破棄しますか？`)) {
-            const [prevS, prevE] = wastePriceFilterRange.split("__"),
-              start = document.getElementById("wasteStartDate"),
-              end = document.getElementById("wasteEndDate");
-            if (start) start.value = prevS;
-            if (end) end.value = prevE;
+        const monthInput = document.getElementById("wasteExportMonth"),
+          month = monthInput?.value || v1113ReadWasteView().month,
+          previousMonth = wastePriceFilterRange;
+        if (previousMonth && previousMonth !== month && Object.keys(wastePriceDrafts).length) {
+          if (!confirm(`未保存の単価が ${Object.keys(wastePriceDrafts).length}件あります。\n\n保存せずに月を変更して入力内容を破棄しますか？`)) {
+            if (monthInput) monthInput.value = previousMonth;
             return;
           }
           wastePriceDrafts = {};
         }
-        wastePriceFilterRange = nextRange;
-        v1113WriteWasteView(s, e);
-        const monthInput = document.getElementById("wasteExportMonth"),
-          matchingMonth = /^\d{4}-\d{2}-01$/.test(s) && monthRangeFromMonthValue(s.slice(0, 7)).end === e ? s.slice(0, 7) : "";
-        if (monthInput && matchingMonth) monthInput.value = matchingMonth;
-        const rows = wasteRowsForPeriod(s, e),
+        wastePriceFilterRange = month;
+        v1113WriteWasteView(month);
+        const range = monthRangeFromMonthValue(month),
+          rows = wasteRowsForPeriod(range.start, range.end),
           total = wasteTotals(rows);
         document.getElementById("wasteTotalKgBox").textContent = fmt(total.kg) + "kg";
         document.getElementById("wasteTotalAmountBox").textContent = money(total.amount) + "円";
@@ -12050,29 +12034,37 @@ ${e.message || e}`);
         const wb = XLSX.utils.book_new();
         const sorted = rows.slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) || new Date(a.createdAt || 0) - new Date(b.createdAt || 0)),
           headers = ["日付", "品名", "数量kg", "単価（円/kg）", "金額（円）", "産地", "仕入先", "備考", "入力者", "入力日時"],
-          detailStart = 6,
-          detailRows = sorted.map((r, i) => [
+          detailStart = 7,
+          detailRows = sorted.map((r) => {
+            const qty = Number(r.qty),
+              unitPrice = Number(r.unitPrice),
+              safeQty = Number.isFinite(qty) ? qty : 0,
+              safeUnitPrice = Number.isFinite(unitPrice) && unitPrice > 0 ? unitPrice : 0;
+            return [
             r.date || "",
             r.itemName || "",
-            Number(r.qty || 0),
-            Number(r.unitPrice || 0) || "",
-            { t: "n", f: `IF(D${detailStart + i}="","",C${detailStart + i}*D${detailStart + i})` },
+            safeQty,
+            safeUnitPrice || "",
+            safeUnitPrice ? yen(safeQty * safeUnitPrice) : "",
             r.origin || "",
             r.supplier || "",
             r.memo || "",
             r.user || "",
             r.createdAt ? dt(r.createdAt) : "",
-          ]),
+          ];
+          }),
           detailEnd = detailStart + detailRows.length - 1,
+          totalQty = detailRows.reduce((sum, row) => sum + Number(row[2] || 0), 0),
+          totalAmount = detailRows.reduce((sum, row) => sum + Number(row[4] || 0), 0),
           whole = [
             ["廃棄一覧（期間全体）", "", "", "", "", "", "", "", "", ""],
             ["対象期間", wastePeriodLabel(startDate, endDate), "", "", "", "", "", "", "", ""],
             [
               "全品目 合計kg",
-              { t: "n", f: detailRows.length ? `SUM(C${detailStart}:C${detailEnd})` : "0" },
+              totalQty,
               "",
               "全品目 合計金額（円）",
-              { t: "n", f: detailRows.length ? `SUM(E${detailStart}:E${detailEnd})` : "0" },
+              totalAmount,
               "",
               "",
               "",
@@ -12115,18 +12107,24 @@ ${e.message || e}`);
           const wr = sorted.filter((r) => String(r.date || "") >= w.start && String(r.date || "") <= w.end);
           const aoa = [
             headers,
-            ...wr.map((r, i) => [
+            ...wr.map((r) => {
+              const qty = Number(r.qty),
+                unitPrice = Number(r.unitPrice),
+                safeQty = Number.isFinite(qty) ? qty : 0,
+                safeUnitPrice = Number.isFinite(unitPrice) && unitPrice > 0 ? unitPrice : 0;
+              return [
               r.date || "",
               r.itemName || "",
-              Number(r.qty || 0),
-              Number(r.unitPrice || 0) || "",
-              { t: "n", f: `IF(D${i + 2}="","",C${i + 2}*D${i + 2})` },
+              safeQty,
+              safeUnitPrice || "",
+              safeUnitPrice ? yen(safeQty * safeUnitPrice) : "",
               r.origin || "",
               r.supplier || "",
               r.memo || "",
               r.user || "",
               r.createdAt ? dt(r.createdAt) : "",
-            ]),
+            ];
+            }),
           ];
           const ws = aoaSheet(aoa, [12, 18, 12, 15, 15, 12, 18, 28, 14, 20]);
           XLSX.utils.book_append_sheet(wb, ws, w.sheetName);
@@ -17947,7 +17945,7 @@ ${e.message || e}`);
             pageShell(
               supersedesId ? "品質評価を訂正" : "QR品質評価",
               `${esc(lot.item_name)} / ${esc(lot.lot_no)}`,
-              `${qrLotCard(lot, false)}<div class="notice"><b>在庫数量は変わりません</b><div class="small">品質状態だけをロットへ記録します。不良品を在庫から減らす場合は、評価後にQR廃棄を登録してください。</div></div><div class="card"><label class="label">総合判定 <span style="color:#dc2626">必須</span></label><div class="grid"><label class="box"><input type="radio" name="v1102Grade" value="good" onchange="v1102ToggleQualityFields()" ${prior?.grade === "good" ? "checked" : ""}> <b>良好</b></label><label class="box"><input type="radio" name="v1102Grade" value="review" onchange="v1102ToggleQualityFields()" ${prior?.grade === "review" ? "checked" : ""}> <b>要確認</b></label><label class="box"><input type="radio" name="v1102Grade" value="bad" onchange="v1102ToggleQualityFields()" ${prior?.grade === "bad" ? "checked" : ""}> <b>不良</b></label></div><div id="v1102ProblemFields" style="display:none"><label class="label">確認された状態（複数選択可）</label><div class="grid">${v1102QualityIssuesHtml(prior?.issues || [])}</div><label class="label">写真（任意・最大3枚）</label><div class="small">問題時のみ登録します。長辺1280px、1枚500KB以下へ自動圧縮します。</div><input id="v1102QualityPhoto" type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="v1102SelectPhotos(this)"><button class="btn blue" type="button" style="width:100%;margin-top:8px" onclick="v1102QualityPhotoInput()">写真を撮影・選択</button><div id="v1102QualityPhotoList" style="margin-top:8px"></div></div><label class="label">メモ（任意）</label><textarea id="v1102QualityMemo" class="textarea" maxlength="1000" placeholder="品質状態や確認内容">${esc(prior?.memo || "")}</textarea>${supersedesId ? '<label class="label">訂正理由 <span style="color:#dc2626">必須</span></label><input id="v1102CorrectionReason" class="input" maxlength="500" placeholder="例：判定項目の選択間違い">' : ""}<button id="v1102QualitySave" class="btn green" style="width:100%;margin-top:14px" onclick="v1102SaveQuality('${esc(lot.qr_key)}','${esc(supersedesId)}')">${supersedesId ? "訂正した評価を登録" : "品質評価を登録"}</button></div>`,
+              `${qrLotCard(lot, false)}<div class="notice"><b>在庫数量は変わりません</b><div class="small">品質状態だけをロットへ記録します。不良品を在庫から減らす場合は、評価後にQR廃棄を登録してください。</div></div><div class="card"><label class="label">総合判定 <span style="color:#dc2626">必須</span></label><div class="grid"><label class="box"><input type="radio" name="v1102Grade" value="good" onchange="v1102ToggleQualityFields()" ${prior?.grade === "good" ? "checked" : ""}> <b>良好</b></label><label class="box"><input type="radio" name="v1102Grade" value="review" onchange="v1102ToggleQualityFields()" ${prior?.grade === "review" ? "checked" : ""}> <b>要確認</b></label><label class="box"><input type="radio" name="v1102Grade" value="bad" onchange="v1102ToggleQualityFields()" ${prior?.grade === "bad" ? "checked" : ""}> <b>不良</b></label></div><div id="v1102ProblemFields" style="display:none"><label class="label">確認された状態（複数選択可）</label><div class="grid">${v1102QualityIssuesHtml(prior?.issues || [])}</div><label class="label">写真（任意・最大3枚）</label><div class="small">問題時のみ登録します。長辺1280px、1枚500KB以下へ自動圧縮します。</div><input id="v1102QualityPhoto" type="file" accept="image/*" multiple style="display:none" onchange="v1102SelectPhotos(this)"><button class="btn blue" type="button" style="width:100%;margin-top:8px" onclick="v1102QualityPhotoInput()">写真ライブラリから選択</button><div id="v1102QualityPhotoList" style="margin-top:8px"></div></div><label class="label">メモ（任意）</label><textarea id="v1102QualityMemo" class="textarea" maxlength="1000" placeholder="品質状態や確認内容">${esc(prior?.memo || "")}</textarea>${supersedesId ? '<label class="label">訂正理由 <span style="color:#dc2626">必須</span></label><input id="v1102CorrectionReason" class="input" maxlength="500" placeholder="例：判定項目の選択間違い">' : ""}<button id="v1102QualitySave" class="btn green" style="width:100%;margin-top:14px" onclick="v1102SaveQuality('${esc(lot.qr_key)}','${esc(supersedesId)}')">${supersedesId ? "訂正した評価を登録" : "品質評価を登録"}</button></div>`,
             );
             v1102ToggleQualityFields();
             v1102RenderPhotoList();
@@ -18000,7 +17998,7 @@ ${e.message || e}`);
         pageShell(
           "品質写真を追加",
           `${v1102GradeLabel(ev.grade)} / 残り${remain}枚`,
-          `${v1102QualityHistoryHtml([ev], q)}<div class="card"><div class="notice">評価は登録済みです。同じ評価へ写真だけ追加します。</div><input id="v1102QualityPhoto" type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="v1102SelectPhotos(this)"><button class="btn blue" style="width:100%" onclick="v1102QualityPhotoInput()">写真を撮影・選択</button><div id="v1102QualityPhotoList" style="margin-top:8px"></div><button id="v1102QualitySave" class="btn green" style="width:100%;margin-top:12px" onclick="v1102SaveAdditionalPhotos('${esc(q)}','${esc(evaluationId)}',${remain})">写真を追加保存</button></div>`,
+          `${v1102QualityHistoryHtml([ev], q)}<div class="card"><div class="notice">評価は登録済みです。同じ評価へ写真だけ追加します。</div><input id="v1102QualityPhoto" type="file" accept="image/*" multiple style="display:none" onchange="v1102SelectPhotos(this)"><button class="btn blue" style="width:100%" onclick="v1102QualityPhotoInput()">写真ライブラリから選択</button><div id="v1102QualityPhotoList" style="margin-top:8px"></div><button id="v1102QualitySave" class="btn green" style="width:100%;margin-top:12px" onclick="v1102SaveAdditionalPhotos('${esc(q)}','${esc(evaluationId)}',${remain})">写真を追加保存</button></div>`,
         );
         v1102RenderPhotoList();
       }
@@ -18628,11 +18626,10 @@ ${e.message || e}`);
         if (v161PendingCount() || v188HistoryPending())
           return alert("未同期データがあります。先に「再送」を押して保存を完了してください。");
         const view = {
-          start: document.getElementById("wasteStartDate")?.value || v1113ReadWasteView().start,
-          end: document.getElementById("wasteEndDate")?.value || v1113ReadWasteView().end,
+          month: document.getElementById("wasteExportMonth")?.value || v1113ReadWasteView().month,
           scrollY: window.scrollY || 0,
         };
-        v1113WriteWasteView(view.start, view.end, view.scrollY);
+        v1113WriteWasteView(view.month, view.scrollY);
         v161ShowProcessing("廃棄記録をクラウドから削除しています");
         let historyDeleted = false;
         try {
