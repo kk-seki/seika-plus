@@ -7939,12 +7939,10 @@
             ? `<div class="homeSummary"><button class="summaryBox" onclick="orderCandidatePage()"><div class="summaryLabel">発注候補</div><div class="summaryValue">${myRows.length}</div></button><button class="summaryBox" onclick="excessCandidatePage()"><div class="summaryLabel">過多品目</div><div class="summaryValue">${myExcess.length}</div></button><div class="summaryBox"><div class="summaryLabel">担当品目</div><div class="summaryValue">${activeItems().filter((it) => isMyBuyerItem(it.id)).length}<span class="summarySub"> 品</span></div></div></div>`
             : `<div class="homeSummary ${["viewer", "office_viewer", "sales", "clerk"].includes(db.role) ? "viewerSummary" : ""}"><div class="summaryBox"><div class="summaryLabel">本日入力済み</div><div class="summaryValue">${todayEntered}<span class="summarySub">/${activeItems().length}</span></div></div><button class="summaryBox" onclick="orderCandidatePage()"><div class="summaryLabel">発注候補</div><div class="summaryValue">${shortageCount}</div></button><button class="summaryBox" onclick="excessCandidatePage()"><div class="summaryLabel">過多品目</div><div class="summaryValue">${excessCount}</div></button><div class="summaryBox"><div class="summaryLabel">最終入力</div><div class="summaryValue">${lastInputHtml}</div></div></div>`;
         const homeButtons = [
-          { label: "在庫入力", cls: "homeBtnStock", go: "inventory()", can: () => canEdit() },
+          { label: "在庫管理", cls: "homeBtnStock", go: "inventoryManagementPage()", can: () => true },
           { label: "QR在庫管理", cls: isBuyer ? "homeBtnQrBuyer" : "homeBtnQr", go: "qrHome()", can: () => qrCanUse() },
-          { label: "在庫表", cls: "homeBtnTable", go: "weeklyData()", can: () => true },
           { label: "在庫報告コピー", cls: "homeBtnReport", go: "lineCopyPage()", can: () => canWorkerReport() },
           { label: "品目設定", cls: "homeBtnItems", go: "itemsPage()", can: () => canManageItems() },
-          { label: "在庫修正", cls: "homeBtnCheck", go: "stocks()", can: () => canEdit() },
           {
             label: "適正在庫設定",
             cls: isBuyer ? "homeBtnOptimalBuyer" : "homeBtnSettings",
@@ -7958,8 +7956,7 @@
             go: "meshContainerPage()",
             can: () => true,
           },
-          { label: "廃棄入力", cls: "homeBtnWaste", go: "wasteEntryPage()", can: () => canWasteInput() },
-          { label: "廃棄一覧", cls: "homeBtnWasteList", go: "wasteListPage()", can: () => true },
+          { label: "廃棄管理", cls: "homeBtnWaste", go: "wasteManagementPage()", can: () => true },
           {
             label: "棚卸しモード",
             cls: "homeBtnCount",
@@ -7979,6 +7976,23 @@
           `${esc(db.user)} / ${ROLE[db.role]}`,
           `${simpleNotice}${summary}<div class="homePrimary ${["viewer", "office_viewer", "sales", "clerk"].includes(db.role) ? "viewerHome" : ""}">${buyerCards}${buttons}</div>`,
           { noBack: true },
+        );
+      }
+
+      function inventoryManagementPage() {
+        setScreen("inventoryManagementPage");
+        pageShell(
+          "在庫管理",
+          "通常在庫の操作を選択してください",
+          `<div class="homePrimary">${canEdit() ? '<button class="btn homeBtnStock" onclick="inventory()">在庫入力</button>' : ""}<button class="btn homeBtnTable" onclick="weeklyData()">在庫表</button>${canEdit() ? '<button class="btn homeBtnCheck" onclick="stocks()">在庫修正</button>' : ""}</div>`,
+        );
+      }
+      function wasteManagementPage() {
+        setScreen("wasteManagementPage");
+        pageShell(
+          "廃棄管理",
+          "廃棄に関する操作を選択してください",
+          `<div class="homePrimary">${canWasteInput() ? '<button class="btn homeBtnWaste" onclick="wasteEntryPage()">廃棄入力</button>' : ""}<button class="btn homeBtnWasteList" onclick="wasteListPage()">廃棄一覧</button></div>`,
         );
       }
 
@@ -17424,7 +17438,7 @@ ${e.message || e}`);
       };
 
       /* ===== v1.101 廃棄・QR 月次Excel保存管理 ===== */
-      let v1101Archives = { waste: [], qr: [] };
+      let v1101Archives = { waste: [], qr: [], trimming: [] };
       function v1101MonthDate(key) {
         return `${String(key || "").slice(0, 7)}-01`;
       }
@@ -17432,10 +17446,10 @@ ${e.message || e}`);
         return st === "deleted" ? "DB削除済み" : st === "excel_saved" ? "文書管理への保管確認済み" : st === "excel_created" ? "Excel作成済み" : "未処理";
       }
       function v1101CanModule(module) {
-        return module === "waste" ? canWasteExport() : module === "qr" ? v1100CanQrExcel() : false;
+        return module === "waste" ? canWasteExport() : module === "qr" ? v1100CanQrExcel() : module === "trimming" ? ["admin", "worker", "buyer", "clerk"].includes(db.role) : false;
       }
       function v1101ModuleName(module) {
-        return module === "waste" ? "廃棄履歴" : "QR操作履歴";
+        return module === "waste" ? "廃棄履歴" : module === "trimming" ? "歩留まり・仕入価格履歴" : "QR操作履歴";
       }
       function v1101ArchiveRows(module) {
         return Array.isArray(v1101Archives[module]) ? v1101Archives[module] : [];
@@ -17509,6 +17523,10 @@ ${e.message || e}`);
       }
       async function v1101DownloadArchive(module, key) {
         if (!v1101CanModule(module)) return alert("このExcelを出力する権限がありません");
+        if (module === "trimming") {
+          await v1116DownloadTrimmingArchive(key);
+          return;
+        }
         if (module === "waste") {
           const r = monthRangeFromMonthValue(key),
             rows = wasteRowsForPeriod(r.start, r.end).sort(
@@ -17750,7 +17768,7 @@ ${e.message || e}`);
 
       async function v1101ArchivePage(msg = "") {
         setScreen("v1101ArchivePage", [msg]);
-        const modules = ["qr", "waste"].filter(v1101CanModule),
+        const modules = ["qr", "waste", "trimming"].filter(v1101CanModule),
           qualityAllowed = ["admin", "worker", "clerk"].includes(db.role);
         try {
           await Promise.all([...modules.map(v1101LoadArchives), ...(qualityAllowed ? [v1102LoadQualityArchives()] : [])]);
@@ -17761,8 +17779,8 @@ ${e.message || e}`);
             `<div class="err">${esc(e.message || e)}<div class="small">Supabaseでv1.101 SQLを実行してください。</div></div>`,
           );
         }
-        const names = { qr: "QR在庫履歴", waste: "廃棄履歴" },
-          folders = { qr: "QR在庫履歴", waste: "廃棄履歴" },
+        const names = { qr: "QR在庫履歴", waste: "廃棄履歴", trimming: "歩留まり・仕入価格履歴" },
+          folders = { qr: "QR在庫履歴", waste: "廃棄履歴", trimming: "歩留まり・仕入価格履歴" },
           sections = modules
             .map((module) => {
               const rows = v1101ArchiveRows(module),
@@ -17773,7 +17791,7 @@ ${e.message || e}`);
             .join("");
         pageShell(
           "月次Excel・履歴管理",
-          "在庫表・QR・廃棄・品質評価を同じ画面で出力・保管・整理",
+          "在庫表・QR・廃棄・品質評価・歩留まりを同じ画面で出力・保管・整理",
           `${okHtml(msg)}<div class="notice"><b>月次処理の順番</b><div class="small">Excel出力 → デスクネッツ文書管理の履歴別フォルダへ保管 → 管理者が保存済み記録 → 対象月から3か月保持 → 管理者がDB整理。削除条件はSupabase側でも再確認します。</div></div>${v1101InventoryArchiveSection()}${sections}${v1102QualityArchiveSection()}`,
         );
       }
@@ -17789,7 +17807,7 @@ ${e.message || e}`);
         menu.querySelectorAll("button").forEach((b) => {
           if ((b.getAttribute("onclick") || "").includes("monthlyArchivePage")) b.remove();
         });
-        if (["admin", "worker", "sales", "clerk"].includes(db.role) && !document.getElementById("v1101ArchiveMenu"))
+        if (["admin", "worker", "buyer", "sales", "clerk"].includes(db.role) && !document.getElementById("v1101ArchiveMenu"))
           menu.insertAdjacentHTML("afterbegin", '<button id="v1101ArchiveMenu" class="btn orange" onclick="v1101ArchivePage()">月次Excel・履歴管理</button>');
       };
 
@@ -18749,8 +18767,61 @@ ${e.message || e}`);
       function v1115RenderYieldReport(rows,from,to) {
         const group=new Map(); for(const row of rows){const j=row.job||row, key=j.source_item_name||"（品目未設定）", a=group.get(key)||{input:0,out:0,cost:0,count:0,priced:true};a.input+=Number(j.input_weight_kg||0);a.out+=Number(j.output_weight_kg||0);a.priced&&=j.input_cost_yen!==null&&j.input_cost_yen!==undefined;if(j.input_cost_yen!==null&&j.input_cost_yen!==undefined)a.cost+=Number(j.input_cost_yen);a.count++;group.set(key,a)}
         const table=[...group.entries()].map(([name,a])=>`<tr><td>${esc(name)}</td><td>${a.count}件</td><td>${fmtRounded(a.input)}kg</td><td>${fmtRounded(a.out)}kg</td><td>${a.input?fmtRounded(a.out/a.input*100):"-"}%</td><td>${a.priced?money(a.cost)+"円":"未計算（価格未登録）"}</td><td>${a.out&&a.priced?money(a.cost/a.out)+"円/kg":"未計算"}</td></tr>`).join("")||'<tr><td colspan="7" class="small">該当するトリミング記録はありません。</td></tr>';
-        const detail=rows.map((row)=>{const j=row.job||row, lots=row.lots||[];const price=j.purchase_price_yen_per_kg!=null?`${money(j.purchase_price_yen_per_kg)}円/kg（登録時価格）`:"未計算（価格未登録）";return `<tr><td>${esc(j.work_date||"")}</td><td>${esc(j.source_item_name||"")}</td><td>${fmtRounded(j.input_weight_kg)}kg</td><td>${fmtRounded(j.output_weight_kg)}kg</td><td>${fmtRounded(j.yield_percent)}%</td><td>${price}</td><td>${j.input_cost_yen!=null?money(j.input_cost_yen)+"円":"未計算"}</td></tr>`}).join("")||'<tr><td colspan="7" class="small">該当なし</td></tr>';
-        pageShell("品目別歩留まり表","登録時の仕入れ価格を原価として表示",`<div class="card"><div class="row"><div><label class="label">開始日</label><input id="yieldFrom" type="date" class="input" value="${esc(from)}"></div><div><label class="label">終了日</label><input id="yieldTo" type="date" class="input" value="${esc(to)}"></div></div><button class="btn blue" style="width:100%;margin-top:9px" onclick="yieldReportPage(document.getElementById('yieldFrom').value,document.getElementById('yieldTo').value)">絞り込む</button></div><div class="card"><b>品目別集計</b><table class="table"><thead><tr><th>品目</th><th>件数</th><th>使用</th><th>出力</th><th>歩留</th><th>原価</th><th>出力原価</th></tr></thead><tbody>${table}</tbody></table></div><div class="card"><b>明細</b><table class="table"><thead><tr><th>作業日</th><th>品目</th><th>使用</th><th>出力</th><th>歩留</th><th>当時単価</th><th>投入原価</th></tr></thead><tbody>${detail}</tbody></table></div>`);
+        const detail=rows.map((row)=>{const j=row.job||row, lots=row.lots||[];const price=j.purchase_price_yen_per_kg!=null?`${money(j.purchase_price_yen_per_kg)}円/kg（登録時価格）`:"未計算（価格未登録）", yieldCost=j.input_cost_yen!=null&&Number(j.output_weight_kg)>0?`${money(Number(j.input_cost_yen)/Number(j.output_weight_kg))}円/kg`:"未計算";return `<tr><td>${esc(j.work_date||"")}</td><td>${esc(j.source_item_name||"")}</td><td>${fmtRounded(j.input_weight_kg)}kg</td><td>${fmtRounded(j.output_weight_kg)}kg</td><td>${fmtRounded(j.yield_percent)}%</td><td>${price}</td><td>${j.input_cost_yen!=null?money(j.input_cost_yen)+"円":"未計算"}</td><td>${yieldCost}</td></tr>`}).join("")||'<tr><td colspan="8" class="small">該当なし</td></tr>';
+        pageShell("品目別歩留まり表","登録時の仕入れ価格を原価として表示",`<div class="card"><div class="row"><div><label class="label">開始日</label><input id="yieldFrom" type="date" class="input" value="${esc(from)}"></div><div><label class="label">終了日</label><input id="yieldTo" type="date" class="input" value="${esc(to)}"></div></div><button class="btn blue" style="width:100%;margin-top:9px" onclick="yieldReportPage(document.getElementById('yieldFrom').value,document.getElementById('yieldTo').value)">絞り込む</button></div><div class="card"><b>品目別集計</b><table class="table"><thead><tr><th>品目</th><th>件数</th><th>使用</th><th>出来高</th><th>歩留まり</th><th>原料費合計</th><th>歩留まり原価<br>税抜円/kg</th></tr></thead><tbody>${table}</tbody></table></div><div class="card"><b>明細</b><table class="table"><thead><tr><th>作業日</th><th>品目</th><th>使用</th><th>出来高</th><th>歩留まり</th><th>当時仕入単価</th><th>原料費</th><th>歩留まり原価<br>税抜円/kg</th></tr></thead><tbody>${detail}</tbody></table></div>`);
+      }
+
+      function v1116TrimmingGroup(rows) {
+        const group = new Map();
+        for (const row of rows) {
+          const j = row.job || row, key = j.source_item_name || "（品目未設定）", a = group.get(key) || { count: 0, input: 0, output: 0, loss: 0, cost: 0, priced: true };
+          a.count++;
+          a.input += Number(j.input_weight_kg || 0);
+          a.output += Number(j.output_weight_kg || 0);
+          a.loss += Number(j.loss_weight_kg || 0);
+          a.priced = a.priced && j.input_cost_yen !== null && j.input_cost_yen !== undefined;
+          if (j.input_cost_yen !== null && j.input_cost_yen !== undefined) a.cost += Number(j.input_cost_yen);
+          group.set(key, a);
+        }
+        return group;
+      }
+      function v1116TrimmingWorkbook(key, jobs, prices) {
+        if (!ensureXlsxReady()) return null;
+        const wb = XLSX.utils.book_new(), group = v1116TrimmingGroup(jobs);
+        const total = [...group.values()].reduce((a, x) => ({ count: a.count + x.count, input: a.input + x.input, output: a.output + x.output, loss: a.loss + x.loss, cost: a.cost + x.cost, priced: a.priced && x.priced }), { count: 0, input: 0, output: 0, loss: 0, cost: 0, priced: true });
+        const summary = aoaSheet([
+          ["対象月", key], ["トリミング件数", total.count], ["使用原料合計kg", total.input], ["出来高合計kg", total.output], ["ロス合計kg", total.loss],
+          ["全体歩留まり%", total.input ? total.output / total.input * 100 : ""], ["原料費合計（税抜円）", total.priced ? total.cost : "未計算（価格未登録あり）"],
+          ["歩留まり原価（税抜円/kg）", total.output && total.priced ? total.cost / total.output : "未計算"], ["仕入価格登録件数", prices.length], ["作成日時", new Date().toLocaleString("ja-JP")],
+        ], [30, 35]);
+        XLSX.utils.book_append_sheet(wb, summary, "月次概要");
+        const itemRows = [["元品目", "件数", "使用原料kg", "出来高kg", "ロスkg", "歩留まり%", "原料費合計（税抜円）", "歩留まり原価（税抜円/kg）"]];
+        for (const [name, a] of group) itemRows.push([name, a.count, a.input, a.output, a.loss, a.input ? a.output / a.input * 100 : "", a.priced ? a.cost : "未計算", a.output && a.priced ? a.cost / a.output : "未計算"]);
+        XLSX.utils.book_append_sheet(wb, aoaSheet(itemRows, [22, 10, 15, 15, 15, 15, 22, 25]), "品目別歩留まり");
+        const details = [["作業日", "元品目", "使用原料kg", "出来高kg", "ロスkg", "歩留まり%", "当時仕入単価（税抜円/kg）", "原料費（税抜円）", "歩留まり原価（税抜円/kg）", "使用ロット", "入替品", "担当者", "メモ"]];
+        for (const row of jobs) {
+          const j = row.job || row, lots = row.lots || [], outputs = row.outputs || [];
+          details.push([j.work_date || "", j.source_item_name || "", Number(j.input_weight_kg || 0), Number(j.output_weight_kg || 0), Number(j.loss_weight_kg || 0), Number(j.yield_percent || 0), j.purchase_price_yen_per_kg ?? "未計算", j.input_cost_yen ?? "未計算", j.input_cost_yen != null && Number(j.output_weight_kg) > 0 ? Number(j.input_cost_yen) / Number(j.output_weight_kg) : "未計算", lots.map(x => `${x.lot_no || x.qr_key} ${x.used_weight_kg}kg`).join(" / "), outputs.map(x => `${x.item_name} ${x.output_weight_kg}kg`).join(" / "), j.created_by_name || "", j.note || ""]);
+        }
+        XLSX.utils.book_append_sheet(wb, aoaSheet(details, [12, 20, 14, 14, 14, 14, 22, 18, 25, 35, 35, 16, 30]), "トリミング明細");
+        const priceRows = [["週開始（月曜）", "品目", "産地", "仕入先", "税抜円/kg", "登録日時", "更新日時"], ...prices.map(p => [p.week_start || "", p.item_name || "", p.origin || "", p.supplier || "", Number(p.price_yen_per_kg || 0), p.created_at || "", p.updated_at || ""])];
+        XLSX.utils.book_append_sheet(wb, aoaSheet(priceRows, [16, 20, 15, 22, 15, 22, 22]), "仕入価格");
+        return wb;
+      }
+      async function v1116DownloadTrimmingArchive(key) {
+        if (!["admin", "worker", "buyer", "clerk"].includes(db.role)) return alert("このExcelを出力する権限がありません");
+        try {
+          const ans = await callRpc("get_monthly_trimming_archive_v1116", { p_target_month: v1101MonthDate(key) }), jobs = ans?.jobs || [], prices = ans?.prices || [];
+          if (!jobs.length && !prices.length) return alert("対象月の歩留まり・仕入価格データはありません");
+          const wb = v1116TrimmingWorkbook(key, jobs, prices);
+          if (!wb) return;
+          const fileName = `歩留まり・仕入価格履歴_${key}.xlsx`;
+          downloadWorkbookXlsx(wb, fileName);
+          await v1101RecordCreated("trimming", key, fileName, jobs.length + prices.length);
+          await v1101ArchivePage(`${monthLabel(v1101MonthDate(key))}の歩留まり・仕入価格Excelを作成しました。デスクネッツ文書管理へ保管後、管理者が保存確認を記録してください。`);
+        } catch (e) {
+          alert(`Excelを作成できませんでした。\n${e.message || e}`);
+        }
       }
 
       /* ===== v1.115 現場トリミング登録 ===== */
