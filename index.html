@@ -2774,6 +2774,23 @@ n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>
   background:linear-gradient(135deg, #48627c 0%, #718ba5 100%) !important; color:#fff !important; border-color:transparent !important;
       }
 </style>
+    <style id="v1118HorizontalHomeGradients">
+      .homePrimary .btn.homeBtnInventoryManage, .viewerHome .btn.homeBtnInventoryManage {
+        background:linear-gradient(90deg,#0878d8 0%,#2499ea 46%,#9bd5f8 100%) !important;
+      }
+      .homePrimary .btn.homeBtnQr, .viewerHome .btn.homeBtnQr {
+        background:linear-gradient(90deg,#087882 0%,#22a8b7 48%,#83e2e8 100%) !important;
+      }
+      .homePrimary .btn.homeBtnTrimming, .viewerHome .btn.homeBtnTrimming {
+        background:linear-gradient(90deg,#a51f6f 0%,#d94d92 48%,#f3a8c9 100%) !important;
+      }
+      .homePrimary .btn.homeBtnYield, .viewerHome .btn.homeBtnYield {
+        background:linear-gradient(90deg,#6f3c32 0%,#a96954 48%,#e2b29f 100%) !important;
+      }
+      .homePrimary .btn.homeBtnPurchasePrice, .viewerHome .btn.homeBtnPurchasePrice {
+        background:linear-gradient(90deg,#415a74 0%,#718ba5 48%,#b9ccdc 100%) !important;
+      }
+    </style>
 </head>
   <body>
     <div id="app"></div>
@@ -3510,8 +3527,7 @@ lastInputAt=r.createdAt;lastInputTime=new Date(r.createdAt).toLocaleTimeString("
 go:"qrHome()",can:()=>qrCanUse()},{label:"在庫報告コピー",cls:"homeBtnReport",go:"lineCopyPage()",can:()=>canWorkerReport()},{label:"品目設定",
 cls:"homeBtnItems",go:"itemsPage()",can:()=>canManageItems()},{label:"適正在庫設定",cls:"homeBtnSettings",go:"settings()",can:()=>canSetSettings()},{
 label:"産地状況・市場動向メモ",cls:"homeBtnMarket",go:"marketMemoPage()",can:()=>canViewMemo()},{label:"網コンテナ在庫",cls:"homeBtnMesh",go:"meshContainerPage()",
-can:()=>true},{label:"廃棄管理",cls:"homeBtnWaste",go:"wasteManagementPage()",can:()=>true},{label:"棚卸しモード",cls:"homeBtnCount",go:"inventoryCountHome()",
-can:()=>canInventoryCountView()}]
+can:()=>true},{label:"廃棄管理",cls:"homeBtnWaste",go:"wasteManagementPage()",can:()=>true}]
 ;const buttons=homeButtons.filter(x=>x.can()).map(x=>`<button class="btn ${x.cls}" onclick="${x.go}">${x.label}</button>`).join("")
 ;const buyerCards=isBuyer?'<button class="btn homeBtnOrderCandidate" onclick="orderCandidatePage()">発注候補を見る</button><button class="btn homeBtnExcessCandidate" onclick="excessCandidatePage()">過多品目を見る</button>':""
 ;pageShell("SEIKA＋",`${esc(db.user)} / ${ROLE[db.role]}`,`${simpleNotice}${summary}<div class="homePrimary ${["viewer","office_viewer","sales","clerk"].includes(db.role)?"viewerHome":""}">${buyerCards}${buttons}</div>`,{
@@ -6196,6 +6212,7 @@ p_lots:lots,p_outputs:outputs,p_note:document.getElementById("trimNote")?.value.
 ;if(!menu)return
 ;if(v1115CanTrimmingEdit()&&!document.getElementById("v1115TrimHome"))menu.insertAdjacentHTML("beforeend",'<button id="v1115TrimHome" class="btn homeBtnTrimming" onclick="trimmingPage()">トリミング・歩留まり登録</button>')
 ;if(!document.getElementById("v1115YieldHome"))menu.insertAdjacentHTML("beforeend",`<button id="v1115YieldHome" class="btn homeBtnYield" onclick="yieldReportPage()">品目別歩留まり表</button><button id="v1115PriceHome" class="btn homeBtnPurchasePrice" onclick="purchasePricesPage()">仕入れ価格表</button>`)
+;if(canInventoryCountView()&&!document.getElementById("v1118CountHome"))menu.insertAdjacentHTML("beforeend",'<button id="v1118CountHome" class="btn homeBtnCount" onclick="inventoryCountHome()">棚卸しモード</button>')
 }const v1115HomeBase=home;home=function(){v1115HomeBase();v1115AddHomeButtons()};
 /* ===== v1.115 LINE在庫報告：通常在庫＋QR在庫 ===== */async function v1115LineInventoryRows(){
 const qrKgByItem={},unconvertibleItemIds=new Set,lots=await v163SelectAll("qr_lots","select=*&active=eq.true&order=qr_key.asc")
