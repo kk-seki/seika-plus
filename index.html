@@ -5647,6 +5647,9 @@
       function fmt(n) {
         return yen(n).toLocaleString("ja-JP");
       }
+      function fmtRounded(n) {
+        return Math.round(Number(n || 0)).toLocaleString("ja-JP");
+      }
       function nowIso() {
         return new Date().toISOString();
       }
@@ -14605,7 +14608,7 @@ ${e.message || e}`);
       }
       function v1107KataokaHtml(kataoka) {
         if (!(kataoka?.kg > 0) && !(kataoka?.bases > 0)) return "";
-        const amount = kataoka.kg > 0 ? `${fmt(kataoka.kg)}kg` : "重量未確定",
+        const amount = kataoka.kg > 0 ? `${fmtRounded(kataoka.kg)}kg` : "重量未確定",
           bases = kataoka.bases > 0 ? `（${fmt(kataoka.bases)}基）` : "";
         return `<span class="small qrKataokaStock" style="display:block;margin-top:4px;color:#7c2d12;font-weight:800">片岡在庫：${amount}${bases}</span>`;
       }
@@ -14617,10 +14620,10 @@ ${e.message || e}`);
         if (!hasNormal && !hasLarge) return "";
         let html;
         if (hasNormal && hasLarge)
-          html = `<span class="stockVal">${fmt(total)}kg</span><span class="qrContainerBreakdown"><span class="qrNormalStock">通常 ${fmt(normal)}kg</span><span class="qrLargeStock">大型 ${fmt(large.bases)}基<br><small>${large.kg > 0 ? `合計 ${fmt(large.kg)}kg` : "合計重量 未確定"}</small></span></span>`;
+          html = `<span class="stockVal">${fmtRounded(total)}kg</span><span class="qrContainerBreakdown"><span class="qrNormalStock">通常 ${fmtRounded(normal)}kg</span><span class="qrLargeStock">大型 ${fmt(large.bases)}基<br><small>${large.kg > 0 ? `合計 ${fmtRounded(large.kg)}kg` : "合計重量 未確定"}</small></span></span>`;
         else if (hasLarge)
-          html = `<span class="stockVal qrLargeOnly">${fmt(large.bases)}基</span><span class="qrLargeKg">${large.kg > 0 ? `合計 ${fmt(large.kg)}kg` : "合計重量 未確定"}</span>`;
-        else html = `<span class="stockVal">${fmt(normal)}kg</span>${normalQr ? `<span class="small qrNormalOnly">QR通常 ${fmt(normalQr)}kg</span>` : ""}`;
+          html = `<span class="stockVal qrLargeOnly">${fmt(large.bases)}基</span><span class="qrLargeKg">${large.kg > 0 ? `合計 ${fmtRounded(large.kg)}kg` : "合計重量 未確定"}</span>`;
+        else html = `<span class="stockVal">${fmtRounded(normal)}kg</span>${normalQr ? `<span class="small qrNormalOnly">QR通常 ${fmtRounded(normalQr)}kg</span>` : ""}`;
         return html + v1107KataokaHtml(kataoka);
       }
       const v1106WeeklyTableHtmlCore = weeklyTableHtml;
@@ -18718,6 +18721,261 @@ ${e.message || e}`);
           /<\/div>\s*$/,
           '<div class="notice" style="margin-top:10px"><b>品質評価は登録済みです</b><div class="small">1ロットにつき品質評価は1件です。内容の変更は「訂正」、写真だけ追加する場合は「写真追加」を使用してください。</div></div></div>',
         );
+      };
+
+
+
+
+
+      /* ===== v1.115 歩留まり・仕入価格表 ===== */
+      function v1115Monday(dateText) { const d=new Date(`${dateText||todayKey()}T00:00:00`), day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); return ymdKey(d); }
+      function v1115CanPriceEdit() { return ["admin","worker","buyer","clerk"].includes(db.role); }
+      function v1115CanYieldEdit() { return ["admin","worker","buyer"].includes(db.role); }
+      async function purchasePricesPage(week = v1115Monday(todayKey()), msg = "") {
+        week = v1115Monday(week);
+        setScreen("purchasePrices",[week,msg]); pageShell("仕入れ価格表","読み込み中",'<div class="card"><div class="notice">価格を読み込んでいます。</div></div>');
+        try { const rows=await callRpc("get_purchase_prices",{p_week_start:week}); v1115RenderPrices(week,Array.isArray(rows)?rows:[],msg); } catch(e) { pageShell("仕入れ価格表","読み込みエラー",`<div class="err">${esc(v161ErrorText(e))}</div><button class="btn blue" onclick="purchasePricesPage('${esc(week)}')">再読み込み</button>`); }
+      }
+      function v1115RenderPrices(week, rows, msg="") {
+        const body=rows.map((r)=>`<tr><td>${esc(r.item_name)}</td><td>${esc(r.origin||"-")}</td><td>${esc(r.supplier||"-")}</td><td style="text-align:right">${money(r.price_yen_per_kg)}円</td></tr>`).join("")||'<tr><td colspan="4" class="small">この週の価格は未登録です。</td></tr>';
+        const edit=v1115CanPriceEdit()?`<div class="card"><b>価格を登録・上書き</b><div class="small">同一の週・品目・産地・仕入先は上書き保存します。金額は税抜円/kgです。</div><div class="row" style="margin-top:9px"><div><label class="label">品目</label><input id="priceItem" class="input" list="v1115PriceItems"></div><div><label class="label">単価（税抜円/kg）</label><input id="priceValue" class="input" inputmode="decimal"></div></div><datalist id="v1115PriceItems">${activeItems().map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist><div class="row"><div><label class="label">産地</label><input id="priceOrigin" class="input"></div><div><label class="label">仕入先</label><input id="priceSupplier" class="input"></div></div><button class="btn green" style="width:100%;margin-top:10px" onclick="v1115SavePrice('${esc(week)}')">この週の価格を保存</button></div>`:"<div class=\"notice\">価格の登録・変更は管理者・青果社員・仕入れ担当者・事務員のみです。</div>";
+        pageShell("仕入れ価格表",`${week.replaceAll("-","/")}週（月曜始まり）`,`${msg?`<div class="ok">${esc(msg)}</div>`:""}<div class="card"><label class="label">週を選択</label><input id="priceWeek" type="date" class="input" value="${esc(week)}" onchange="purchasePricesPage(v1115Monday(this.value))"></div>${edit}<div class="card"><table class="table"><thead><tr><th>品目</th><th>産地</th><th>仕入先</th><th>税抜単価</th></tr></thead><tbody>${body}</tbody></table></div>`);
+      }
+      async function v1115SavePrice(week) { try { const item=document.getElementById("priceItem")?.value.trim(),origin=document.getElementById("priceOrigin")?.value.trim()||"",supplier=document.getElementById("priceSupplier")?.value.trim()||"",price=parseDecimalInput(document.getElementById("priceValue")?.value); if(!item||!(price>=0)) throw new Error("品目と0以上の税抜単価を入力してください"); const r=await callRpc("upsert_purchase_price",{p_week_start:week,p_item_name:item,p_origin:origin,p_supplier:supplier,p_price_yen_per_kg:price}); if(!r?.ok) throw new Error(r?.message||"価格を保存できませんでした"); purchasePricesPage(week,"仕入れ価格を保存しました。"); }catch(e){alert(e.message||"価格を保存できませんでした");} }
+      async function yieldReportPage(from = "", to = "") {
+        setScreen("yieldReport",[from,to]); pageShell("品目別歩留まり表","読み込み中",'<div class="card"><div class="notice">トリミング履歴を読み込んでいます。</div></div>');
+        try { const rows=await callRpc("get_trimming_jobs",{p_from:from||null,p_to:to||null}); v1115RenderYieldReport(Array.isArray(rows)?rows:[],from,to); } catch(e) { pageShell("品目別歩留まり表","読み込みエラー",`<div class="err">${esc(v161ErrorText(e))}</div><button class="btn blue" onclick="yieldReportPage()">再読み込み</button>`); }
+      }
+      function v1115RenderYieldReport(rows,from,to) {
+        const group=new Map(); for(const row of rows){const j=row.job||row, key=j.source_item_name||"（品目未設定）", a=group.get(key)||{input:0,out:0,cost:0,count:0,priced:true};a.input+=Number(j.input_weight_kg||0);a.out+=Number(j.output_weight_kg||0);a.priced&&=j.input_cost_yen!==null&&j.input_cost_yen!==undefined;if(j.input_cost_yen!==null&&j.input_cost_yen!==undefined)a.cost+=Number(j.input_cost_yen);a.count++;group.set(key,a)}
+        const table=[...group.entries()].map(([name,a])=>`<tr><td>${esc(name)}</td><td>${a.count}件</td><td>${fmtRounded(a.input)}kg</td><td>${fmtRounded(a.out)}kg</td><td>${a.input?fmtRounded(a.out/a.input*100):"-"}%</td><td>${a.priced?money(a.cost)+"円":"未計算（価格未登録）"}</td><td>${a.out&&a.priced?money(a.cost/a.out)+"円/kg":"未計算"}</td></tr>`).join("")||'<tr><td colspan="7" class="small">該当するトリミング記録はありません。</td></tr>';
+        const detail=rows.map((row)=>{const j=row.job||row, lots=row.lots||[];const price=j.purchase_price_yen_per_kg!=null?`${money(j.purchase_price_yen_per_kg)}円/kg（登録時価格）`:"未計算（価格未登録）";return `<tr><td>${esc(j.work_date||"")}</td><td>${esc(j.source_item_name||"")}</td><td>${fmtRounded(j.input_weight_kg)}kg</td><td>${fmtRounded(j.output_weight_kg)}kg</td><td>${fmtRounded(j.yield_percent)}%</td><td>${price}</td><td>${j.input_cost_yen!=null?money(j.input_cost_yen)+"円":"未計算"}</td></tr>`}).join("")||'<tr><td colspan="7" class="small">該当なし</td></tr>';
+        pageShell("品目別歩留まり表","登録時の仕入れ価格を原価として表示",`<div class="card"><div class="row"><div><label class="label">開始日</label><input id="yieldFrom" type="date" class="input" value="${esc(from)}"></div><div><label class="label">終了日</label><input id="yieldTo" type="date" class="input" value="${esc(to)}"></div></div><button class="btn blue" style="width:100%;margin-top:9px" onclick="yieldReportPage(document.getElementById('yieldFrom').value,document.getElementById('yieldTo').value)">絞り込む</button></div><div class="card"><b>品目別集計</b><table class="table"><thead><tr><th>品目</th><th>件数</th><th>使用</th><th>出力</th><th>歩留</th><th>原価</th><th>出力原価</th></tr></thead><tbody>${table}</tbody></table></div><div class="card"><b>明細</b><table class="table"><thead><tr><th>作業日</th><th>品目</th><th>使用</th><th>出力</th><th>歩留</th><th>当時単価</th><th>投入原価</th></tr></thead><tbody>${detail}</tbody></table></div>`);
+      }
+
+      /* ===== v1.115 現場トリミング登録 ===== */
+      const v1115Trimming = { lots: [], outputs: [] };
+      function v1115CanTrimmingEdit() { return db.role === "admin" || db.role === "worker"; }
+      function v1115Uuid() { return globalThis.crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
+      function v1115Num(v) { const n = Number(v); return Number.isFinite(n) ? n : NaN; }
+      function v1115LotUnitWeight(lot) {
+        const q = v1115Num(lot?.current_qty ?? lot?.current_quantity), cur = v1115Num(lot?.current_weight);
+        if (q > 0 && cur > 0) return cur / q;
+        const received = v1115Num(lot?.received_qty ?? lot?.initial_quantity), total = v1115Num(lot?.total_weight);
+        if (received > 0 && total > 0) return total / received;
+        return null;
+      }
+      function v1115TrimmingReset() { v1115Trimming.lots = []; v1115Trimming.outputs = []; }
+      function v1115TrimmingOutputOptions(selected = "") {
+        return `<option value="">入替品の通常在庫品目を選択</option>${activeItems().filter((it) => /入替品|入れ替え品/.test(it.name)).map((it) => `<option value="${esc(String(it.id))}" ${String(it.id) === String(selected) ? "selected" : ""}>${esc(it.name)}</option>`).join("")}`;
+      }
+      function v1115TrimmingTotals() {
+        let input = 0, output = 0;
+        for (const line of v1115Trimming.lots) {
+          const amount = v1115Num(document.getElementById(`trimLotAmount_${line.id}`)?.value);
+          if (!(amount > 0) || !(line.unitWeight > 0)) continue;
+          input += line.mode === "qty" ? amount * line.unitWeight : amount;
+        }
+        for (const line of v1115Trimming.outputs) {
+          const mode = document.getElementById(`trimOutMode_${line.id}`)?.value || "weight";
+          const weight = v1115Num(document.getElementById(`trimOutWeight_${line.id}`)?.value);
+          const qty = v1115Num(document.getElementById(`trimOutQty_${line.id}`)?.value);
+          const unit = v1115Num(document.getElementById(`trimOutUnit_${line.id}`)?.value);
+          output += mode === "weight" ? (weight > 0 ? weight : 0) : (qty > 0 && unit > 0 ? qty * unit : 0);
+        }
+        return { input: yen(input), output: yen(output), loss: yen(input - output), yield: input > 0 ? yen((output / input) * 100) : 0 };
+      }
+      function v1115CaptureTrimmingForm() {
+        for (const x of v1115Trimming.lots) { const a=document.getElementById(`trimLotAmount_${x.id}`); const m=document.getElementById(`trimLotMode_${x.id}`); if(a) x.amount=a.value; if(m) x.mode=m.value; }
+        for (const x of v1115Trimming.outputs) { for (const [key,prefix] of [["mode","trimOutMode"],["weight","trimOutWeight"],["qty","trimOutQty"],["unitWeight","trimOutUnit"],["itemId","trimOutNormal"],["apply","trimOutApply"]]) { const el=document.getElementById(`${prefix}_${x.id}`); if(el) x[key]=el.value; } }
+      }
+      function v1115RefreshTrimmingSummary() { const t=v1115TrimmingTotals(), el=document.getElementById("trimTotals"); if(el) el.innerHTML=`<div class="box">使用重量<b>${fmtRounded(t.input)}kg</b></div><div class="box">入替品合計<b>${fmtRounded(t.output)}kg</b></div><div class="box">ロス<b>${fmtRounded(t.loss)}kg</b></div><div class="box">歩留まり<b>${fmtRounded(t.yield)}%</b></div>`; }
+      function v1115RenderTrimming() {
+        v1115CaptureTrimmingForm();
+        const first = v1115Trimming.lots[0], totals = v1115TrimmingTotals();
+        const lotCards = v1115Trimming.lots.map((line) => {
+          const max = line.mode === "qty" ? line.currentQty : line.currentKg;
+          return `<div class="card" style="margin:9px 0"><div class="row"><b>${esc(line.itemName)}</b><button class="btn danger" style="padding:6px 9px" onclick="v1115RemoveTrimLot('${line.id}')">削除</button></div><div class="small">ロット ${esc(line.lotNo || line.qrKey)} / 残 ${fmt(line.currentQty)} ${esc(line.unit)} / 換算 ${fmt(line.unitWeight)}kg/単位</div><label class="label" style="margin-top:7px">入力方法</label><select id="trimLotMode_${line.id}" class="input" onchange="v1115ChangeTrimLotMode('${line.id}')"><option value="qty" ${line.mode === "qty" ? "selected" : ""}>使用数量（${esc(line.unit)}）</option><option value="weight" ${line.mode === "weight" ? "selected" : ""}>使用重量（kg）</option></select><label class="label" style="margin-top:7px">使用${line.mode === "qty" ? esc(line.unit) : "重量kg"}（最大 ${fmt(max)}${line.mode === "qty" ? esc(line.unit) : "kg"}）</label><input id="trimLotAmount_${line.id}" class="input" inputmode="decimal" min="0" max="${max}" value="${esc(line.amount || "")}" oninput="v1115RefreshTrimmingSummary()" placeholder="0より大きい値"></div>`;
+        }).join("");
+        const outputCards = v1115Trimming.outputs.map((line, index) => `<div class="card" style="margin:9px 0"><div class="row"><b>入替品 ${index + 1}</b><button class="btn danger" style="padding:6px 9px" onclick="v1115RemoveTrimOutput('${line.id}')">削除</button></div><label class="label">入替品の通常在庫品目（必須）</label><select id="trimOutNormal_${line.id}" class="input">${v1115TrimmingOutputOptions(line.itemId)}</select><div class="small">元品目名を含む「入替品」または「入れ替え品」を選択します。名称はサーバーの品目マスタで確定します。</div><label class="label" style="margin-top:7px">重量入力方式</label><select id="trimOutMode_${line.id}" class="input" onchange="v1115RefreshTrimmingSummary()"><option value="weight" ${line.mode !== "qty" ? "selected" : ""}>重量kgで入力</option><option value="qty" ${line.mode === "qty" ? "selected" : ""}>数量×1個重量で入力</option></select><label class="label" style="margin-top:7px">出力重量kg</label><input id="trimOutWeight_${line.id}" class="input" inputmode="decimal" value="${esc(line.weight || "")}" placeholder="例：80" oninput="v1115RefreshTrimmingSummary()"><div class="row" style="margin-top:7px"><div><label class="label">出力数量</label><input id="trimOutQty_${line.id}" class="input" inputmode="decimal" value="${esc(line.qty || "")}" placeholder="数量" oninput="v1115RefreshTrimmingSummary()"></div><div><label class="label">1個重量kg</label><input id="trimOutUnit_${line.id}" class="input" inputmode="decimal" value="${esc(line.unitWeight || "")}" placeholder="例：0.2" oninput="v1115RefreshTrimmingSummary()"></div></div><label class="label" style="margin-top:7px">通常在庫へ反映</label><select id="trimOutApply_${line.id}" class="input"><option value="true" ${line.apply !== "false" ? "selected" : ""}>反映する</option><option value="false" ${line.apply === "false" ? "selected" : ""}>反映しない</option></select></div>`).join("");
+        pageShell("トリミング登録", first ? `${esc(first.itemName)} / ${v1115Trimming.lots.length}ロット` : "QRロットを追加してください", `<div class="notice">同じ品目の複数QRロットを使用できます。QR在庫は保存時に原子的に減算されます。</div><div class="card"><label class="label">作業日</label><input id="trimWorkDate" type="date" class="input" value="${todayKey()}"><label class="label" style="margin-top:8px">QRキーまたはロット番号</label><div class="row"><input id="trimQrKey" class="input" placeholder="読取／入力"><button class="btn blue" onclick="v1115AddTrimLot()">ロット追加</button></div></div><div id="trimLotCards">${lotCards || '<div class="notice">まだ使用ロットがありません。</div>'}</div><button class="btn btn2" style="width:100%" onclick="v1115AddTrimOutput()">＋ 入替品を追加</button><div id="trimOutputCards">${outputCards || '<div class="notice">入替品を1件以上追加してください。</div>'}</div><div class="card"><b>重量集計</b><div id="trimTotals" class="grid" style="margin-top:8px"><div class="box">使用重量<b>${fmtRounded(totals.input)}kg</b></div><div class="box">入替品合計<b>${fmtRounded(totals.output)}kg</b></div><div class="box">ロス<b>${fmtRounded(totals.loss)}kg</b></div><div class="box">歩留まり<b>${fmtRounded(totals.yield)}%</b></div></div><label class="label" style="margin-top:10px">メモ（任意）</label><textarea id="trimNote" class="textarea" placeholder="作業内容・特記事項"></textarea><button class="btn green" style="width:100%;margin-top:12px" onclick="v1115SaveTrimming()">確認して登録</button></div>`);
+      }
+      function trimmingPage() { if (!v1115CanTrimmingEdit()) return alert("トリミング登録は管理者・青果社員のみです"); v1115TrimmingReset(); v1115RenderTrimming(); }
+      async function v1115AddTrimLot() {
+        const key = document.getElementById("trimQrKey")?.value.trim(); if (!key) return alert("QRキーまたはロット番号を入力してください");
+        try {
+          const lot = await qrFindLot(key); if (!lot) throw new Error("QRロットが見つかりません");
+          const currentQty = v1115Num(lot.current_qty ?? lot.current_quantity), unitWeight = v1115LotUnitWeight(lot), currentKg = qrLotCurrentKg(lot);
+          if (!(currentQty > 0)) throw new Error("このQRロットは在庫がありません"); if (!(unitWeight > 0) || !(currentKg > 0)) throw new Error("このQRロットは重量換算できないため使用できません");
+          if (v1115Trimming.lots.some((x) => x.qrKey === lot.qr_key)) throw new Error("このQRロットは追加済みです");
+          const itemKey = String(lot.item_id ?? lot.item_name ?? "");
+          if (v1115Trimming.lots.length && v1115Trimming.lots[0].itemKey !== itemKey) throw new Error(`同一品目のみ追加できます（現在：${v1115Trimming.lots[0].itemName}）`);
+          v1115Trimming.lots.push({ id: v1115Uuid(), qrKey: lot.qr_key, lotNo: lot.lot_no, itemName: lot.item_name, itemKey, currentQty, currentKg, unitWeight, unit: qrLotUnit(lot), mode: "qty" });
+          v1115RenderTrimming();
+        } catch (e) { alert(e.message || "ロットを追加できませんでした"); }
+      }
+      function v1115ChangeTrimLotMode(id) { v1115CaptureTrimmingForm(); const x=v1115Trimming.lots.find((v)=>v.id===id); if(x) x.mode=document.getElementById(`trimLotMode_${id}`)?.value||"qty"; v1115RenderTrimming(); }
+      function v1115RemoveTrimLot(id) { v1115Trimming.lots=v1115Trimming.lots.filter((x)=>x.id!==id); v1115RenderTrimming(); }
+      function v1115AddTrimOutput() { v1115Trimming.outputs.push({id:v1115Uuid(),name:"",itemId:""}); v1115RenderTrimming(); }
+      function v1115RemoveTrimOutput(id) { v1115Trimming.outputs=v1115Trimming.outputs.filter((x)=>x.id!==id); v1115RenderTrimming(); }
+      async function v1115SaveTrimming() {
+        try {
+          if (!v1115Trimming.lots.length || !v1115Trimming.outputs.length) throw new Error("使用ロットと入替品を1件以上登録してください");
+          const lots = v1115Trimming.lots.map((x) => { const amount=v1115Num(document.getElementById(`trimLotAmount_${x.id}`)?.value); if(!(amount>0)||amount>(x.mode==="qty"?x.currentQty:x.currentKg)+0.0001) throw new Error(`${x.lotNo||x.qrKey} の使用量を確認してください`); return x.mode==="qty"?{qr_key:x.qrKey,usage_mode:"qty",used_qty:amount}:{qr_key:x.qrKey,usage_mode:"weight",used_weight_kg:amount}; });
+          const outputs = v1115Trimming.outputs.map((x) => { const mode=document.getElementById(`trimOutMode_${x.id}`)?.value, weight=v1115Num(document.getElementById(`trimOutWeight_${x.id}`)?.value), qty=v1115Num(document.getElementById(`trimOutQty_${x.id}`)?.value), unit=v1115Num(document.getElementById(`trimOutUnit_${x.id}`)?.value), itemId=document.getElementById(`trimOutNormal_${x.id}`)?.value||"", apply=document.getElementById(`trimOutApply_${x.id}`)?.value !== "false"; if(!itemId) throw new Error("入替品の通常在庫品目を選択してください"); const label=activeItems().find((it)=>String(it.id)===String(itemId))?.name||"入替品"; if(mode==="weight" && !(weight>0)) throw new Error(`${label} の出力重量を確認してください`); if(mode==="qty" && (!(qty>0)||!(unit>0))) throw new Error(`${label} の数量と1個重量を確認してください`); return mode==="weight"?{mode,output_weight_kg:weight,apply_to_normal_inventory:apply,item_id:itemId}:{mode,output_qty:qty,unit_weight_kg:unit,apply_to_normal_inventory:apply,item_id:itemId}; });
+          const t=v1115TrimmingTotals(); if(!(t.input>0)||t.output>t.input+0.011) throw new Error("入替品合計重量は使用重量以下にしてください");
+          if(!confirm(`トリミングを登録します。\n\n使用重量：${fmtRounded(t.input)}kg\n入替品：${fmtRounded(t.output)}kg\nロス：${fmtRounded(t.loss)}kg\n歩留まり：${fmtRounded(t.yield)}%\n\nQR在庫と通常在庫反映を同時に保存します。`)) return;
+          const ans=await callRpc("create_trimming_job",{p_operation_id:v1115Uuid(),p_work_date:document.getElementById("trimWorkDate")?.value||todayKey(),p_lots:lots,p_outputs:outputs,p_note:document.getElementById("trimNote")?.value.trim()||"",p_user_name:db.user||""});
+          if(!ans?.ok) throw new Error(ans?.message||"トリミングを登録できませんでした"); await loadCloud(); v1115TrimmingReset(); pageShell("トリミング登録完了","保存済み",`<div class="ok">トリミングを登録しました。</div><button class="btn blue" style="width:100%" onclick="trimmingPage()">続けて登録</button><button class="btn btn2" style="width:100%;margin-top:8px" onclick="home()">ホームへ</button>`);
+        } catch(e) { alert(e.message||"トリミングを登録できませんでした"); }
+      }
+      function v1115AddHomeButtons() { const menu=document.querySelector(".homePrimary, .homeGrid, .menu"); if(!menu) return; if(v1115CanTrimmingEdit() && !document.getElementById("v1115TrimHome")) menu.insertAdjacentHTML("beforeend",'<button id="v1115TrimHome" class="btn green" onclick="trimmingPage()">トリミング・歩留まり登録</button>'); if(!document.getElementById("v1115YieldHome")) menu.insertAdjacentHTML("beforeend",`<button id="v1115YieldHome" class="btn blue" onclick="yieldReportPage()">品目別歩留まり表</button><button id="v1115PriceHome" class="btn btn2" onclick="purchasePricesPage()">仕入れ価格表</button>`); }
+      const v1115HomeBase = home;
+      home = function () { v1115HomeBase(); v1115AddHomeButtons(); };
+
+      /* ===== v1.115 LINE在庫報告：通常在庫＋QR在庫 ===== */
+      async function v1115LineInventoryRows() {
+        const qrKgByItem = {},
+          unconvertibleItemIds = new Set(),
+          lots = await v163SelectAll("qr_lots", "select=*&active=eq.true&order=qr_key.asc");
+        for (const lot of lots) {
+          if (lot?.active === false || !(Number(lot?.current_qty ?? lot?.current_quantity ?? 0) > 0)) continue;
+          const resolved = qrResolveInventoryItem(lot);
+          if (!resolved.item) continue;
+          const itemId = String(resolved.item.id),
+            kg = qrLotCurrentKg(lot);
+          if (kg > 0) qrKgByItem[itemId] = yen((qrKgByItem[itemId] || 0) + kg);
+          else unconvertibleItemIds.add(itemId);
+        }
+        return activeItems()
+          .filter((item) => hasOptimalStockSetting(db.settings[item.id]))
+          .map((item) => {
+            const normalKg = yen(latestTotal(item.id)),
+              qrKg = yen(qrKgByItem[String(item.id)] || 0),
+              totalKg = yen(normalKg + qrKg),
+              status = judge(totalKg, db.settings[item.id]);
+            return { item, normalKg, qrKg, totalKg, status, unconvertible: unconvertibleItemIds.has(String(item.id)) };
+          });
+      }
+      async function makeLineCopyText() {
+        const rows = await v1115LineInventoryRows(),
+          excess = [],
+          shortage = [];
+        for (const row of rows) {
+          if (row.status !== "excess" && row.status !== "shortage") continue;
+          const warning = row.unconvertible ? "\n  ※kg換算できないQRロットがあります" : "",
+            line = `・${row.item.name}：${fmt(row.totalKg)}kg（通常${fmt(row.normalKg)}kg＋QR${fmt(row.qrKg)}kg）${warning}`;
+          if (row.status === "excess") excess.push(line);
+          else shortage.push(line);
+        }
+        return `【在庫報告】\n※通常在庫とQR在庫の合計\n\n■ 過多品目\n${excess.length ? excess.join("\n") : "なし"}\n\n■ 不足品目\n${shortage.length ? shortage.join("\n") : "なし"}`;
+      }
+      lineCopyPage = async function (msg = "") {
+        setScreen("lineCopyPage", [msg]);
+        if (!canWorkerReport()) {
+          alert("管理者・青果社員のみ表示できます");
+          return home();
+        }
+        pageShell("在庫報告コピー", "QR在庫を読み込んでいます", '<div class="card"><div class="notice">通常在庫とQR在庫を合算しています。</div></div>');
+        try {
+          const text = await makeLineCopyText();
+          pageShell(
+            "在庫報告コピー",
+            "適正在庫設定済み品目を通常在庫＋QR在庫で判定",
+            `${msg ? `<div class="ok">${esc(msg)}</div>` : ""}<div class="card"><textarea id="lineCopyText" class="textarea">${esc(text)}</textarea><div class="row" style="margin-top:10px"><button class="btn blue" onclick="copyTextFrom('lineCopyText')">コピー</button><button class="btn btn2" onclick="shareLineFrom('lineCopyText')">LINEで共有</button><button class="btn btn2" onclick="shareLineWorksFrom('lineCopyText')">LINE WORKSで共有</button></div></div>`,
+          );
+        } catch (error) {
+          pageShell("在庫報告コピー", "読み込みエラー", `<div class="err">QR在庫を取得できませんでした。通常在庫だけの不完全な文面は作成していません。<br>${esc(v161ErrorText(error))}</div><button class="btn blue" onclick="lineCopyPage()">再読み込み</button>`);
+        }
+      };
+
+      /* ===== v1.115 通常在庫の差分修正 ===== */
+      const v1115ItemCardBase = itemCard;
+      itemCard = function (it, r, total, order = false, shortage = 0) {
+        const html = v1115ItemCardBase(it, r, total, order, shortage);
+        if (order) return html;
+        const itemId = esc(String(it.id ?? ""));
+        return html.replace(
+          '<div class="mini" style="grid-template-columns:1fr 1fr">',
+          `<div class="mini" style="grid-template-columns:1fr 1fr"><button class="btn blue" style="grid-column:1/-1" data-item-id="${itemId}" onclick="moveForm(this.dataset.itemId,'調整')" ${canEdit() ? "" : "disabled"}>在庫を差分修正</button>`,
+        );
+      };
+      const v1115MoveFormBase = moveForm;
+      moveForm = function (itemId, type) {
+        if (type !== "調整") return v1115MoveFormBase(itemId, type);
+        if (!canEdit()) return alert("この権限では在庫修正できません");
+        const it = db.items.find((item) => String(item.id) === String(itemId));
+        if (!it) return alert("品目が見つかりません");
+        setScreen("moveForm", [itemId, type]);
+        const before = latestTotal(it.id),
+          safeItemId = esc(String(it.id));
+        pageShell(
+          "在庫を差分修正",
+          `${esc(it.name)} / 修正前 ${fmt(before)}kg`,
+          `<div class="card"><div class="notice"><b>現在庫を置き換える機能ではありません。</b><br>増やす、または減らす数量を入力してください。</div><label class="label" style="margin-top:12px">修正方法（必須）</label><div class="grid"><label class="box"><input type="radio" name="v1115AdjustDirection" value="増やす"> 増やす</label><label class="box"><input type="radio" name="v1115AdjustDirection" value="減らす"> 減らす</label></div><label class="label" style="margin-top:12px">修正数量kg（必須）</label><input id="v1115AdjustKg" class="input" inputmode="decimal" placeholder="例：10" oninput="v1115RefreshAdjustPreview('${safeItemId}')"><label class="label" style="margin-top:12px">修正理由（必須）</label><input id="mvMemo" class="input" maxlength="200" placeholder="例：実地確認で10kg不足"><div id="v1115AdjustPreview" class="notice" style="margin-top:12px">修正方法と数量を入力すると、修正後の在庫を表示します。</div><button id="moveSaveBtn" class="btn blue" style="width:100%;margin-top:14px" data-item-id="${safeItemId}" onclick="applyMove(this.dataset.itemId,'調整')">確認して差分修正する</button></div>`,
+        );
+        document.querySelectorAll('input[name="v1115AdjustDirection"]').forEach((input) => input.addEventListener("change", () => v1115RefreshAdjustPreview(itemId)));
+      };
+      function v1115AdjustmentValues(itemId) {
+        const direction = document.querySelector('input[name="v1115AdjustDirection"]:checked')?.value || "",
+          quantity = yen(Number(document.getElementById("v1115AdjustKg")?.value)),
+          before = yen(latestTotal(itemId)),
+          sign = direction === "増やす" ? 1 : direction === "減らす" ? -1 : 0,
+          after = yen(before + sign * quantity);
+        return { direction, quantity, before, after, difference: yen(sign * quantity) };
+      }
+      function v1115RefreshAdjustPreview(itemId) {
+        const box = document.getElementById("v1115AdjustPreview");
+        if (!box) return;
+        const value = v1115AdjustmentValues(itemId);
+        box.innerHTML = value.direction && value.quantity > 0
+          ? `<b>修正前 ${fmt(value.before)}kg → ${esc(value.direction)} ${fmt(value.quantity)}kg → 修正後 ${fmt(value.after)}kg</b>`
+          : "修正方法と数量を入力すると、修正後の在庫を表示します。";
+      }
+      const v1115ApplyMoveBase = applyMove;
+      applyMove = function (itemId, type) {
+        if (type !== "調整") return v1115ApplyMoveBase(itemId, type);
+        if (isMoveSaving) return;
+        const it = db.items.find((item) => String(item.id) === String(itemId));
+        if (!it) return alert("品目が見つかりません");
+        const value = v1115AdjustmentValues(itemId),
+          memo = document.getElementById("mvMemo")?.value.trim() || "";
+        if (!value.direction) return v161FocusField("v1115AdjustKg", "増やす・減らすを選択してください。");
+        if (!(value.quantity > 0)) return v161FocusField("v1115AdjustKg", "修正数量は0より大きくしてください。");
+        if (!memo) return v161FocusField("mvMemo", "修正理由を入力してください。");
+        if (value.after < 0) return v161FocusField("v1115AdjustKg", `現在庫 ${fmt(value.before)}kg を超えて減らすことはできません。`);
+        if (v161IsAbnormal(value.after, value.before) && !v161ConfirmAnomaly([`${it.name}: 現在 ${fmt(value.before)}kg → 修正後 ${fmt(value.after)}kg`], "差分修正後の在庫が大きく変化します")) return;
+        const directionLabel = value.direction === "増やす" ? "+" : "−";
+        if (!confirm(`在庫を差分修正します。\n\n品目：${it.name}\n修正前：${fmt(value.before)}kg\n修正：${directionLabel}${fmt(value.quantity)}kg\n修正後：${fmt(value.after)}kg\n理由：${memo}\n\nこの内容で保存しますか？`)) return;
+        const button = document.getElementById("moveSaveBtn");
+        if (button) { button.disabled = true; button.textContent = "保存中..."; }
+        try {
+          isMoveSaving = true;
+          const createdAt = nowIso(),
+            setting = db.settings[itemId],
+            status = judge(value.after, setting),
+            record = {
+              id: newId(), kind: `調整（${value.direction}）`, itemId, itemName: it.name,
+              total: value.after, setting: { ...setting }, status,
+              lines: [{ pack: 1, cases: value.quantity, subtotal: value.quantity, adjustment: true }],
+              user: db.user, role: db.role, createdAt,
+            };
+          db.records.push(record);
+          db.movements.push({
+            id: newId(), recordId: record.id, itemId, itemName: it.name,
+            type: `調整（${value.direction}）`, beforeTotal: value.before, afterTotal: value.after,
+            diffKg: value.difference, pack: 1, cases: value.quantity, memo,
+            user: db.user, role: db.role, createdAt,
+          });
+          save();
+          isMoveSaving = false;
+          if ((status === "shortage" || status === "excess") && canWorkerReport()) lineCopyPage("差分修正を端末に保存しました。クラウド同期状況は画面上部で確認してください。");
+          else stocks();
+        } catch (error) {
+          isMoveSaving = false;
+          alert(error?.message || "在庫を修正できませんでした");
+          moveForm(itemId, type);
+        }
       };
 
       boot().catch((e) => {
