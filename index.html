@@ -6573,7 +6573,90 @@ v178ResolvePendingInventoryConflict=async function(){
   try{const ans=await v188SendSyncItem(candidate,candidate.localPayload,remote.version);if(ans?.conflict)throw new Error("統合中に別の更新が入りました。元の入力を保持したまま、もう一度再送してください。");if(!ans?.ok)throw new Error(ans?.message||"統合データを保存できませんでした");stateVersion=Number(ans.version);const auth={user:db.user,userId:db.userId,role:db.role};db=normalize({...candidate.localPayload,...auth});v188PersistDb();v188WriteBase(candidate.localPayload,stateVersion);v161WriteQueue([]);markSync();setSyncState("保存済み","テスト棚卸し入力を他端末の更新と統合しました");if(historyTablesReady){try{await saveHistoryTablesNow();v188SetHistoryPending(false)}catch(e){v188SetHistoryPending(true);setSyncState("未同期","統合済み履歴を再送待ち")}}await v188IdbFlush();return{ok:true,merged:1}
   }catch(e){original.lastError=v161ErrorText(e);v161WriteQueue([original]);await v188IdbFlush();throw e}
 };
-/* v1.121の画面表示と起動は、この後に一度だけ行う */
+/* v1.122の画面表示と起動は、この後に一度だけ行う */
+/* ===== v1.122 テスト棚卸し同期救出（意味的正規化） ===== */
+const V122_APP_VERSION="v1.122"; APP_VERSION=V122_APP_VERSION; window.APP_VERSION=V122_APP_VERSION; document.title="SEIKA＋ v1.122 棚卸し同期救出修正版";
+function v122Own(o,k){return Object.prototype.hasOwnProperty.call(o||{},k)}
+function v122Blank(v){return v===undefined||v===null||(typeof v==="string"&&v.trim()==="")}
+function v122Number(v){if(v122Blank(v))return 0;const n=Number(v);return Number.isFinite(n)?n:v}
+function v122Actual(v){if(v122Blank(v))return {unset:true};const n=Number(v);return Number.isFinite(n)?n:v}
+function v122Text(v){return v122Blank(v)?"":String(v).trim()}
+function v122Boolean(v){if(v===true||v===1||v==="1"||String(v).toLowerCase()==="true")return true;return false}
+function v122Comparable(value,key,isQr){
+  if(key==="actualQty")return v122Actual(value);
+  if(key==="detailMode")return v122Blank(value)?"total":String(value).trim();
+  if(["packKg","caseCount","remainderKg","kgPerUnit","unitPrice","unitPriceYenPerKg","countedKg","amount","amountYen","count","packWeight"].includes(key))return v122Number(value);
+  if(key==="supplier")return v122Text(value);
+  if(key==="supplierRequired")return v122Boolean(value);
+  if(key==="memo")return v122Text(value);
+  if(key==="palletQtys")return Array.isArray(value)?value.map(v122Number):[];
+  return value;
+}
+function v122EqualValue(a,b){return JSON.stringify(a)===JSON.stringify(b)}
+function v122PresentRaw(v,key){if(key==="actualQty")return !v122Blank(v);if(Array.isArray(v))return v.length>0;return !v122Blank(v)}
+function v122PreferredRaw(local,remote,key){
+  const lp=v122PresentRaw(local,key),rp=v122PresentRaw(remote,key);
+  if(lp&&!rp)return v121Clone(local);if(rp&&!lp)return v121Clone(remote);
+  return v121Clone(local!==undefined?local:remote);
+}
+function v122Label(session,row,isQr,key){return v121ConflictLabel(session,row,isQr,key==="actualQty"?"実数":key)}
+const V122_INPUT_FIELDS=new Set(["actualQty","detailMode","packKg","caseCount","remainderKg","supplier","supplierRequired","kgPerUnit","unitPrice","unitPriceYenPerKg","countedKg","amount","amountYen","count","memo","palletQtys","packWeight"]);
+const V122_METADATA_FIELDS=new Set(["revision","updatedAt","updatedBy","lastUpdatedAt","lastUpdatedBy","inputAt","inputBy","snapshotCases","systemQty","difference","differenceQty","snapshotQty","currentQty","expectedQty","snapshotKg","systemKg","displayQty"]);
+function v122MergeInput(base,local,remote,key,session,row,isQr,conflicts){
+  const b=v122Comparable(base,key,isQr),l=v122Comparable(local,key,isQr),r=v122Comparable(remote,key,isQr);
+  if(v122EqualValue(l,b)&&v122EqualValue(r,b))return v122PreferredRaw(local,remote,key);
+  if(v122EqualValue(l,b))return v121Clone(remote);
+  if(v122EqualValue(r,b))return v121Clone(local);
+  if(v122EqualValue(l,r))return v122PreferredRaw(local,remote,key);
+  conflicts.push(v122Label(session,row,isQr,key));return v121Clone(local);
+}
+function v122Derived(base,local,remote){return v121Clone(remote!==undefined?remote:(local!==undefined?local:base))}
+function v122MergeTestRow(base,local,remote,session,isQr,conflicts){
+  if(local===undefined&&remote===undefined)return undefined;
+  if(base===undefined){
+    if(local===undefined)return v121Clone(remote);if(remote===undefined)return v121Clone(local);
+    /* same newly created row: semantic comparison prevents blank/default false positives */
+    const keys=new Set([...Object.keys(local||{}),...Object.keys(remote||{})]);let same=true;
+    for(const key of keys){if(V122_INPUT_FIELDS.has(key)&&!v122EqualValue(v122Comparable(local[key],key,isQr),v122Comparable(remote[key],key,isQr))){same=false;break}}
+    if(same)return v121Clone(v122PresentRaw(local?.actualQty,"actualQty")?local:remote);
+    conflicts.push(v121ConflictLabel(session,local||remote,isQr,"新規行"));return v121Clone(local);
+  }
+  if(local===undefined||remote===undefined)return v121PickValue(base,local,remote,v121ConflictLabel(session,base,isQr,"行の削除"),conflicts);
+  const out={},keys=new Set([...Object.keys(base||{}),...Object.keys(local||{}),...Object.keys(remote||{})]);
+  for(const key of keys){
+    if(key==="revision"){out[key]=Math.max(Number(base?.[key])||0,Number(local?.[key])||0,Number(remote?.[key])||0)+1;continue}
+    if(key==="updatedAt"||key==="lastUpdatedAt"||key==="inputAt"){const a=local?.[key],b=remote?.[key];out[key]=v121Stamp(a)>=v121Stamp(b)?(a||b||base?.[key]):(b||a||base?.[key]);continue}
+    if(key==="updatedBy"||key==="lastUpdatedBy"||key==="inputBy"){out[key]=(v121Stamp(local?.updatedAt)>=v121Stamp(remote?.updatedAt)?local?.[key]:remote?.[key])||base?.[key]||"";continue}
+    if(V122_INPUT_FIELDS.has(key)){out[key]=v122MergeInput(base?.[key],local?.[key],remote?.[key],key,session,local||remote||base,isQr,conflicts);continue}
+    if(V122_METADATA_FIELDS.has(key)){out[key]=v122Derived(base?.[key],local?.[key],remote?.[key]);continue}
+    out[key]=v122Derived(base?.[key],local?.[key],remote?.[key]);
+  }
+  return out;
+}
+function v122MergeStatus(base,local,remote,session,key,conflicts){
+  if(v121Equal(local,base))return v121Clone(remote);
+  if(v121Equal(remote,base)||v121Equal(local,remote))return v121Clone(local);
+  conflicts.push(`テスト棚卸し「${local?.countNo||remote?.countNo||base?.countNo||base?.id}」の${key}`);return v121Clone(local);
+}
+function v122MergeTestSession(base,local,remote,conflicts){
+  if(local===undefined&&remote===undefined)return undefined;
+  if(!base){if(local===undefined)return v121Clone(remote);if(remote===undefined)return v121Clone(local);if(v121Equal(local,remote))return v121Clone(local);conflicts.push(`テスト棚卸し「${local?.countNo||remote?.countNo||"新規"}」を両端末で同時作成`);return v121Clone(local)}
+  if(local===undefined||remote===undefined)return v121PickValue(base,local,remote,`テスト棚卸し「${base.countNo||base.id}」の削除`,conflicts);
+  const out={},keys=new Set([...Object.keys(base),...Object.keys(local),...Object.keys(remote)]);
+  for(const key of keys){
+    if(key==="lines"){out[key]=v121MergeTestRows(base[key],local[key],remote[key],local||remote,false,conflicts);continue}
+    if(key==="qrLines"){out[key]=v121MergeTestRows(base[key],local[key],remote[key],local||remote,true,conflicts);continue}
+    if(key==="revision"){out[key]=Math.max(Number(base[key])||0,Number(local[key])||0,Number(remote[key])||0)+1;continue}
+    if(key==="updatedAt"||key==="lastUpdatedAt"||key==="submittedAt"||key==="confirmedAt"){out[key]=v122Derived(base[key],local[key],remote[key]);continue}
+    if(key==="updatedBy"||key==="lastUpdatedBy"||key==="submittedBy"||key==="confirmedBy"){out[key]=(v121Stamp(local.updatedAt)>=v121Stamp(remote.updatedAt)?local[key]:remote[key])||base[key]||"";continue}
+    if(["status","qrStatus","priceStatus"].includes(key)){out[key]=v122MergeStatus(base[key],local[key],remote[key],base,key,conflicts);continue}
+    out[key]=v122Derived(base[key],local[key],remote[key]);
+  }
+  return out;
+}
+/* Existing session/queue functions call these names at runtime; overriding them keeps v1.121 queues readable. */
+v121MergeTestRow=v122MergeTestRow;
+v121MergeTestSession=v122MergeTestSession;
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",v119StartBoot,{once:true});else v119StartBoot();
 
