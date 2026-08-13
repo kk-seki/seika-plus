@@ -6464,7 +6464,7 @@ qrSecondaryActions=function(lot,includeDelete=false){if(!canQrOperate())return""
 async function v119SoftDeleteMistakenQrLot(q){if(!canAdmin())return alert("誤登録ロットを削除できるのは管理者のみです。");const reason=prompt("誤登録ロットを論理削除する理由を入力してください（必須）");if(!reason||!reason.trim())return alert("削除理由を入力してください。");if(!confirm("入庫時の数量・重量から変動がなく、出庫・廃棄・調整・棚卸し・トリミングがないロットだけ削除できます。品質評価・写真は無効化して監査記録を残します。実行しますか？"))return;v161ShowProcessing("誤登録ロットの安全確認と論理削除をしています");try{const result=await callRpc("soft_delete_mistaken_qr_lot_v1119",{p_qr_key:q,p_reason:reason.trim()}),messages=(result?.blockers||[]).map(row=>row?.message||String(row)).filter(Boolean);if(!result?.ok)throw new Error(messages.join("\n")||result?.message||"後続業務があるため削除できません。");qrLotListPage("","newest","inStock",100);alert("誤登録ロットを論理削除しました。品質評価・写真は無効化され、監査記録を残しています。")}catch(error){alert(`誤登録ロットを削除できませんでした。\n${error.message||error}`)}finally{v161HideProcessing()}}
 
 /* ===== v1.120 棚卸しテストモード（在庫反映なし） ===== */
-const V120_APP_VERSION="v1.120";window.APP_VERSION=V120_APP_VERSION;
+const V120_APP_VERSION="v1.121";window.APP_VERSION=V120_APP_VERSION;
 function v120IsTest(s){return Boolean(s&&s.isTest===true&&s.mode==="test")}
 function v120TestBadge(){return '<div class="card" style="border:2px solid #dc2626;background:#fff1f2;color:#991b1b"><b>【テスト・在庫反映なし】</b><div class="small">この棚卸しは操作確認専用です。通常在庫・QR在庫・移動履歴は一切更新しません。</div></div>'}
 const v120CountEditableCore=countEditable;countEditable=function(s){return Boolean(canInventoryCountInput()&&s&&(s.status==="counting"||v120IsTest(s)&&s.status==="test_counting"))};
@@ -6491,6 +6491,90 @@ function inventoryCountHome(msg=""){setScreen("inventoryCountHome",[msg]);if(!v1
 function v119ShowBootError(error){console.error("SEIKA＋の起動に失敗しました",error);const app=document.getElementById("app");if(!app)return;const detail=String(error?.message||error||"不明なエラー");app.innerHTML=`<main class="wrap"><div class="card err"><h2 style="margin-top:0">SEIKA＋を起動できませんでした</h2><p>${esc(detail)}</p><p class="small">通信状態を確認して再読込してください。改善しない場合は、この画面を管理者へお知らせください。</p><button class="btn blue" style="width:100%" onclick="location.reload()">再読込</button></div></main>`}
 let v119BootStarted=false;
 function v119StartBoot(){if(v119BootStarted)return;v119BootStarted=true;Promise.resolve().then(()=>boot()).catch(v119ShowBootError)}
+/* ===== v1.121 棚卸しテスト同期救出（未同期入力を保持） ===== */
+const V121_APP_VERSION="v1.121";window.APP_VERSION=V121_APP_VERSION;
+function v121Clone(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v))}
+function v121Equal(a,b){return JSON.stringify(a)===JSON.stringify(b)}
+function v121TestSession(s){return Boolean(s&&s.isTest===true&&s.mode==="test")}
+function v121SessionKey(s){return String(s?.id||"")}
+function v121LineKey(line,isQr){return String(isQr?(line?.qrKey||line?.qr_key||line?.id||""):(line?.lineId||line?.id||""))}
+function v121Stamp(v){const n=Date.parse(v||"");return Number.isFinite(n)?n:-Infinity}
+function v121LatestMeta(base,local,remote){const ls=v121Stamp(local?.updatedAt),rs=v121Stamp(remote?.updatedAt),pick=ls>=rs?local:remote;return{updatedAt:ls>=rs?(local?.updatedAt||remote?.updatedAt||base?.updatedAt):(remote?.updatedAt||local?.updatedAt||base?.updatedAt),updatedBy:pick?.updatedBy||base?.updatedBy||""}}
+function v121ConflictLabel(session,row,isQr,field){const target=isQr?(row?.lotNo||row?.lot_no||row?.qrKey||row?.qr_key||row?.itemName||"不明ロット"):(row?.itemName||row?.name||row?.lineId||"不明品目");return`${isQr?"QRロット":"品目"}「${target}」の${field}`}
+function v121PickValue(base,local,remote,label,conflicts){if(v121Equal(local,base))return v121Clone(remote);if(v121Equal(remote,base)||v121Equal(local,remote))return v121Clone(local);conflicts.push(label);return v121Clone(local)}
+function v121MergeTestRow(base,local,remote,session,isQr,conflicts){
+  if(local===undefined&&remote===undefined)return undefined;
+  if(base===undefined){if(local===undefined)return v121Clone(remote);if(remote===undefined)return v121Clone(local);if(v121Equal(local,remote))return v121Clone(local);conflicts.push(v121ConflictLabel(session,local||remote,isQr,"新規行"));return v121Clone(local)}
+  if(local===undefined||remote===undefined)return v121PickValue(base,local,remote,v121ConflictLabel(session,base,isQr,"行の削除"),conflicts);
+  const out={},keys=new Set([...Object.keys(base||{}),...Object.keys(local||{}),...Object.keys(remote||{})]);
+  const metadata=new Set(["revision","updatedAt","updatedBy","lastUpdatedAt","lastUpdatedBy","inputAt","inputBy"]);
+  for(const key of keys){
+    if(key==="revision"){out[key]=Math.max(Number(base?.[key])||0,Number(local?.[key])||0,Number(remote?.[key])||0)+1;continue}
+    if(key==="updatedAt"||key==="lastUpdatedAt"||key==="inputAt"){const a=local?.[key],b=remote?.[key];out[key]=v121Stamp(a)>=v121Stamp(b)?(a||b||base?.[key]):(b||a||base?.[key]);continue}
+    if(key==="updatedBy"||key==="lastUpdatedBy"||key==="inputBy"){const a=v121Stamp(local?.updatedAt),b=v121Stamp(remote?.updatedAt);out[key]=(a>=b?local?.[key]:remote?.[key])||base?.[key]||"";continue}
+    const business=/^(actualQty|detailMode|packKg|caseCount|remainderKg|supplier|supplierRequired|kgPerUnit|unitPrice|unitPriceYenPerKg|count|amount|amountYen|countedKg|memo|palletQtys|packWeight)$/i.test(key);
+    out[key]=business?v121PickValue(base?.[key],local?.[key],remote?.[key],v121ConflictLabel(session,local||remote||base,isQr,key),conflicts):v121Clone(remote?.[key]!==undefined?remote[key]:(local?.[key]!==undefined?local[key]:base?.[key]));
+  }
+  return out
+}
+function v121MergeTestRows(base,local,remote,session,isQr,conflicts){
+  const keyOf=x=>v121LineKey(x,isQr),valid=a=>(a||[]).every(x=>keyOf(x));
+  base=Array.isArray(base)?base:[];local=Array.isArray(local)?local:[];remote=Array.isArray(remote)?remote:[];
+  if(!valid(base)||!valid(local)||!valid(remote)){conflicts.push(`${session?.countNo||"テスト棚卸し"}の${isQr?"QRロット":"品目"}行識別子`);return v121Clone(local)}
+  const bm=new Map(base.map(x=>[keyOf(x),x])),lm=new Map(local.map(x=>[keyOf(x),x])),rm=new Map(remote.map(x=>[keyOf(x),x]));
+  const order=[...remote,...local,...base].map(keyOf),seen=new Set(),out=[];
+  for(const key of order){if(seen.has(key))continue;seen.add(key);const row=v121MergeTestRow(bm.get(key),lm.get(key),rm.get(key),session,isQr,conflicts);if(row!==undefined)out.push(row)}return out
+}
+function v121MergeTestSession(base,local,remote,conflicts){
+  if(local===undefined&&remote===undefined)return undefined;
+  if(!base){if(local===undefined)return v121Clone(remote);if(remote===undefined)return v121Clone(local);if(v121Equal(local,remote))return v121Clone(local);conflicts.push(`テスト棚卸し「${local?.countNo||remote?.countNo||"新規"}」を両端末で同時作成`);return v121Clone(local)}
+  if(local===undefined||remote===undefined)return v121PickValue(base,local,remote,`テスト棚卸し「${base.countNo||base.id}」の削除`,conflicts);
+  const out={},keys=new Set([...Object.keys(base),...Object.keys(local),...Object.keys(remote)]),meta=new Set(["revision","updatedAt","updatedBy","lastUpdatedAt","lastUpdatedBy"]);
+  for(const key of keys){
+    if(key==="lines"){out[key]=v121MergeTestRows(base[key],local[key],remote[key],local||remote,false,conflicts);continue}
+    if(key==="qrLines"){out[key]=v121MergeTestRows(base[key],local[key],remote[key],local||remote,true,conflicts);continue}
+    if(key==="revision"){out[key]=Math.max(Number(base[key])||0,Number(local[key])||0,Number(remote[key])||0)+1;continue}
+    if(key==="updatedAt"||key==="lastUpdatedAt"){out[key]=v121Stamp(local[key])>=v121Stamp(remote[key])?(local[key]||remote[key]||base[key]):(remote[key]||local[key]||base[key]);continue}
+    if(key==="updatedBy"||key==="lastUpdatedBy"){out[key]=(v121Stamp(local.updatedAt)>=v121Stamp(remote.updatedAt)?local[key]:remote[key])||base[key]||"";continue}
+    out[key]=v121PickValue(base[key],local[key],remote[key],`テスト棚卸し「${local.countNo||remote.countNo||base.countNo||base.id}」の${key}`,conflicts);
+  }return out
+}
+function v121MergeSessions(base,local,remote,conflicts){
+  base=Array.isArray(base)?base:[];local=Array.isArray(local)?local:[];remote=Array.isArray(remote)?remote:[];
+  const all=[...base,...local,...remote];if(all.some(x=>!v121SessionKey(x))){conflicts.push("棚卸しセッションID");return v121Clone(local)}
+  const bm=new Map(base.map(x=>[v121SessionKey(x),x])),lm=new Map(local.map(x=>[v121SessionKey(x),x])),rm=new Map(remote.map(x=>[v121SessionKey(x),x]));
+  const order=[...remote,...local,...base].map(v121SessionKey),seen=new Set(),out=[];
+  for(const id of order){if(seen.has(id))continue;seen.add(id);const b=bm.get(id),l=lm.get(id),r=rm.get(id),test=[b,l,r].some(v121TestSession);let row;
+    if(test)row=v121MergeTestSession(b,l,r,conflicts);else{const normal=v188MergePayload({session:b},{session:l},{session:r});if(!normal.ok)conflicts.push(...normal.conflicts.map(x=>`本番棚卸し「${l?.countNo||r?.countNo||b?.countNo||id}」`));row=normal.merged.session}
+    if(row!==undefined)out.push(row)}return out
+}
+function v121MergeInventoryCounts(base,local,remote){
+  base=base&&typeof base==="object"?base:{};local=local&&typeof local==="object"?local:{};remote=remote&&typeof remote==="object"?remote:{};
+  const conflicts=[],out={},keys=new Set([...Object.keys(base),...Object.keys(local),...Object.keys(remote)]);
+  for(const key of keys){if(key==="sessions"){out.sessions=v121MergeSessions(base.sessions,local.sessions,remote.sessions,conflicts);continue}
+    const result=v188MergePayload({value:base[key]},{value:local[key]},{value:remote[key]});if(!result.ok)conflicts.push(...result.conflicts.map(x=>`棚卸し設定「${key}」`));out[key]=result.merged.value}
+  return{ok:conflicts.length===0,merged:out,conflicts:[...new Set(conflicts)].slice(0,12)}
+}
+function v121MergePayload(base,local,remote){
+  const b=v121Clone(base||{}),l=v121Clone(local||{}),r=v121Clone(remote||{}),hasInventory=[b,l,r].some(x=>Object.prototype.hasOwnProperty.call(x,"inventoryCounts"));
+  if(!hasInventory)return v188MergePayload(b,l,r);
+  delete b.inventoryCounts;delete l.inventoryCounts;delete r.inventoryCounts;
+  const standard=v188MergePayload(b,l,r),inventory=v121MergeInventoryCounts(base?.inventoryCounts,local?.inventoryCounts,remote?.inventoryCounts);
+  return{ok:standard.ok&&inventory.ok,merged:{...v121Clone(remote||{}),...standard.merged,inventoryCounts:inventory.merged},conflicts:[...new Set([...(standard.conflicts||[]),...(inventory.conflicts||[])])].slice(0,12)}
+}
+function v121RestoreBase(item){const current=item?.basePayload;if(current)return v121Clone(current);const bundleBase=v188SyncBundle?.base?.payload;if(bundleBase){item.basePayload=v121Clone(bundleBase);item.legacyBaseUnavailable=false;return v121Clone(bundleBase)}return null}
+function v121ConflictMessage(conflicts){return `同じ入力が別端末でも変更されています：${(conflicts||[]).join("、")}`}
+v178ResolvePendingInventoryConflict=async function(){
+  await v188IdbFlush();v188AssertPendingOwner();const original=v161ReadQueue()[0];if(!original)return{ok:true,merged:0};
+  const base=v121RestoreBase(original);if(!base){setSyncState("競合","この端末には統合基準がありません。未同期入力は保持しています");throw new Error("この端末には統合基準がありません。未同期入力は削除せず保持しています。管理者へ連絡してください。")}
+  const remote=await v188FetchRemoteState(),local=v121Clone(original.localPayload||original.payload),baseAllowed=v188RolePayload(base),localAllowed=v188RolePayload(local),remoteAllowed=v188RolePayload(remote.payload),result=v121MergePayload(baseAllowed,localAllowed,remoteAllowed);
+  if(!result.ok){setSyncState("競合","同じ品目・ロットの入力を確認してください。端末データは保持しています");throw new Error(v121ConflictMessage(result.conflicts))}
+  const fullMerged={...v121Clone(remote.payload),...v121Clone(result.merged)},candidate={...original,id:newId(),operationId:newId(),expectedVersion:remote.version,baseVersion:remote.version,basePayload:v121Clone(remote.payload),payload:v121Clone(fullMerged),localPayload:v121Clone(fullMerged),mergeCandidate:v121Clone(fullMerged),lastError:"",updatedAt:nowIso()};
+  try{const ans=await v188SendSyncItem(candidate,candidate.localPayload,remote.version);if(ans?.conflict)throw new Error("統合中に別の更新が入りました。元の入力を保持したまま、もう一度再送してください。");if(!ans?.ok)throw new Error(ans?.message||"統合データを保存できませんでした");stateVersion=Number(ans.version);const auth={user:db.user,userId:db.userId,role:db.role};db=normalize({...candidate.localPayload,...auth});v188PersistDb();v188WriteBase(candidate.localPayload,stateVersion);v161WriteQueue([]);markSync();setSyncState("保存済み","テスト棚卸し入力を他端末の更新と統合しました");if(historyTablesReady){try{await saveHistoryTablesNow();v188SetHistoryPending(false)}catch(e){v188SetHistoryPending(true);setSyncState("未同期","統合済み履歴を再送待ち")}}await v188IdbFlush();return{ok:true,merged:1}
+  }catch(e){original.lastError=v161ErrorText(e);v161WriteQueue([original]);await v188IdbFlush();throw e}
+};
+/* v1.121の画面表示と起動は、この後に一度だけ行う */
+
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",v119StartBoot,{once:true});else v119StartBoot();
 
 </script>
