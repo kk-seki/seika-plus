@@ -6156,4 +6156,4 @@ const t=v1115TrimmingTotals(),el=document.getElementById("trimTotals")
 }function trimmingPage(){if(!v1115CanTrimmingEdit())return alert("トリミング登録は管理者・青果社員のみです");v1115TrimmingReset();v1115RenderTrimming()}
 async function v1115AddTrimLot(){const key=document.getElementById("trimQrKey")?.value.trim();if(!key)return alert("QRキーまたはロット番号を入力してください");try{
 const lot=await qrFindLot(key);if(!lot)throw new Error("QRロットが見つかりません")
-;const currentQty=v1115Num(lot.current_qty??lot.current
+;const currentQty=v1115Num(lot.current_qty??lot.current_quantity),unitWeight=v1115LotUnitWeight(lot),currentKg=qrLotC
