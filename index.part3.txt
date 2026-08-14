@@ -1,15 +1,4 @@
-function v199QrMonthEndRows(lots,moves,endKey){return(lots||[]).map(lot=>{
-const snapshot=v1101LotSnapshotAtDayEnd(lot,v199QrLotMoves(lot,moves),endKey);if(!snapshot||!(snapshot.qty>0))return null
-;const kg=v163LotKgAtQuantity(lot,snapshot.qty),large=qrIsLargeContainer(lot.container_type),received=Number(lot.received_qty??lot.initial_quantity??0),currentWeight=large&&Number(lot.total_weight)>0&&received>0?Number(lot.total_weight)/received*snapshot.qty:v199QrNumberOrBlank(lot.current_weight)
-;return[lot.item_name||"",lot.lot_no||"",lot.qr_key||"",lot.received_date||"",lot.origin||"",lot.supplier||"",lot.cooperative_name||"",snapshot.qty,lot.unit||qrLotUnit(lot),kg===null?"":Number(kg),large?currentWeight:"",lot.container_type||"",lot.pack_weight||"",snapshot.location||"",qrVisibleMemo(lot.memo||""),lot.purchase_staff||"",lot.receiver_name||lot.received_by||lot.user_name||"",v199QrStatusAt(snapshot.qty,snapshot.deleted)]
-}).filter(Boolean).sort((a,b)=>String(a[0]).localeCompare(String(b[0]),"ja")||String(a[3]).localeCompare(String(b[3])))}
-function v199QrMovementRows(moves,startKey,endKey){return(moves||[]).filter(m=>{const k=v199QrMovementDateKey(m);return k>=startKey&&k<=endKey
-}).sort((a,b)=>v163MovementTime(a)-v163MovementTime(b)).map(m=>[v199QrMovementDateKey(m),v163MovementAt(m)?dt(v163MovementAt(m)):"",m.movement_type||"",m.item_name||"",m.lot_no||"",m.qr_key||"",v199QrNumberOrBlank(m.qty??m.quantity),m.unit||"",v199QrNumberOrBlank(m.before_quantity),v199QrNumberOrBlank(m.after_quantity),v199QrNumberOrBlank(m.weight),v199QrNumberOrBlank(m.before_weight),v199QrNumberOrBlank(m.after_weight),m.destination||"",m.storage_location||"",m.origin||"",m.supplier||"",m.cooperative_name||"",m.user_name||"",v199QrMovementMemo(m),v199QrNumberOrBlank(m.purchase_price_yen_per_kg),v199QrNumberOrBlank(m.waste_amount_yen),m.price_match_type||"",m.price_match_reason||""])
-}function v199QrExcelSummarySheet(monthValue,asOfKey,lotRows,movementRows){const range=monthRangeFromMonthValue(monthValue),byType={}
-;for(const r of movementRows)byType[r[2]]=(byType[r[2]]||0)+1
-;const aoa=[["QR在庫 月次Excel"],["対象月",`${range.year}年${range.month}月`],["在庫基準日",asOfKey],["基準日時点の在庫ロット数",lotRows.length],["月内操作履歴数",movementRows.length],[],["操作区分","件数"],...Object.entries(byType).sort((a,b)=>String(a[0]).localeCompare(String(b[0]),"ja"))]
-;const ws=aoaSheet(aoa,[24,18]);ws["!autofilter"]=undefined;ws["!freeze"]=undefined;return ws}function v199QrExcelLotSheet(asOfKey,rows){
-const headers=["品名（現在登録）","ロット番号","QRキー","入荷日","産地（現在登録）","仕入先（現在登録）","単協名（現在登録）","時点残数","単位","時点換算kg（現在量目基準）","時点残重量kg（現在重量基準）","荷姿","量目（現在登録）","時点保管場所","規格など（現在登録）","仕入れ担当（現在登録）","荷受け担当","状態"],aoa=[headers,...rows],ws=aoaSheet(aoa,[18,22,24,12,14,18,18,12,9,14,15,14,12,18,28,14,14,12])
+s,...rows],ws=aoaSheet(aoa,[18,22,24,12,14,18,18,12,9,14,15,14,12,18,28,14,14,12])
 ;for(let i=1;i<aoa.length;i++){setCellFill(ws,i,17,"E2F0D9");for(const c of[7,9,10]){const a=XLSX.utils.encode_cell({r:i,c});if(ws[a])ws[a].s={
 ...ws[a].s||{},numFmt:"#,##0.00"}}}ws["!sheetNote"]=`${asOfKey}時点`;return ws}function v199QrExcelMovementSheet(rows){
 const headers=["日付","日時","区分","品名","ロット番号","QRキー","処理数量","単位","変更前数量","変更後数量","処理重量kg","変更前重量kg","変更後重量kg","出庫先","保管場所","産地","仕入先","単協名","担当者","理由・メモ","廃棄単価（円/kg）","廃棄金額（円）","価格採用区分","価格採用根拠"],aoa=[headers,...rows],ws=aoaSheet(aoa,[12,20,16,18,22,24,12,9,13,13,14,14,14,14,16,14,18,18,14,36,18,18,18,45])
@@ -1279,6 +1268,59 @@ function v1127PriceEditPage(data){if(!v1115CanPriceEdit())return alert('価格�
 async function v1127SavePriceEdit(){try{const o=JSON.parse(decodeURIComponent(document.getElementById('v1127Original')?.value||'')),type=o.price_type==='market'?'market':'contract',week=document.getElementById('v1127Week')?.value,item=document.getElementById('v1127Item')?.value.trim(),origin=type==='market'?'':(document.getElementById('v1127Origin')?.value.trim()||''),supplier=type==='market'?'市場':(document.getElementById('v1127Supplier')?.value.trim()||''),price=parseDecimalInput(document.getElementById('v1127Value')?.value);if(!week||!item||!(price>=0))throw new Error('対象週、品目、0以上の税抜単価を入力してください');if(type==='contract'&&(!origin||!supplier))throw new Error('契約価格は産地と仕入先を入力してください');if(!confirm(`${type==='market'?'市場':'契約'}価格を変更します。${type==='market'?'産地は空欄として保存されます。':''}\nよろしいですか？`))return;const btn=document.getElementById('v1127EditSave');if(btn){btn.disabled=true;btn.textContent='保存しています…'}v161ShowProcessing('仕入価格を保存しています');const r=await callRpc('update_purchase_price_v1127',{p_original_week_start:o.week_start,p_original_item_name:o.item_name,p_original_origin:o.origin||'',p_original_supplier:o.supplier||'',p_week_start:week,p_item_name:item,p_origin:origin,p_supplier:supplier,p_price_yen_per_kg:price,p_price_type:type});if(r?.conflict)throw new Error('同じ価格が既にあります。どちらも変更していません。再読み込みして確認してください。');if(r?.not_found)throw new Error('編集元の価格が見つかりません。再読み込みして確認してください。');if(!r?.ok)throw new Error(r?.message||'価格を変更できませんでした');purchasePricesPage(v1115Monday(week),type==='market'?'市場価格を変更しました（産地は空欄です）。':'契約価格を変更しました。')}catch(e){alert(e.message||'価格を変更できませんでした')}finally{v161HideProcessing();const b=document.getElementById('v1127EditSave');if(b){b.disabled=false;b.textContent='変更を保存'}}}
 async function v1126CarryForwardMarketPrices(targetWeek,rows){const target=v1115Monday(targetWeek),source=ymdKey(new Date(new Date(`${target}T00:00:00`).getTime()-604800000)),all=(Array.isArray(rows)?rows:[]).filter(r=>v1117PriceType(r)==='market'&&String(r.week_start||'')===source&&Number(r.price_yen_per_kg)>=0),m=new Map();all.sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||''))).forEach(r=>{const k=String(r.item_name||'').trim();if(!m.has(k))m.set(k,r)});const src=[...m.values()];if(!src.length)return alert(`前週 ${source.replaceAll('-','/')} の市場価格は未登録のため、持ち越せません。`);const keys=new Set((Array.isArray(rows)?rows:[]).filter(r=>v1117PriceType(r)==='market'&&String(r.week_start||'')===target).map(v1127MarketKey)),already=src.filter(r=>keys.has(v1127MarketKey(r))).length;if(!confirm(`市場価格を持ち越します。\n\n前週：${source.replaceAll('-','/')}（${src.length}件）\n対象週：${target.replaceAll('-','/')}\nこの週に既入力：${already}件（0円を含め上書きしません）\n新規候補：${src.length-already}件\n\n市場価格は産地空欄として保存します。契約価格は変更しません。実行しますか？`))return;const b=document.getElementById('v1126CarryMarketBtn');if(b){b.disabled=true;b.textContent='市場価格を持ち越しています…'}v161ShowProcessing('市場価格を安全に持ち越しています');try{const r=await callRpc('carry_forward_market_prices_v1126',{p_source_week:source,p_target_week:target});if(!r?.ok)throw new Error(r?.message||'市場価格を持ち越せませんでした。');await purchasePricesPage(target,`市場価格を持ち越しました。対象 ${Number(r.source_count||0)}件 / 新規 ${Number(r.inserted_count||0)}件 / 既入力のためスキップ ${Number(r.skipped_count||0)}件（0円も保護）`)}catch(e){alert(`市場価格を持ち越せませんでした。\n${v161ErrorText(e)}`);if(b){b.disabled=false;b.textContent='前週の市場価格をこの週へ持ち越す'}}finally{v161HideProcessing()}}
 v1117RenderPrices=v1127RenderPrices;v1117TogglePriceType=v1127TogglePriceType;v1117SavePrice=v1127SavePrice;window.APP_VERSION='v1.127';document.title='SEIKA＋ v1.127 仕入価格編集・市場産地統一版';
+
+
+/* ===== v1.128 片岡冷蔵庫表示分離 =====
+   在庫表だけの表示切替です。入力・棚卸し・印刷の既存room2互換は変更しません。 */
+const V128_WEEKLY_KATAOKA_ROOM='kataoka';
+const v128WeeklyRoomLabelBase=roomLabel;
+roomLabel=function(room){return room===V128_WEEKLY_KATAOKA_ROOM?'片岡冷蔵庫':v128WeeklyRoomLabelBase(room)};
+function v128IsWeeklyDisplayRoom(room){return room==='room2'||room==='room3'||room===V128_WEEKLY_KATAOKA_ROOM}
+function v128WeeklyDisplayMatch(row,room){
+  if(room===V128_WEEKLY_KATAOKA_ROOM)return row.group==='kataoka';
+  return row.group!=='kataoka'&&row.room===room;
+}
+/* Final effective override: display-only Kataoka selector deliberately does not alter coldRoomForSpecialItem(). */
+weeklyDisplayRows=function(room,qrStandaloneTotals={}){
+  const rows=[];
+  allSortedItems().filter(it=>it.active!==false).forEach(it=>rows.push({
+    kind:'normal',group:'optimal',room:coldRoomForNormalItem(it),id:it.id,name:it.name,item:it,sort:Number(it.sort||0)
+  }));
+  specialItems('exchange').forEach(it=>rows.push({
+    kind:'special',group:'nonoptimal',tableId:'exchange',room:coldRoomForSpecialItem('exchange',it),id:it.id,name:it.name,item:it,sort:Number(it.sort||0)
+  }));
+  specialItems('kataoka').forEach(it=>rows.push({
+    kind:'special',group:'kataoka',tableId:'kataoka',room:coldRoomForSpecialItem('kataoka',it),id:it.id,name:it.name,item:it,sort:Number(it.sort||0)
+  }));
+  Object.entries(qrStandaloneTotals||{}).filter(([key,v])=>
+    Object.values(v?.days||{}).some(x=>Number(x)>0)||Object.values(v1106WeeklyBreakdown?.largeStandaloneTotals?.[key]?.days||{}).some(x=>Number(x?.bases||0)>0)
+  ).forEach(([key,v],i)=>rows.push({kind:'qr_only',group:'qr',room,id:`qr_only_${key}`,qrKey:key,name:String(v.name||key),item:{},sort:100000+i}));
+  const groupOrder={optimal:1,nonoptimal:2,kataoka:3,qr:4};
+  return rows.filter(row=>!room||v128WeeklyDisplayMatch(row,room)).sort((a,b)=>
+    groupOrder[a.group]-groupOrder[b.group]||a.sort-b.sort||String(a.name).localeCompare(String(b.name),'ja')
+  );
+};
+function setWeeklyRoom(room){
+  weeklyRoom=v128IsWeeklyDisplayRoom(room)?room:'room2';
+  v125WeeklyVisibleWeeks=2;
+  return weeklyData();
+}
+function weeklyRoomTabsHtml(){
+  return `<div class="card"><div class="small">表示する冷蔵庫</div><div class="filterBtns"><button class="filterBtn all ${weeklyRoom==='room2'?'on':''}" onclick="setWeeklyRoom('room2')">第2冷蔵庫</button><button class="filterBtn entered ${weeklyRoom==='room3'?'on':''}" onclick="setWeeklyRoom('room3')">第3冷蔵庫</button><button class="filterBtn ${weeklyRoom===V128_WEEKLY_KATAOKA_ROOM?'on':''}" onclick="setWeeklyRoom('kataoka')">片岡冷蔵庫</button></div><div class="small">在庫表は選択した冷蔵庫だけを表示します。片岡冷蔵庫は片岡在庫だけを表示します。</div></div><div class="card"><b>印刷用チェック表</b><div class="small">A4横で、紙の在庫表に近い形で印刷します。未入力欄は手書き用に空欄で出ます。</div><div class="row" style="margin-top:10px"><button class="btn blue" onclick="printInventorySheet('room2plus')">第2冷蔵庫＋片岡在庫を印刷</button><button class="btn green" onclick="printInventorySheet('room3')">第3冷蔵庫を印刷</button></div></div>`;
+}
+/* Preserve the existing v1.126 Kataoka visual treatment after the later QR renderer override. */
+const v128WeeklyTableHtmlCore=weeklyTableHtml;
+weeklyTableHtml=function(k,recs,spRecs,open=false,room=weeklyRoom,qrTotals={},qrStandaloneTotals={},qrSpecs={},qrStandaloneSpecs={},qrBreakdown={}){
+  let html=v128WeeklyTableHtmlCore(k,recs,spRecs,open,room,qrTotals,qrStandaloneTotals,qrSpecs,qrStandaloneSpecs,qrBreakdown);
+  for(const row of weeklyDisplayRows(room,qrStandaloneTotals).filter(row=>row.group==='kataoka')){
+    const plain=`<tr><td>${esc(row.name)}</td>`;
+    const marked=`<tr class="stockRowKataoka"><td><span class="stockKataokaBadge">片岡在庫</span> ${esc(row.name)}</td>`;
+    html=html.replace(plain,marked);
+  }
+  return html;
+};
+window.APP_VERSION='v1.128';
+document.title='SEIKA＋ v1.128 片岡冷蔵庫表示分離版';
 
 </script>
   </body>

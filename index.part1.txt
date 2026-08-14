@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SEIKA＋ v1.125 在庫報告・動作軽量化版</title>
+    <title>SEIKA＋ v1.128 片岡冷蔵庫表示分離版</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -3915,3 +3915,17 @@ p_operation_meta:operationMeta("qr_inventory_count_cancel",{sessionId:s.id}),p_m
 ;s.updatedAt=nowIso();countLog("QR確定取消",s,reason.trim());await saveCloudNow({skipHistory:true,requireRpc:true});v188PersistDb()
 ;inventoryCountHome("棚卸し確定を取り消しました。")}catch(e){db=beforeDb;stateVersion=beforeVersion;v188PersistDb();setSyncState("失敗")
 ;alert(`棚卸し確定取消を保存できませんでした。取消は反映していません。\n${e.message||e}`);inventoryCountReviewPage(id)}finally{isInventoryCountReversing=false}}
+function printInventoryCount(id,mode){const s=countSession(id);if(!s)return
+;const test=v120IsTest(s),diff=mode==="diff",title=`${test?"【TEST・在庫反映なし】 ":""}${s.roomLabel} 棚卸し${diff?"差異表":"記入票"}`,at=dt(nowIso());const normalRows=(s.lines||[]).map(l=>{
+const entered=l.actualQty!==null&&l.actualQty!==undefined,d=entered?yen(Number(l.actualQty)-Number(l.systemQty)):null
+;if(diff)return`<tr><td>${esc(l.group)}</td><td>${esc(l.itemName)}</td><td>${esc(l.unit)}</td><td class="num">${fmt(l.systemQty)}</td><td class="num">${entered?fmt(l.actualQty):"未入力"}</td><td class="num">${d===null?"":(d>0?"+":"")+fmt(d)}</td><td>${esc(l.memo||"")}</td></tr>`
+;return`<tr><td>${esc(l.group)}</td><td>${esc(l.itemName)}</td><td>${esc(l.unit)}</td><td class="num">${fmt(l.systemQty)}</td><td class="write"></td><td class="write"></td></tr>`
+}).join("")
+;const qrRows=(s.qrLines||[]).slice().sort((a,b)=>String(a.itemName||"").localeCompare(String(b.itemName||""),"ja")||String(a.packWeight||"").localeCompare(String(b.packWeight||""),"ja")||String(a.lotNo||"").localeCompare(String(b.lotNo||""),"ja")).map(l=>{
+const entered=l.actualQty!==null&&l.actualQty!==undefined,d=entered?yen(Number(l.actualQty)-Number(l.systemQty)):null,pack=qrIsLargeContainer(l.containerType)?"大型容器":l.packWeight||"未設定"
+;if(diff)return`<tr><td>QR</td><td>${esc(l.itemName)}<br><span class="sub">${esc(pack)} / ${esc(l.lotNo||l.qrKey)}</span></td><td>${esc(l.unit)}</td><td class="num">${fmt(l.systemQty)}</td><td class="num">${entered?fmt(l.actualQty):"未入力"}</td><td class="num">${d===null?"":(d>0?"+":"")+fmt(d)}</td><td>${Number(l.outQty||0)>0?"出庫 "+fmt(l.outQty)+" "+esc(l.unit)+" "+esc(l.destination||""):""}</td></tr>`
+;return`<tr><td>QR</td><td>${esc(l.itemName)}<br><span class="sub">${esc(pack)} / ${esc(l.lotNo||l.qrKey)}</span></td><td>${esc(l.unit)}</td><td class="num">${fmt(l.systemQty)}</td><td class="write"></td><td class="write"></td></tr>`
+}).join("")
+;const rows=normalRows+qrRows,head=diff?"<tr><th>区分</th><th>品名・内容量・ロット</th><th>単位</th><th>開始時帳簿</th><th>実数</th><th>開始時差異</th><th>備考・簡単出庫</th></tr>":"<tr><th>区分</th><th>品名・内容量・ロット</th><th>単位</th><th>開始時帳簿</th><th>実数</th><th>備考</th></tr>"
+;const html=`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title><style>@page{size:A4 landscape;margin:2mm 3mm}html,body{margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;font-size:7pt;line-height:1.14}h1{font-size:14pt;margin:0 0 2px}.meta{margin:0 0 3px;font-size:7.5pt;line-height:1.25}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #111;padding:1.5px 2px;vertical-align:middle;overflow-wrap:anywhere;word-break:normal}th{background:#dce6f1;font-weight:700;text-align:center}th:nth-child(1),td:nth-child(1){width:10%}th:nth-child(2),td:nth-child(2){width:39%;font-weight:700}th:nth-child(3),td:nth-child(3){width:8%}th:nth-child(4),td:nth-child(4){width:12%}th:nth-child(5),td:nth-child(5){width:12%}th:nth-child(6),td:nth-child(6){width:19%}.num{text-align:right}.write{height:15px}.sub{font-size:6.5pt;font-weight:400}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}th,td{padding:1.5px 2px}}</style></head><body><h1>${esc(title)}</h1><div class="meta">${test?"【テスト・在庫反映なし】　":""}棚卸し番号：${esc(s.countNo)}　状態：${esc(countStatusLabel(s))}　開始：${esc(dt(s.startedAt))}　開始者：${esc(s.startedBy)}　印刷：${esc(at)}</div><div class="meta">通常・その他在庫とQR全ロットを掲載。QRは内容量・ロット別に確定前確認できます。</div><table><thead>${head}</thead><tbody>${rows}</tbody></table></body></html>`
+;const w=window.open("","_blank");if(!w)return alert("印刷画面を開けませんでした。Safariのポップ
