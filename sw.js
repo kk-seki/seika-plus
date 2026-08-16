@@ -1,4 +1,4 @@
-const CACHE_NAME="seika-static-v1.134";
+const CACHE_NAME="seika-static-v1.135";
 const APP_SHELL=["./","./index.html","./manifest.webmanifest","./icons/seika-192.png","./icons/seika-512.png"];
 const CACHEABLE_PATHS=new Set(APP_SHELL.map(path=>new URL(path,self.registration.scope).pathname));
 self.addEventListener("install",event=>{
