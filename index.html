@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.133 PWA・運用診断強化版</title>
+    <title>SEIKA＋ v1.134 点検表示最適化版</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -7073,8 +7073,8 @@ weeklyTableHtml=function(k,recs,spRecs,open=false,room=weeklyRoom,qrTotals={},qr
   }
   return html;
 };
-window.APP_VERSION='v1.133';
-document.title='SEIKA＋ v1.133 PWA・運用診断強化版';
+window.APP_VERSION='v1.134';
+document.title='SEIKA＋ v1.134 点検表示最適化版';
 
 /* ===== v1.133 PWA・起動点検・データ鮮度・安全な更新 ===== */
 const V133_PWA_GUIDE_KEY=STORE+'_pwa_guide_dismissed_v133';
@@ -7091,7 +7091,7 @@ function v133GuideDismiss(){try{localStorage.setItem(V133_PWA_GUIDE_KEY,'1')}cat
 async function v133InstallPwa(){if(v133DeferredInstallPrompt){v133DeferredInstallPrompt.prompt();await v133DeferredInstallPrompt.userChoice.catch(()=>null);v133DeferredInstallPrompt=null;return}v133InstallGuidePage()}
 function v133InstallGuidePage(){setScreen('v133InstallGuidePage');const platform=v133Platform(),steps=platform==='ios'?['Safariでこのページを開きます。','画面下の共有ボタンを押します。','「ホーム画面に追加」→「追加」を押します。']:platform==='android'?['Chromeでこのページを開きます。','メニューから「アプリをインストール」または「ホーム画面に追加」を押します。','確認画面でインストールします。']:['ChromeまたはEdgeでSEIKA＋を開きます。','アドレスバー付近のインストールアイコン、またはメニューの「アプリをインストール」を押します。','デスクトップやスタートメニューのSEIKA＋から起動します。'];pageShell('SEIKA＋をアプリとして追加',`${platform==='ios'?'iPhone・iPad':platform==='android'?'Android':'PC'}の手順`,`<div class="card"><ol style="line-height:1.9">${steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><div class="notice">追加後も同じログイン・同じSupabaseデータを使用します。App Storeへの登録は不要です。</div>${v133DeferredInstallPrompt?'<button class="btn green" style="width:100%;margin-top:12px" onclick="v133InstallPwa()">この端末へインストール</button>':''}</div>`)}
 function v133InstallBannerHtml(){if(v133Standalone())return'';let dismissed=false;try{dismissed=localStorage.getItem(V133_PWA_GUIDE_KEY)==='1'}catch(e){}if(dismissed)return'';return `<section id="v133InstallBanner" class="card v133Banner"><b>SEIKA＋をホーム画面へ追加できます</b><div class="small">アイコンから直接起動し、広い画面で利用できます。</div><div class="grid" style="margin-top:10px"><button class="btn blue" onclick="v133InstallPwa()">追加方法を見る</button><button class="btn btn2" onclick="v133GuideDismiss()">今は表示しない</button></div></section>`}
-function v133StartupCheckHtml(){const p=v133PendingSummary(),fresh=v133Freshness(),sw=!('serviceWorker'in navigator)?'未対応':navigator.serviceWorker.controller?'稼働中':v133Registration?'登録済み':'確認中',storage=typeof v188IdbReady==='boolean'&&v188IdbReady?'利用可能':'確認中';return `<section class="card"><b>起動時かんたん点検</b><div class="v133StatusGrid"><div class="v133StatusItem"><span class="small">通信</span><b class="${navigator.onLine===false?'v133StatusBad':'v133StatusOk'}">${navigator.onLine===false?'オフライン':'オンライン'}</b></div><div class="v133StatusItem"><span class="small">クラウドデータ</span><b class="${fresh.state==='fresh'?'v133StatusOk':'v133StatusWarn'}">${esc(fresh.label)}</b></div><div class="v133StatusItem"><span class="small">端末保護領域</span><b class="${storage==='利用可能'?'v133StatusOk':'v133StatusWarn'}">${storage}</b></div><div class="v133StatusItem"><span class="small">未同期・下書き</span><b class="${p.total?'v133StatusWarn':'v133StatusOk'}">${p.total?p.total+'件を保持':'なし'}</b></div><div class="v133StatusItem"><span class="small">PWA</span><b>${v133Standalone()?'アプリ起動':sw}</b></div><div class="v133StatusItem"><span class="small">カメラ</span><b>${navigator.mediaDevices?.getUserMedia?'利用可能':'端末設定を確認'}</b></div></div></section>`}
+function v133StartupCheckHtml(){const p=v133PendingSummary(),fresh=v133Freshness(),issues=[];if(navigator.onLine===false)issues.push('オフラインです');if(p.total)issues.push(`未同期・下書き ${p.total}件`);if(fresh.state==='stale')issues.push(fresh.label);if(syncState==='失敗'||syncState==='競合')issues.push(`同期状態：${syncState}`);if(!issues.length)return'';return `<section class="card v133Banner warn" style="padding:12px 14px"><b>⚠ 確認が必要です</b><div class="small" style="margin-top:4px">${issues.map(esc).join(' ／ ')}</div></section>`}
 function v133UpdateBannerHtml(){if(!v133WaitingWorker)return'';const p=v133PendingSummary(),blocked=!v133CanApplyUpdate(),notes=v133ReleaseNotes.length?`<ul class="small" style="margin:8px 0 0 18px">${v133ReleaseNotes.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'';return `<section id="v133UpdateBanner" class="card v133Banner ${blocked?'warn':''}"><b>新しいSEIKA＋を利用できます</b><div class="small">${blocked?`未同期・下書き ${p.total}件があるため、更新を保留しています。保存・再送を完了してください。`:'安全に更新できます。更新後は自動で再起動します。'}</div>${notes}<button class="btn ${blocked?'btn2':'green'}" style="width:100%;margin-top:10px" onclick="v133ApplyUpdate()" ${blocked?'disabled':''}>${blocked?'更新保留中':'今すぐ更新'}</button></section>`}
 function v133RefreshNotices(){if(currentScreen==='home')home();else{document.getElementById('v133UpdateBanner')?.remove();const main=document.querySelector('.wrap');if(main&&v133WaitingWorker)main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())}}
 async function v133LoadReleaseNotes(){try{const r=await fetch('./release-notes.json?ts='+Date.now(),{cache:'no-store'});if(r.ok){const j=await r.json();v133ReleaseNotes=Array.isArray(j.notes)?j.notes.slice(0,8).map(String):[]}}catch(e){v133ReleaseNotes=[]}}function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133WaitingWorker=worker;v133LoadReleaseNotes().finally(v133RefreshNotices)}
