@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.134 点検表示最適化版</title>
+    <title>SEIKA＋ v1.136 第3段階</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -2574,6 +2574,7 @@ return n},o}(),f=a.toByteArray(),c=0;c<f.length;c+=1)u.writeByte(f[c]);return u.
 n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>>6&63,128|63&n))}return r}(t)},function(t){
 "function"==typeof define&&define.amd?define([],t):"object"==typeof exports&&(module.exports=t())}(function(){return qrcode});
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
+
 </script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -7189,7 +7190,7 @@ async function v135ProcessRow(batchId,rowId,{mode='fresh'}={}){
   else if(mode==='freshRetry'){if(!['conflict','failed'].includes(row.status))throw new Error('最新在庫で再試行できるのは、未適用が明示された競合・登録失敗だけです。');v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(!b||!r)throw new Error('保留作業が見つかりません。');const meta=v135NewOperationMeta(b,r.qrKey);r.operationId=meta.operationId;r.operationMeta=meta;r.payload=null;r.wasteWeight=null;r.lastError='最新在庫を確認しています。';r.updatedAt=nowIso();v135MarkBatchStatus(b)});batch=v135GetBatch(batchId);row=batch?.rows?.find(r=>r.id===rowId)}
   let payload,patch={};try{if(mode==='reuse'){payload=row.payload}else{const made=await v135FreshPayload(batch,row);payload=made.payload;patch=made.patch}}catch(e){v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.lastError=e.message||String(e);if(mode==='freshRetry')r.status='conflict';r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:false,unknown:false}}
   v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(!b||!r)throw new Error('保留作業が見つかりません。');Object.assign(r,patch,{payload,status:'sending',sendingRuntimeId:V135_RUNTIME_ID,sendingAt:nowIso(),attempts:Number(r.attempts||0)+1,lastError:'',updatedAt:nowIso()});v135MarkBatchStatus(b)});
-  try{const ans=await callRpc('apply_qr_lot_operation',payload);if(!ans?.ok){v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.status=ans?.conflict?'conflict':'failed';r.lastError=ans?.message||'サーバーはこの操作を適用していません。';r.sendingRuntimeId=null;r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:false,unknown:false}}
+  try{const ans=await callRpc(batch.kind==='out'?'apply_qr_lot_operation_v136':'apply_qr_lot_operation',payload);if(!ans?.ok){v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.status=ans?.conflict?'conflict':'failed';r.lastError=ans?.message||'サーバーはこの操作を適用していません。';r.sendingRuntimeId=null;r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:false,unknown:false}}
     let priceError='';if(batch.kind==='waste'){try{const price=await callRpc('finalize_qr_waste_price_v1118',{p_operation_id:payload.p_operation_id,p_qr_key:payload.p_qr_key,p_waste_weight_kg:patch.wasteWeight??row.wasteWeight});if(!price?.ok)priceError=price?.reason||price?.message||'廃棄価格を確定できませんでした。'}catch(e){priceError=e.message||String(e)}}
     v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.status=priceError?'price_failed':'success';r.lastError=priceError;r.sendingRuntimeId=null;r.movementResult={ok:true,at:nowIso()};r.priceResult=batch.kind==='waste'?{ok:!priceError,at:nowIso()}:null;r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:true,unknown:false}
   }catch(e){v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.status='unknown';r.lastError='通信または応答の結果を確認できません。同じ内容・同じ操作IDで再試行してください。';r.sendingRuntimeId=null;r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:false,unknown:true}}
@@ -7204,7 +7205,244 @@ const v135QrHomeCore=qrHome;qrHome=async function(msg=''){await v135QrHomeCore(m
 const v135PendingSummaryCore=v133PendingSummary;v133PendingSummary=function(){const p=v135PendingSummaryCore(),batches=v135CurrentPendingBatchCount();return{...p,batches,total:Number(p.total||0)+batches}};
 const v135DiagnosticTextCore=v200DiagnosticText;v200DiagnosticText=function(sourceScreen=''){const base=v135DiagnosticTextCore(sourceScreen);return `${base}\n本人用保留：${v135CurrentPendingBatchCount()}件（QR連続処理）`};
 const v135SetScreenCore=setScreen;setScreen=function(name,args=[]){if(currentScreen==='v135BatchScanPage'&&name!=='v135BatchScanPage')v135BatchStopCamera().catch(()=>{});return v135SetScreenCore(name,args)};
-window.APP_VERSION='v1.135';document.title='SEIKA＋ v1.135 第2段階';
+window.APP_VERSION='v1.136';document.title='SEIKA＋ v1.136 第3段階';
+
+/* ===== v1.136 第3段階：スマートFIFO・ロス分析・品質傾向・判断支援 ===== */
+window.APP_VERSION='v1.136';
+document.title='SEIKA＋ v1.136 第3段階';
+const V136_DB_NOT_APPLIED='第3段階DB未適用';
+const V136_FIFO_REASONS=['規格が異なる','量目が異なる','荷姿が異なる','出庫先から指定された','品質確認中','出庫停止中','現物が見つからない','先に開封済みのロットがある','その他'];
+let v136SettingsCache=null;
+function v136IsMissingDbError(error){return isMissingRpcError(error)||/seika_.*v1136|v136|第3段階DB未適用|schema cache/i.test(String(error?.message||error||''));}
+function v136DbNotAppliedHtml(){return `<div class="notice" style="border-left:4px solid #b45309"><b>${V136_DB_NOT_APPLIED}</b><div class="small">第3段階SQLを適用するまで、この機能は利用できません。既存の出庫へ自動的に切り替えることはありません。</div></div>`;}
+async function v136Rpc(name,args){try{return await callRpc(name,args)}catch(error){if(v136IsMissingDbError(error)){const e=new Error(V136_DB_NOT_APPLIED);e.v136MissingDb=true;throw e;}throw error;}}
+async function v136GetSettings(force=false){if(v136SettingsCache&&!force)return v136SettingsCache;const data=await v136Rpc('get_seika_v1136_settings',{});if(!data?.ok)throw new Error(data?.message||'第3段階設定を取得できませんでした');v136SettingsCache=data;return data;}
+function v136RoleCanAnalyze(){return ['admin','worker','buyer','clerk'].includes(db?.role);}
+function v136ModeLabel(mode){return({disabled:'停止',shadow:'shadow（記録のみ）',warn:'warn（理由付き続行）',enforce:'enforce（最古候補または管理者override）'}[mode]||String(mode||'未確認'));}
+function v136ReasonFields(prefix='v136'){return `<label class="label" style="margin-top:10px">FIFO例外理由</label><select id="${prefix}ViolationReason" class="input" onchange="v136ToggleOtherReason('${prefix}')"><option value="">選択してください</option>${V136_FIFO_REASONS.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select><div id="${prefix}OtherReasonBox" style="display:none"><label class="label">その他の内容（必須）</label><input id="${prefix}OtherReason" class="input" maxlength="500" placeholder="具体的な理由"></div>`;}
+function v136ToggleOtherReason(prefix){const reason=document.getElementById(prefix+'ViolationReason')?.value||'',box=document.getElementById(prefix+'OtherReasonBox');if(box)box.style.display=reason==='その他'?'block':'none';}
+function v136ReadReason(prefix='v136'){let reason=document.getElementById(prefix+'ViolationReason')?.value||'';const other=document.getElementById(prefix+'OtherReason')?.value.trim()||'';if(reason==='その他'){if(!other)throw new Error('FIFO例外の「その他」の内容を入力してください。');reason=`その他：${other}`;}return{violation:reason,override:(document.getElementById(prefix+'OverrideReason')?.value||'').trim()};}
+function v136FifoCandidateHtml(data,lot){const rows=Array.isArray(data?.candidates)?data.candidates:[];const targetId=String(data?.target_lot_id||lot?.id||'');if(!data?.eligible)return `<div class="notice"><b>スマートFIFO</b><div class="small">${esc(data?.message||'このロットはFIFO対象外です。')}</div></div>`;if(!rows.length)return `<div class="notice"><b>スマートFIFO</b><div class="small">同等条件で出庫可能なFIFO候補はありません。品質不良・保留ロットは候補外です。</div></div>`;const items=rows.map((r,i)=>{const selected=String(r.lot_id)===targetId,recommended=Number(r.candidate_rank)===1;return `<div class="memo" style="margin-top:8px;${selected?'border-left:4px solid #2563eb;':''}"><b>${recommended?'推奨ロット':`次の候補 ${i+1}`}${selected?' / 選択中':''}</b><div class="small">品目：${esc(r.item_name||lot?.item_name||'-')} / ロット：${esc(r.lot_no||'-')}<br>入庫日：${esc(r.received_date||'-')} / 経過日数：${fmt(r.age_days)}日 / 残数：${fmt(r.current_qty)} ${esc(r.unit||'')}<br>品質：${esc(r.quality_status||'unassessed')} / 保留：${r.held?'あり':'なし'}<br>${esc(r.recommendation_reason||'')}</div></div>`}).join('');return `<div class="card" id="v136FifoPanel"><div class="itemHead"><div><b>スマートFIFO</b><div class="small">モード：${esc(v136ModeLabel(data.mode))}。同等条件：${esc((data.comparison_attributes||[]).join(' / '))}</div></div><span class="badge ${data.mode==='shadow'?'normal':'excess'}">${esc(data.mode||'shadow')}</span></div>${items}${data.mode==='shadow'?'<div class="small" style="margin-top:9px">shadow中：案内と選択結果を記録するだけで、在庫・出庫先・選択ロットを自動変更しません。</div>':data.mode==='warn'?`<div class="notice" style="margin-top:10px"><b>推奨外を出庫する場合は理由が必要です。</b>${v136ReasonFields('v136')}</div>`:data.mode==='enforce'?`<div class="notice" style="margin-top:10px"><b>enforce中</b><div class="small">推奨外ロットは出庫できません。管理者だけがoverride理由を残して続行できます。</div>${canAdmin()?`${v136ReasonFields('v136')}<label class="label" style="margin-top:10px">管理者override理由</label><input id="v136OverrideReason" class="input" maxlength="500" placeholder="最古候補以外を出庫する理由（必須）">`:''}</div>`:''}</div>`;}
+async function v136ShowFifoForLot(q,host){const panel=typeof host==='string'?document.getElementById(host):host;if(!panel)return;panel.innerHTML='<div class="notice">FIFO候補を確認中...</div>';try{const lot=await qrFindLot(q);const data=await v136Rpc('get_fifo_candidates_v1136',{p_qr_key:lot?.qr_key||q,p_limit:10});panel.outerHTML=v136FifoCandidateHtml(data,lot);}catch(error){panel.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">FIFO候補を取得できませんでした。${esc(error.message||error)}</div>`;}}
+
+/* QR出庫画面だけをv1.136 RPCへ接続。廃棄・調整は既存RPCのまま維持します。 */
+const v136QrOperationLotPageCore=qrOperationLotPage;
+qrOperationLotPage=async function(kind,q){await v136QrOperationLotPageCore(kind,q);if(kind!=='out')return;const button=document.getElementById('qrMoveSaveBtn');if(!button||document.getElementById('v136FifoLoading'))return;button.insertAdjacentHTML('beforebegin','<div id="v136FifoLoading"></div>');await v136ShowFifoForLot(q,'v136FifoLoading');};
+const v136QrSaveLotMovementCore=qrSaveLotMovement;
+qrSaveLotMovement=async function(kind,q){
+  if(kind!=='out')return v136QrSaveLotMovementCore(kind,q);
+  if(!canQrOperate())return alert('QR在庫の更新権限がありません');if(isQrSaving)return;
+  const btn=document.getElementById('qrMoveSaveBtn');if(btn?.disabled)return;
+  if(btn){btn.disabled=true;btn.textContent='FIFO確認・登録中...';}isQrSaving=true;
+  try{
+    const lot=await qrFindLot(q);if(!lot)throw new Error('ロットが見つかりません');
+    const cur=Number(lot.current_qty??lot.current_quantity??0),qty=Number(document.getElementById('qrMoveQty')?.value||0);
+    if(!(qty>0)||qty>cur)throw new Error('処理数量を確認してください');
+    const destination=document.getElementById('qrMoveDestination')?.value||'',shipTiming=document.getElementById('qrShipTiming')?.value||'';
+    if(!destination)throw new Error('出庫先を選択してください');if(destination!=='廃棄'&&!shipTiming)throw new Error('当日分・翌日分先送りを選択してください');
+    const after=cur-qty,large=qrIsLargeContainer(lot.container_type),per=qrPerWeight(lot),weight=large&&per!==null?per*qty:null,afterWeight=large&&per!==null?per*after:null;
+    const memo=document.getElementById('qrMoveMemo')?.value.trim()||'',operation=qrMovementOperationMeta('out',lot,cur,after,'出庫'),meta=operation.meta;
+    let fifo={violation:'',override:''};try{fifo=v136ReadReason('v136');}catch(e){throw e;}
+    if(!confirm(`QR出庫の確認\n\n品目：${lot.item_name}\n現在残：${fmt(cur)} ${lot.unit}\n出庫：${fmt(qty)} ${lot.unit}\n処理後残：${fmt(after)} ${lot.unit}\n出庫先：${destination}${fifo.violation?`\nFIFO例外理由：${fifo.violation}`:''}${fifo.override?`\n管理者override：${fifo.override}`:''}\n\nサーバーでFIFOと残数を再確認して登録しますか？`))return;
+    const ans=await v136Rpc('apply_qr_lot_operation_v136',{p_operation_id:meta.operationId,p_qr_key:lot.qr_key,p_movement_type:'出庫',p_qty:qty,p_after_quantity:after,p_weight:weight,p_after_weight:afterWeight,p_destination:destination,p_reason:null,p_memo:`${shipTiming}${memo?` / ${memo}`:''}`,p_user_id:db.userId||null,p_user_name:db.user||null,p_device_meta:{deviceId:meta.deviceId,userAgent:navigator.userAgent||''},p_operation_meta:meta,p_expected_quantity:cur,p_fifo_violation_reason:fifo.violation||null,p_fifo_override_reason:fifo.override||null});
+    if(!ans?.ok)throw new Error(ans?.message||'第3段階QR出庫が完了しませんでした');
+    qrClearMovementOperationMeta(operation.key);setSyncState('保存済み');addOperationLog('qr_out_v136',{qrKey:lot.qr_key,qty:cur},{qty:after},{...meta,compatibility:'v1.136',fifo:ans.fifo||null});
+    const refreshed=await qrFindLot(lot.qr_key);if(!refreshed)throw new Error('登録後のロットを再取得できませんでした。');qrOperationCompletePage('out',refreshed.qr_key,true);
+  }catch(error){alert(`出庫を登録できませんでした：${error?.message||error}${error?.v136MissingDb?'\n\n第3段階SQLを適用後に、同じ画面から再試行してください。既存出庫RPCへの自動切替は行いません。':''}`);}
+  finally{isQrSaving=false;if(btn){btn.disabled=false;btn.textContent='出庫を登録';}}
+};
+
+/* v1.135連続出庫も出庫のみv1.136 RPCへ。連続廃棄は既存RPCを維持。 */
+const v136V135DefaultsHtmlCore=v135DefaultsHtml;
+v135DefaultsHtml=function(kind,values={}){const base=v136V135DefaultsHtmlCore(kind,values);if(kind!=='out')return base;return `${base}<details class="notice" style="margin-top:10px"><summary><b>FIFO例外・管理者override（必要時）</b></summary><div class="small" style="margin-top:7px">shadowでは不要です。warnで推奨外を出庫する場合は例外理由、enforceで管理者が推奨外を出庫する場合はoverride理由が必要です。サーバーで最終判定します。</div>${v136ReasonFields('v136Batch')}<label class="label" style="margin-top:10px">管理者override理由（管理者のみ）</label><input id="v136BatchOverrideReason" class="input" maxlength="500" placeholder="必要な場合だけ入力"></details>`;};
+const v136V135ReadDefaultsCore=v135ReadDefaults;
+v135ReadDefaults=function(kind){const defaults=v136V135ReadDefaultsCore(kind);if(kind!=='out')return defaults;const reason=v136ReadReason('v136Batch');return {...defaults,fifoViolationReason:reason.violation,fifoOverrideReason:reason.override};};
+const v136V135FreshPayloadCore=v135FreshPayload;
+v135FreshPayload=async function(batch,row){const result=await v136V135FreshPayloadCore(batch,row);if(batch.kind==='out')Object.assign(result.payload,{p_fifo_violation_reason:batch.defaults?.fifoViolationReason||null,p_fifo_override_reason:batch.defaults?.fifoOverrideReason||null});return result;};
+const v136V135CreateBatchCore=v135CreateBatch;
+v135CreateBatch=async function(kind){if(kind==='out'){try{const settings=await v136GetSettings();if(!settings?.ok)throw new Error(settings?.message||V136_DB_NOT_APPLIED);}catch(error){return alert(`${error?.v136MissingDb?V136_DB_NOT_APPLIED:error.message||error}\n\n連続出庫は安全のため開始しません。第3段階SQLを適用してください。`);}}return v136V135CreateBatchCore(kind);};
+
+async function v136LotHoldControl(q,hold){if(!canAdmin())return alert('ロット保留・解除は管理者のみです。');const lot=await qrFindLot(q);if(!lot)return alert('ロットが見つかりません');const reason=prompt(hold?'保留理由を入力してください（必須）':'解除理由を入力してください（必須）');if(!reason?.trim())return;try{const ans=await v136Rpc('set_fifo_lot_hold_v1136',{p_lot_id:lot.id,p_hold:!!hold,p_reason:reason.trim()});if(!ans?.ok)throw new Error(ans?.message||'保留状態を更新できませんでした');v136SettingsCache=null;qrLotDetail(q,hold?'ロットをFIFO候補から保留しました。':'ロット保留を解除しました。');}catch(error){alert(`${error?.message||error}${error?.v136MissingDb?'。第3段階SQLを適用してください。':''}`);}}
+const v136QrLotDetailCore=qrLotDetail;
+qrLotDetail=async function(q,msg=''){await v136QrLotDetailCore(q,msg);if(!canAdmin()||document.getElementById('v136LotHoldActions'))return;const root=document.querySelector('.wrap');if(!root)return;root.insertAdjacentHTML('beforeend',`<div id="v136LotHoldActions" class="card"><b>第3段階：FIFOロット保留</b><div class="small">保留はFIFO候補から外すだけで、在庫数量・品質評価・既存履歴を変更しません。理由は監査記録に残ります。</div><div class="grid" style="margin-top:10px"><button class="btn orange" onclick="v136LotHoldControl('${esc(q)}',true)">FIFO候補から保留</button><button class="btn btn2" onclick="v136LotHoldControl('${esc(q)}',false)">保留を解除</button></div></div>`);};
+
+function v136RowsTable(headers,rows){return rows.length?`<div class="weeklyWrap"><table class="table"><thead><tr>${headers.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:'<div class="notice">条件に一致する集計データがありません。期間・入力状況を確認してください。</div>';}
+function v136DateRangeHtml(prefix,days){const to=todayKey(),from=new Date(Date.now()-(days-1)*86400000).toLocaleDateString('sv-SE');return `<div class="row"><div><label class="label">開始日</label><input id="${prefix}From" type="date" class="input" value="${from}"></div><div><label class="label">終了日</label><input id="${prefix}To" type="date" class="input" value="${to}"></div></div>`;}
+function v136AnalysisHome(){setScreen('v136AnalysisHome');if(!v136RoleCanAnalyze())return home();pageShell('第3段階 分析・判断支援','集計はSupabase側で行います。自動出庫・自動廃棄・仕入先ランキングは行いません。',`<div class="homePrimary"><button class="btn homeBtnWaste" onclick="v136LossPage()">在庫ロス分析</button><button class="btn homeBtnQr" onclick="v136SupplierQualityPage()">仕入先品質分析</button><button class="btn homeBtnCheck" onclick="v136DecisionPage()">判断支援</button>${canAdmin()?'<button class="btn homeBtnSettings" onclick="v136SettingsPage()">第3段階設定</button>':''}</div>`);}
+function v136LossPage(){setScreen('v136LossPage');if(!v136RoleCanAnalyze())return home();pageShell('在庫ロス分析','通常廃棄とQR廃棄を別ソースで集計します。単価未設定は0円扱いにしません。',`<div class="card">${v136DateRangeHtml('v136Loss',30)}<label class="label">品目・仕入先・産地で絞込（任意）</label><input id="v136LossFilter" class="input" placeholder="返却済み集計内を絞り込み"><button class="btn blue" style="width:100%;margin-top:12px" onclick="v136RunLoss()">集計する</button></div><div id="v136LossResult"></div>`);}
+async function v136RunLoss(){const host=document.getElementById('v136LossResult');if(!host)return;host.innerHTML='<div class="notice">集計中...</div>';try{const data=await v136Rpc('get_inventory_loss_cockpit_v1136',{p_from:document.getElementById('v136LossFrom').value,p_to:document.getElementById('v136LossTo').value}),filter=(document.getElementById('v136LossFilter').value||'').trim().toLowerCase(),rows=(data.rows||[]).filter(r=>!filter||[r.item_name,r.origin,r.supplier,r.unit,r.source].some(v=>String(v||'').toLowerCase().includes(filter))),unpriced=rows.reduce((n,r)=>n+Number(r.unassessed_price_records||0),0),amountKnown=rows.some(r=>r.amount_yen!==null&&r.amount_yen!==undefined);host.innerHTML=`<div class="card notice"><b>集計ルール</b><div class="small">${esc(data.aggregation_rule||'')}</div><div class="small">単価未設定：${unpriced}件${amountKnown?' / 金額がNULLの行は「金額未確定」です。':' / 金額確定済みの行はありません。'}。異なる単位は合算しません。</div></div>${v136RowsTable(['ソース','品目','産地','仕入先','単位','件数','数量','単価未設定','金額'],rows.map(r=>`<tr><td>${esc(r.source)}</td><td>${esc(r.item_name||'-')}</td><td>${esc(r.origin||'-')}</td><td>${esc(r.supplier||'-')}</td><td>${esc(r.unit||'不明')}</td><td>${fmt(r.record_count)}</td><td>${fmt(r.quantity)} ${esc(r.unit||'')}</td><td>${fmt(r.unassessed_price_records)}</td><td>${r.amount_yen===null||r.amount_yen===undefined?'<b>金額未確定</b>':money(r.amount_yen)+'円'}</td></tr>`))}`;}catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">ロス分析を取得できませんでした。${esc(error.message||error)}</div>`;}}
+function v136SupplierQualityPage(){setScreen('v136SupplierQualityPage');if(!v136RoleCanAnalyze())return home();pageShell('仕入先品質分析','評価件数と比率を参考表示します。仕入先名の自動統合・優劣ランキング・設定の自動変更は行いません。',`<div class="card">${v136DateRangeHtml('v136Supplier',90)}<label class="label">仕入先（任意・完全一致）</label><input id="v136SupplierName" class="input" placeholder="SQL集計対象の仕入先"><label class="label">品目・産地で表示絞込（任意）</label><input id="v136SupplierFilter" class="input" placeholder="返却済み集計内を絞り込み"><button class="btn blue" style="width:100%;margin-top:12px" onclick="v136RunSupplierQuality()">集計する</button></div><div id="v136SupplierResult"></div>`);}
+async function v136RunSupplierQuality(){const host=document.getElementById('v136SupplierResult');if(!host)return;host.innerHTML='<div class="notice">集計中...</div>';try{const data=await v136Rpc('get_supplier_quality_analysis_v1136',{p_from:document.getElementById('v136SupplierFrom').value,p_to:document.getElementById('v136SupplierTo').value,p_supplier:document.getElementById('v136SupplierName').value.trim()||null}),filter=(document.getElementById('v136SupplierFilter').value||'').trim().toLowerCase(),rows=(data.rows||[]).filter(r=>!filter||[r.supplier,r.cooperative_name,r.item_name,r.item_id].some(v=>String(v||'').toLowerCase().includes(filter)));host.innerHTML=`<div class="card notice"><b>参考情報（ランキングではありません）</b><div class="small">${esc(data.note||'')}</div><div class="small">評価件数が少ない行は傾向判断に使わず、ロット・季節・品目を確認してください。</div></div>${v136RowsTable(['仕入先','単協名','品目','評価数','良好','要確認','不良','良好率','要確認率','不良率'],rows.map(r=>`<tr><td>${esc(r.supplier||'未入力')}</td><td>${esc(r.cooperative_name||'-')}</td><td>${esc(r.item_name||r.item_id||'-')}</td><td>${fmt(r.evaluation_count)}</td><td>${fmt(r.good_count)}</td><td>${fmt(r.review_count)}</td><td>${fmt(r.bad_count)}</td><td>${(Number(r.good_ratio||0)*100).toFixed(1)}%</td><td>${(Number(r.review_ratio||0)*100).toFixed(1)}%</td><td>${(Number(r.bad_ratio||0)*100).toFixed(1)}%</td></tr>`))}`;}catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">品質分析を取得できませんでした。${esc(error.message||error)}</div>`;}}
+function v136DecisionPage(){setScreen('v136DecisionPage');if(!v136RoleCanAnalyze())return home();pageShell('判断支援','外部AIは使用しません。ルール根拠を表示するだけで、在庫・出庫・廃棄・仕入先設定を自動変更しません。',`<div class="card"><label class="label">品目・ロットで絞込（任意）</label><input id="v136DecisionFilter" class="input"><button class="btn blue" style="width:100%;margin-top:12px" onclick="v136RunDecisions()">確認候補を表示</button></div><div id="v136DecisionResult"></div>`);}
+async function v136RunDecisions(){const host=document.getElementById('v136DecisionResult');if(!host)return;host.innerHTML='<div class="notice">確認中...</div>';try{const data=await v136Rpc('get_rule_based_decisions_v1136',{p_limit:100}),filter=(document.getElementById('v136DecisionFilter').value||'').trim().toLowerCase(),rows=(data.rows||[]).filter(r=>!filter||[r.item_name,r.item_id,r.lot_no,r.qr_key,r.action].some(v=>String(v||'').toLowerCase().includes(filter)));host.innerHTML=`<div class="card notice"><b>判断支援のみ</b><div class="small">${esc(data.message||'')}</div></div>${rows.length?rows.map(r=>{const b=r.rule_basis||{},th=b.thresholds||{};return `<div class="card"><b>${esc(r.item_name||'-')} / ${esc(r.lot_no||'-')}</b><div class="small">入庫日：${esc(r.received_date||'-')} / 経過：${fmt(b.age_days)}日 / 残数：${fmt(r.current_qty)} ${esc(r.unit||'')}<br>品質：${esc(b.quality_status||'unassessed')} / 保留：${b.hold_active?'あり':'なし'}<br>根拠：注意 ${th.attention_days??'-'}日・警告 ${th.warning_days??'-'}日・重大 ${th.critical_days??'-'}日 / ルール版 ${esc(b.rule_version||'-')}</div><div class="notice" style="margin-top:8px"><b>確認候補：</b>${esc(r.action||'')}</div></div>`;}).join(''):'<div class="notice">確認候補はありません。</div>'}`;}catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">判断支援を取得できませんでした。${esc(error.message||error)}</div>`;}}
+
+function v136SettingsPage(msg=''){setScreen('v136SettingsPage',[msg]);if(!canAdmin())return home();pageShell('第3段階設定','管理者のみ。初期モードはshadowです。設定変更は理由と監査記録を必須にします。',`${okHtml(msg)}<div id="v136SettingsHost"><div class="notice">設定を読み込み中...</div></div>`);v136RenderSettings();}
+async function v136RenderSettings(){const host=document.getElementById('v136SettingsHost');if(!host)return;try{const data=await v136GetSettings(true),mode=data.mode||'shadow',policies=data.policies||[],holds=data.holds||[],itemOptions=activeItems().filter(x=>x.active!==false).map(x=>`<option value="${esc(x.name)}" data-id="${esc(x.id)}"></option>`).join('');host.innerHTML=`<div class="card ${mode==='shadow'?'ok':'notice'}"><b>スマートFIFO運転モード：${esc(v136ModeLabel(mode))}</b><div class="small">disabledはFIFO判定を停止します。shadowは記録のみ。warn/enforceは十分なshadow確認後、対象品目を限定して使用してください。</div><label class="label">変更後モード</label><select id="v136Mode" class="input"><option value="disabled">停止（disabled）</option><option value="shadow" selected>shadow（記録のみ）</option><option value="warn">warn（理由付き続行）</option><option value="enforce">enforce（限定運用）</option></select><label class="label">変更理由（必須）</label><textarea id="v136ModeReason" class="textarea" maxlength="500" placeholder="例：shadowの確認結果を踏まえ、対象品目を限定してwarnへ移行"></textarea><button class="btn orange" style="width:100%;margin-top:10px" onclick="v136SaveMode('${esc(mode)}')">モードを変更</button></div><div class="card"><b>品目別滞留基準を追加・更新</b><div class="small">未設定品目には従来の30/60/90日表示が残ります。この設定は判断支援とFIFO対象を定義し、過去ロットの入庫日を変更しません。</div><label class="label">品目</label><input id="v136PolicyItem" list="v136PolicyItems" class="input" placeholder="品目名を入力または選択"><datalist id="v136PolicyItems">${itemOptions}</datalist><div class="row"><div><label class="label">注意日数</label><input id="v136Attention" type="number" min="0" class="input" value="14"></div><div><label class="label">警告日数</label><input id="v136Warning" type="number" min="0" class="input" value="30"></div><div><label class="label">重大日数</label><input id="v136Critical" type="number" min="0" class="input" value="60"></div></div><label class="checkRow"><input id="v136FifoEnabled" type="checkbox" checked> FIFO対象にする</label><label class="checkRow"><input id="v136QualityPriority" type="checkbox" checked> 要確認品質は出庫前の確認を優先</label><label class="label">設定変更理由（必須）</label><textarea id="v136PolicyReason" class="textarea" maxlength="500" placeholder="例：品目の鮮度基準を確認して設定"></textarea><button class="btn green" style="width:100%;margin-top:10px" onclick="v136SavePolicy()">品目別基準を保存</button></div><div class="card"><b>現在の品目別基準</b>${policies.length?v136RowsTable(['品目','FIFO','注意/警告/重大','品質優先','開始日','状態','変更理由'],policies.map(p=>`<tr><td>${esc(p.item_name||p.item_id||'-')}</td><td>${p.fifo_enabled?'対象':'対象外'}</td><td>${fmt(p.attention_days)}/${fmt(p.warning_days)}/${fmt(p.critical_days)}日</td><td>${p.quality_review_requires_confirmation?'確認':'通常'}</td><td>${esc(p.effective_from||'-')}</td><td>${p.active?'有効':'無効'}</td><td>${esc(p.change_reason||'-')}</td></tr>`)):'<div class="notice">個別基準は未設定です。</div>'}</div><div class="card"><b>FIFO保留中ロット</b>${holds.length?v136RowsTable(['品目','ロット','保留理由','保留日時'],holds.map(h=>`<tr><td>${esc(h.item_name||'-')}</td><td>${esc(h.lot_no||h.qr_key||'-')}</td><td>${esc(h.hold_reason||'-')}</td><td>${esc(h.held_at||'-')}</td></tr>`)):'<div class="small">保留中ロットはありません。</div>'}</div>`;const sel=document.getElementById('v136Mode');if(sel)sel.value=mode;}catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">設定を取得できませんでした。${esc(error.message||error)}</div>`;}}
+async function v136SaveMode(current){const mode=document.getElementById('v136Mode')?.value||'',reason=document.getElementById('v136ModeReason')?.value.trim()||'';if(!reason)return alert('変更理由を入力してください。');if(!['disabled','shadow','warn','enforce'].includes(mode))return alert('モードを選択してください。');if(['warn','enforce'].includes(mode)&&!confirm(`${v136ModeLabel(mode)}へ切り替えます。\n\nshadowの記録結果と対象品目を確認済みですか？\n理由：${reason}\n\n続行しますか？`))return;if(mode==='disabled'&&!confirm(`FIFOを停止します。既存ロット・履歴・在庫数量は変更しません。\n理由：${reason}\n\n停止しますか？`))return;try{const ans=await v136Rpc('set_seika_feature_mode_v1136',{p_mode:mode,p_reason:reason});if(!ans?.ok)throw new Error(ans?.message||'モードを変更できませんでした');v136SettingsCache=null;v136SettingsPage(`FIFOモードを${v136ModeLabel(mode)}へ変更しました。`);}catch(error){alert(error.message||error);}}
+async function v136SavePolicy(){const itemName=document.getElementById('v136PolicyItem')?.value.trim()||'',item=activeItems().find(x=>String(x.name||'').trim()===itemName),attention=Number(document.getElementById('v136Attention')?.value),warning=Number(document.getElementById('v136Warning')?.value),critical=Number(document.getElementById('v136Critical')?.value),reason=document.getElementById('v136PolicyReason')?.value.trim()||'';if(!itemName)return alert('品目を入力してください。');if(!reason)return alert('設定変更理由を入力してください。');if(!Number.isInteger(attention)||!Number.isInteger(warning)||!Number.isInteger(critical)||attention<0||warning<attention||critical<warning)return alert('日数は 0以上、注意 ≤ 警告 ≤ 重大 の整数で入力してください。');try{const ans=await v136Rpc('upsert_item_aging_policy_v1136',{p_id:null,p_item_id:item?.id||null,p_item_name:itemName,p_fifo_enabled:!!document.getElementById('v136FifoEnabled')?.checked,p_attention_days:attention,p_warning_days:warning,p_critical_days:critical,p_quality_review_requires_confirmation:!!document.getElementById('v136QualityPriority')?.checked,p_active:true,p_effective_from:todayKey(),p_effective_to:null,p_change_reason:reason});if(!ans?.ok)throw new Error(ans?.message||'品目別基準を保存できませんでした');v136SettingsCache=null;v136SettingsPage('品目別滞留基準を保存しました。');}catch(error){alert(error.message||error);}}
+
+/* ホームとQRホームへの入口追加（通常時の常時大カード表示はしない）。 */
+const v136HomeCore=home;
+home=function(){v136HomeCore();if(!db?.user||!v136RoleCanAnalyze()||document.getElementById('v136HomeAnalysis'))return;const host=document.querySelector('.homePrimary');if(host)host.insertAdjacentHTML('beforeend',`<button id="v136HomeAnalysis" class="btn homeBtnCheck" onclick="v136AnalysisHome()">分析・判断支援</button>${canAdmin()?'<button id="v136HomeSettings" class="btn homeBtnSettings" onclick="v136SettingsPage()">第3段階設定</button>':''}`);};
+const v136QrHomeCore=qrHome;
+qrHome=async function(msg=''){await v136QrHomeCore(msg);if(!qrCanUse()||document.getElementById('v136QrFifoEntry'))return;const host=document.querySelector('.homePrimary');if(host)host.insertAdjacentHTML('beforeend',`<button id="v136QrFifoEntry" class="btn homeBtnCheck" onclick="v136AnalysisHome()">FIFO・ロス確認</button>`);};
+
+
+/* ===== v1.136 safety-SQL synchronization patch (generated from seika_v1136_第3段階_統合適用.sql) ===== */
+const V136_EXACT_REQUEST_PREFIX='seika_v136_exact_request:';
+function v136ExactRequestKey(operationKey){return V136_EXACT_REQUEST_PREFIX+operationKey;}
+function v136ReadExactRequest(operationKey){try{const raw=sessionStorage.getItem(v136ExactRequestKey(operationKey));return raw?JSON.parse(raw):null;}catch(_){return null;}}
+function v136WriteExactRequest(operationKey,payload){try{sessionStorage.setItem(v136ExactRequestKey(operationKey),JSON.stringify(payload));}catch(_){/* session storage unavailable: operation meta still prevents accidental duplicate within page */}return payload;}
+function v136ClearExactRequest(operationKey){try{sessionStorage.removeItem(v136ExactRequestKey(operationKey));}catch(_){}}
+function v136IdempotencyError(message){const e=new Error(message||'同じ操作IDに異なる内容が検出されました。登録済みかを管理者が確認するまで、新しい操作IDで再送しないでください。');e.v136IdempotencyConflict=true;return e;}
+function v136ExplainTarget(target){
+  if(!target)return '対象ロットの判定詳細がありません。';
+  const reason=target.exclusion_reason;
+  if(reason)return `対象ロットは候補外です（${reason}）。品質：${target.quality_grade||'unassessed'} / 保留：${target.held?'あり':'なし'}${target.quality_evaluation_id?` / 評価ID：${target.quality_evaluation_id}`:''}`;
+  return `対象ロットはFIFO候補です。品質：${target.quality_grade||'unassessed'} / 保留：${target.held?'あり':'なし'}${target.quality_evaluation_id?` / 評価ID：${target.quality_evaluation_id}`:''}`;
+}
+function v136FifoCandidateHtml(data,lot){
+  if(!data?.ok)return `<div class="notice"><b>スマートFIFO</b><div class="small">${esc(data?.message||'対象ロットを判定できませんでした。')}</div></div>`;
+  const target=data.target||{}, candidates=Array.isArray(data.candidates)?data.candidates:[];
+  const policy=data.policy_applicable===true;
+  const targetId=String(data.target_lot_id||lot?.id||'');
+  const reasonEntries=Object.entries(data.exclusion_summary||{}).map(([k,v])=>`${k}：${fmt(v)}件`).join(' / ');
+  const title=policy?'スマートFIFO':'スマートFIFO（この品目は対象外）';
+  const body=!policy
+    ?`<div class="small">${esc(data.message||'有効なFIFOポリシーが未設定、またはFIFO対象外です。')}</div>`
+    :`<div class="small">${esc(v136ExplainTarget(target))}<br>全件判定：対象候補 ${fmt(data.eligible_count||0)}件 / 選択順位：${data.selected_rank??'候補外'} / 推奨ロット：${esc(data.recommended_lot_id||'なし')}<br>比較条件：${esc((data.comparison_attributes||[]).join(' / '))}${reasonEntries?`<br>候補外内訳：${esc(reasonEntries)}`:''}</div>`;
+  const rows=candidates.length?candidates.map((r,i)=>{
+    const selected=String(r.lot_id)===targetId, recommended=String(r.lot_id)===String(data.recommended_lot_id||'');
+    return `<div class="memo" style="margin-top:8px;${selected?'border-left:4px solid #2563eb;':''}"><b>${recommended?'推奨ロット':`表示候補 ${i+1}`}${selected?' / 選択中':''}</b><div class="small">ロット：${esc(r.lot_no||'-')} / 入庫日：${esc(r.received_date||'-')} / 経過日数：${fmt(r.age_days)}日 / 残数：${fmt(r.current_qty)} ${esc(r.unit||'')}<br>FIFO順位：${fmt(r.candidate_rank)} / 品質：${esc(r.quality_grade||'unassessed')}${r.quality_evaluation_id?`（評価ID：${esc(r.quality_evaluation_id)}）`:''} / 保留：${r.held?'あり':'なし'}<br>${esc(r.recommendation_reason||'')}</div></div>`;
+  }).join(''):'<div class="small" style="margin-top:8px">画面に表示するFIFO候補はありません。候補外理由と全件判定は上記を確認してください。</div>';
+  const mode=data.mode||'shadow';
+  const controls=policy&&mode==='warn'?`<div class="notice" style="margin-top:10px"><b>推奨外または候補外を出庫する場合は、FIFO例外理由が必要です。</b>${v136ReasonFields('v136')}</div>`
+    :policy&&mode==='enforce'?`<div class="notice" style="margin-top:10px"><b>enforce中</b><div class="small">候補外ロットは出庫できません。推奨外の候補を出庫する場合は、管理者がoverride理由を記録します。</div>${canAdmin()?`${v136ReasonFields('v136')}<label class="label" style="margin-top:10px">管理者override理由</label><input id="v136OverrideReason" class="input" maxlength="500" placeholder="推奨ロット以外を出庫する理由（必須）">`:''}</div>`
+    :mode==='shadow'?'<div class="small" style="margin-top:9px">shadow中：案内と出庫時の判定を記録するだけで、在庫・出庫先・選択ロットを自動変更しません。</div>':'';
+  return `<div class="card" id="v136FifoPanel"><div class="itemHead"><div><b>${title}</b><div class="small">モード：${esc(v136ModeLabel(mode))}。候補表示は最大 ${fmt(data.display_limit||candidates.length)}件ですが、順位と推奨判定は全件で行います。</div></div><span class="badge ${mode==='shadow'?'normal':'excess'}">${esc(mode)}</span></div>${body}${rows}${controls}</div>`;
+}
+async function v136ShowFifoForLot(q,host){
+  const panel=typeof host==='string'?document.getElementById(host):host;if(!panel)return;
+  panel.innerHTML='<div class="notice">FIFO候補を全件判定中...</div>';
+  try{const lot=await qrFindLot(q);const data=await v136Rpc('get_fifo_candidates_v1136',{p_qr_key:lot?.qr_key||q,p_limit:10});panel.outerHTML=v136FifoCandidateHtml(data,lot);}
+  catch(error){panel.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">FIFO候補を取得できませんでした。${esc(error.message||error)}</div>`;}
+}
+function v136NewSingleOutPayload(lot,cur,qty,destination,shipTiming,memo,fifo){
+  const after=cur-qty,large=qrIsLargeContainer(lot.container_type),per=qrPerWeight(lot),weight=large&&per!==null?per*qty:null,afterWeight=large&&per!==null?per*after:null;
+  const operation=qrMovementOperationMeta('out',lot,cur,after,'出庫'),stored=v136ReadExactRequest(operation.key);
+  if(stored)return {operation,payload:stored,reused:true};
+  const meta=operation.meta;
+  const payload={p_operation_id:meta.operationId,p_qr_key:lot.qr_key,p_movement_type:'出庫',p_qty:qty,p_after_quantity:after,p_weight:weight,p_after_weight:afterWeight,p_destination:destination,p_reason:null,p_memo:`${shipTiming}${memo?` / ${memo}`:''}`,p_user_id:db.userId||null,p_user_name:db.user||null,p_device_meta:{deviceId:meta.deviceId,userAgent:navigator.userAgent||''},p_operation_meta:meta,p_expected_quantity:cur,p_fifo_violation_reason:fifo.violation||null,p_fifo_override_reason:fifo.override||null};
+  return {operation,payload:v136WriteExactRequest(operation.key,payload),reused:false};
+}
+/* 出庫要求を初回送信時に固定し、通信結果不明の再送では全引数を変更しない。 */
+qrSaveLotMovement=async function(kind,q){
+  if(kind!=='out')return v136QrSaveLotMovementCore(kind,q);
+  if(!canQrOperate())return alert('QR在庫の更新権限がありません');if(isQrSaving)return;
+  const btn=document.getElementById('qrMoveSaveBtn');if(btn?.disabled)return;
+  if(btn){btn.disabled=true;btn.textContent='FIFO確認・登録中...';}isQrSaving=true;
+  let prepared=null;
+  try{
+    const lot=await qrFindLot(q);if(!lot)throw new Error('ロットが見つかりません');
+    const cur=Number(lot.current_qty??lot.current_quantity??0),qty=Number(document.getElementById('qrMoveQty')?.value||0);
+    if(!(qty>0)||qty>cur)throw new Error('処理数量を確認してください');
+    const destination=document.getElementById('qrMoveDestination')?.value||'',shipTiming=document.getElementById('qrShipTiming')?.value||'';
+    if(!destination)throw new Error('出庫先を選択してください');if(destination!=='廃棄'&&!shipTiming)throw new Error('当日分・翌日分先送りを選択してください');
+    const fifo=v136ReadReason('v136'); prepared=v136NewSingleOutPayload(lot,cur,qty,destination,shipTiming,document.getElementById('qrMoveMemo')?.value.trim()||'',fifo);
+    const p=prepared.payload;
+    if(!prepared.reused&&!confirm(`QR出庫の確認\n\n品目：${lot.item_name}\n現在残：${fmt(cur)} ${lot.unit}\n出庫：${fmt(qty)} ${lot.unit}\n処理後残：${fmt(cur-qty)} ${lot.unit}\n出庫先：${destination}${fifo.violation?`\nFIFO例外理由：${fifo.violation}`:''}${fifo.override?`\n管理者override：${fifo.override}`:''}\n\nサーバーでFIFOと残数を再確認して登録しますか？`))return;
+    if(prepared.reused&&!confirm('前回の送信結果を確認します。初回と完全に同じ内容・同じ操作IDで再送します。入力欄の変更は今回反映されません。続行しますか？'))return;
+    const ans=await v136Rpc('apply_qr_lot_operation_v136',p);
+    if(ans?.idempotency_conflict)throw v136IdempotencyError(ans.message);
+    if(!ans?.ok)throw new Error(ans?.message||'第3段階QR出庫が完了しませんでした');
+    qrClearMovementOperationMeta(prepared.operation.key);v136ClearExactRequest(prepared.operation.key);setSyncState('保存済み');
+    addOperationLog('qr_out_v136',{qrKey:lot.qr_key,qty:cur},{qty:p.p_after_quantity},{...(p.p_operation_meta||{}),compatibility:'v1.136',fifo:ans.fifo||null,idempotent:!!ans.idempotent});
+    const refreshed=await qrFindLot(lot.qr_key);if(!refreshed)throw new Error('登録後のロットを再取得できませんでした。');qrOperationCompletePage('out',refreshed.qr_key,true);
+  }catch(error){
+    const extra=error?.v136MissingDb?'\n\n第3段階SQLを適用後に、同じ画面から再試行してください。既存出庫RPCへの自動切替は行いません。':error?.v136IdempotencyConflict?'\n\n重大エラーです。成功扱いにはしていません。既存の出庫履歴を管理者が確認するまで、新しい操作IDで再送しないでください。':'\n\n通信結果が不明な場合は、同じ画面で同じ内容のまま再送してください。';
+    alert(`出庫を登録できませんでした：${error?.message||error}${extra}`);
+  }finally{isQrSaving=false;if(btn){btn.disabled=false;btn.textContent='出庫を登録';}}
+};
+/* 連続出庫でもidempotency_conflictは通常失敗・新規操作ID再試行にしない。 */
+const v136V135ProcessRowCore=v135ProcessRow;
+v135ProcessRow=async function(batchId,rowId,options={}){
+  const result=await v136V135ProcessRowCore(batchId,rowId,options);
+  const batch=v135GetBatch(batchId),row=batch?.rows?.find(r=>r.id===rowId);
+  if(row&&/同じoperation_idに異なるpayload|既存移動履歴に存在|idempotency_conflict/i.test(String(row.lastError||''))){
+    v135MutateStore(s=>{const r=s.batches.find(b=>b.id===batchId)?.rows.find(x=>x.id===rowId);if(r){r.status='idempotency_conflict';r.lastError=`重大エラー：${r.lastError}。成功扱いにせず、既存履歴を管理者が確認するまで新しい操作IDで再試行しません。`;r.updatedAt=nowIso();}});
+    return {ok:false,unknown:false,idempotencyConflict:true};
+  }
+  return result;
+};
+const v136V135StatusTextCore=v135StatusText;
+v135StatusText=function(row){return row?.status==='idempotency_conflict'?'操作ID競合（管理者確認）':v136V135StatusTextCore(row);};
+const v136V135StatusClassCore=v135StatusClass;
+v135StatusClass=function(row){return row?.status==='idempotency_conflict'?'excess':v136V135StatusClassCore(row);};
+const v136V135RetryButtonHtmlCore=v135RetryButtonHtml;
+v135RetryButtonHtml=function(batch,row){return row?.status==='idempotency_conflict'?'<div class="small" style="color:#b91c1c;margin-top:6px">この行は再送禁止です。管理者が既存履歴を確認してください。</div>':v136V135RetryButtonHtmlCore(batch,row);};
+
+function v136LossRowHtml(r){return `<tr><td>${esc(r.occurred_date||'-')}</td><td>${esc(r.item_name||'-')}</td><td>${esc(r.origin||'-')}</td><td>${esc(r.supplier||'-')}</td><td>${fmt(r.quantity)} ${esc(r.unit||'')}</td><td>${r.declared_weight??r.weight??'-'}</td><td>${r.amount_yen===null||r.amount_yen===undefined?'<b>金額未確定</b>':money(r.amount_yen)+'円'}</td><td>${esc(r.amount_status||'-')}<br><span class="small">${esc(typeof r.price_source==='string'?r.price_source:JSON.stringify(r.price_source||{}))}${r.unassessed_reason?` / ${esc(r.unassessed_reason)}`:''}</span></td><td>${Number(r.possible_duplicate_count||0)>0?`<b>重複の可能性：${fmt(r.possible_duplicate_count)}件</b><br><span class="small">${esc(r.possible_duplicate_note||'自動除外なし')}</span>`:'なし'}</td></tr>`;}
+async function v136RunLoss(){
+  const host=document.getElementById('v136LossResult');if(!host)return;host.innerHTML='<div class="notice">集計中...</div>';
+  try{
+    const data=await v136Rpc('get_inventory_loss_cockpit_v1136',{p_from:document.getElementById('v136LossFrom').value,p_to:document.getElementById('v136LossTo').value});
+    const filter=(document.getElementById('v136LossFilter').value||'').trim().toLowerCase();
+    const matches=r=>!filter||[r.item_name,r.origin,r.supplier,r.unit,r.source_id].some(v=>String(v||'').toLowerCase().includes(filter));
+    const normal=(data.waste_records_rows||[]).filter(matches),qr=(data.qr_waste_movement_rows||[]).filter(matches);
+    const headers=['日付','品目','産地','仕入先','数量','記録重量','金額','単価・金額状態 / 出典','重複確認'];
+    host.innerHTML=`<div class="card notice"><b>集計ルール</b><div class="small">${esc(data.note||'')}</div><div class="small">通常廃棄とQR廃棄の合計は表示しません。possible_duplicateは「重複の可能性」であり、自動除外はしていません。</div></div><div class="card"><b>通常廃棄（waste_records）</b>${v136RowsTable(headers,normal.map(v136LossRowHtml))}</div><div class="card"><b>QR廃棄（qr_lot_movements）</b>${v136RowsTable(headers,qr.map(v136LossRowHtml))}</div>`;
+  }catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">ロス分析を取得できませんでした。${esc(error.message||error)}</div>`;}
+}
+function v136SupplierRows(rows,overall=false){return rows.map(r=>`<tr><td>${esc(r.supplier||'未入力')}</td><td>${esc(r.cooperative_name||'-')}</td>${overall?'':`<td>${esc(r.item_name||r.item_id||'-')}</td>`}<td>${fmt(r.evaluation_count)}</td><td>${fmt(r.good_count)}</td><td>${fmt(r.review_count)}</td><td>${fmt(r.bad_count)}</td><td>${(Number(r.good_ratio||0)*100).toFixed(1)}%</td><td>${(Number(r.review_ratio||0)*100).toFixed(1)}%</td><td>${(Number(r.bad_ratio||0)*100).toFixed(1)}%</td></tr>`);}
+async function v136RunSupplierQuality(){
+  const host=document.getElementById('v136SupplierResult');if(!host)return;host.innerHTML='<div class="notice">集計中...</div>';
+  try{
+    const data=await v136Rpc('get_supplier_quality_analysis_v1136',{p_from:document.getElementById('v136SupplierFrom').value,p_to:document.getElementById('v136SupplierTo').value,p_supplier:document.getElementById('v136SupplierName').value.trim()||null});
+    const filter=(document.getElementById('v136SupplierFilter').value||'').trim().toLowerCase(),matches=r=>!filter||[r.supplier,r.cooperative_name,r.item_name,r.item_id].some(v=>String(v||'').toLowerCase().includes(filter));
+    const byItem=(data.supplier_item_sections||[]).filter(matches),overall=(data.supplier_overall_sections||[]).filter(matches),base=['仕入先（登録表記）','単協名'],metrics=['評価数','良好','要確認','不良','良好率','要確認率','不良率'];
+    host.innerHTML=`<div class="card notice"><b>参考情報（ランキングではありません）</b><div class="small">${esc(data.note||'')}</div></div><div class="card"><b>仕入先 × 品目</b>${v136RowsTable([...base,'品目',...metrics],v136SupplierRows(byItem,false))}</div><div class="card"><b>仕入先全体</b>${v136RowsTable([...base,...metrics],v136SupplierRows(overall,true))}</div>`;
+  }catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">品質分析を取得できませんでした。${esc(error.message||error)}</div>`;}
+}
+async function v136RunDecisions(){
+  const host=document.getElementById('v136DecisionResult');if(!host)return;host.innerHTML='<div class="notice">確認中...</div>';
+  try{const data=await v136Rpc('get_rule_based_decisions_v1136',{p_limit:100}),filter=(document.getElementById('v136DecisionFilter').value||'').trim().toLowerCase(),rows=(data.rows||[]).filter(r=>!filter||[r.item_name,r.item_id,r.lot_no,r.qr_key,r.action].some(v=>String(v||'').toLowerCase().includes(filter)));
+    host.innerHTML=`<div class="card notice"><b>判断支援のみ</b><div class="small">${esc(data.message||'')}</div></div>${rows.length?rows.map(r=>{const b=r.rule_basis||{};return `<div class="card"><b>${esc(r.item_name||'-')} / ${esc(r.lot_no||'-')}</b><div class="small">入庫日：${esc(r.received_date||'-')} / 経過：${fmt(b.age_days)}日 / 残数：${fmt(r.current_qty)} ${esc(r.unit||'')}<br>品質：${esc(b.quality_status||'unassessed')}${b.quality_evaluation_id?`（評価ID：${esc(b.quality_evaluation_id)}）`:''} / 保留：${b.hold_active?'あり':'なし'}<br>ポリシーID：${esc(b.policy_id||'未設定')} / ルール版：${esc(b.rule_version||'-')} / 自動操作：しない</div><div class="notice" style="margin-top:8px"><b>確認候補：</b>${esc(r.action||'')}</div></div>`;}).join(''):'<div class="notice">確認候補はありません。</div>'}`;
+  }catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">判断支援を取得できませんでした。${esc(error.message||error)}</div>`;}
+}
+function v136TransitionRequestHtml(pending){
+  const list=(pending||[]).length?`<div class="card"><b>承認待ちの移行申請</b>${v136RowsTable(['申請ID','移行先','申請者','申請日時','理由','shadow監査','ポリシー確認','承認'],(pending||[]).map(r=>`<tr><td class="small">${esc(r.id||'-')}</td><td>${esc(v136ModeLabel(r.target_mode))}</td><td>${esc(r.requested_by||'-')}</td><td>${esc(r.requested_at||'-')}</td><td>${esc(r.request_reason||'-')}</td><td>${fmt(r.shadow_audit_count_at_request)}</td><td>${r.active_policy_coverage_ok_at_request?'済':'未確認'}</td><td><button class="btn orange" onclick="v136ApproveTransition('${esc(r.id)}')">別管理者が承認</button></td></tr>`))}</div>`:'';
+  return `<div class="card"><b>warn / enforce への移行申請</b><div class="small">通常設定RPCでは変更できません。shadow監査20件以上・在庫中の全対象品目ポリシー・確認チェックをDBで再検査し、申請者本人以外の管理者が承認します。</div><label class="label">申請先モード</label><select id="v136TransitionMode" class="input"><option value="warn">warn（理由付き続行）</option><option value="enforce">enforce（最古候補または管理者override）</option></select><label class="label">申請理由（必須）</label><textarea id="v136TransitionReason" class="textarea" maxlength="500"></textarea><label class="checkRow"><input id="v136TransitionCoverage" type="checkbox"> 在庫中の全FIFO対象品目ポリシーを確認した</label><button class="btn orange" style="width:100%;margin-top:10px" onclick="v136RequestTransition()">移行を申請</button></div>${list}`;
+}
+async function v136RequestTransition(){
+  const target=document.getElementById('v136TransitionMode')?.value||'',reason=document.getElementById('v136TransitionReason')?.value.trim()||'',checked=!!document.getElementById('v136TransitionCoverage')?.checked;
+  if(!reason||!checked)return alert('申請理由と全FIFO対象品目ポリシーの確認チェックが必要です。');
+  if(!confirm(`${v136ModeLabel(target)}への移行を申請します。承認は申請者本人以外の管理者が行います。続行しますか？`))return;
+  try{const ans=await v136Rpc('request_fifo_mode_transition_v1136',{p_target_mode:target,p_reason:reason,p_confirm_all_target_policies:checked});if(!ans?.ok)throw new Error(ans?.message||'移行申請を登録できませんでした');v136SettingsCache=null;v136SettingsPage('移行申請を登録しました。別の管理者による承認待ちです。');}catch(error){alert(`移行申請できませんでした：${error.message||error}\n\nshadow監査件数・全対象ポリシー・確認チェック・権限を確認してください。`);}
+}
+async function v136ApproveTransition(id){
+  const reason=prompt('承認理由を入力してください（1〜500文字）。申請者本人は承認できません。');if(!reason?.trim())return;
+  if(!confirm('申請時と承認時のshadow監査数・全対象ポリシーをDBで再検査して承認します。続行しますか？'))return;
+  try{const ans=await v136Rpc('approve_fifo_mode_transition_v1136',{p_request_id:id,p_reason:reason.trim(),p_confirm_checks:true});if(!ans?.ok)throw new Error(ans?.message||'承認できませんでした');v136SettingsCache=null;v136SettingsPage(`FIFOモードを${v136ModeLabel(ans.mode)}へ承認しました。`);}catch(error){alert(`承認できませんでした：${error.message||error}\n\n自己承認禁止、shadow監査数、全対象ポリシー、承認待ち状態を確認してください。`);}
+}
+const v136RenderSettingsCore=v136RenderSettings;
+v136RenderSettings=async function(){
+  await v136RenderSettingsCore();
+  const host=document.getElementById('v136SettingsHost');if(!host||host.querySelector('.err'))return;
+  try{const data=await v136GetSettings();const mode=data.mode||'shadow';
+    const card=host.querySelector('.card');if(!card)return;
+    /* Normal settings are intentionally limited to disabled/shadow; warn/enforce use the separate approval flow below. */
+    const select=document.getElementById('v136Mode');if(select){select.innerHTML='<option value="disabled">停止（disabled）</option><option value="shadow">shadow（記録のみ）</option>';select.value=['disabled','shadow'].includes(mode)?mode:'shadow';}
+    const button=[...card.querySelectorAll('button')].find(x=>/モードを変更/.test(x.textContent||''));if(button)button.textContent='停止 / shadow を変更';
+    card.insertAdjacentHTML('afterend',v136TransitionRequestHtml(data.pending_transitions||[]));
+  }catch(_){/* v136RenderSettingsCore already presents the safe error */}
+};
+v136SaveMode=async function(current){
+  const mode=document.getElementById('v136Mode')?.value||'',reason=document.getElementById('v136ModeReason')?.value.trim()||'';
+  if(!['disabled','shadow'].includes(mode))return alert('停止 / shadow の変更だけがこの画面からできます。warn / enforce は移行申請を使用してください。');
+  if(!reason)return alert('変更理由を入力してください。');
+  if(!confirm(`${v136ModeLabel(mode)}へ変更します。既存ロット・履歴・在庫数量は変更しません。\n理由：${reason}\n\n続行しますか？`))return;
+  try{const ans=await v136Rpc('set_seika_feature_mode_v1136',{p_mode:mode,p_reason:reason});if(!ans?.ok)throw new Error(ans?.message||'モードを変更できませんでした');v136SettingsCache=null;v136SettingsPage(`FIFOモードを${v136ModeLabel(mode)}へ変更しました。`);}catch(error){alert(error.message||error);}
+};
 
 </script>
   </body>
