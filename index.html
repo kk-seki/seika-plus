@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.137 第3段階表示改善</title>
+    <title>SEIKA＋ v1.138 日本語・インドネシア語対応</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -5939,8 +5939,8 @@ async function v1102SaveQuality(q,supersedesId=""){if(v1102QualitySaving)return;
 ;if(!grade)return alert("総合判定を選択してください。");if(grade==="good"&&(issues.length||v1102QualityPhotos.length))return alert("良好の場合、問題項目と写真は登録できません。")
 ;if((grade==="review"||grade==="bad")&&!issues.length)return alert("要確認・不良の場合は状態を1つ以上選択してください。")
 ;if(issues.includes("その他")&&!memo)return alert("その他の内容をメモへ入力してください。");if(supersedesId&&!correction)return alert("訂正理由を入力してください。")
-;if(!confirm(`品質評価の確認\n\n判定：${v1102GradeLabel(grade)}\n状態：${issues.join("、")||"なし"}\n写真：${v1102QualityPhotos.length}枚\n\n登録後も在庫数量は変わりません。登録しますか？`))return
-;v1102QualitySaving=true;if(btn){btn.disabled=true;btn.textContent="登録中..."}v161ShowProcessing("品質評価を保存しています");try{
+;const v138QualityConfirm=v138Language==="id"?`Konfirmasi Penilaian Kualitas\n\nHasil: ${v138T(v1102GradeLabel(grade))}\nKondisi: ${issues.map(x=>v138T(x)).join(", ")||"Tidak ada"}\nFoto: ${v1102QualityPhotos.length}\n\nJumlah stok tidak berubah setelah disimpan. Simpan?`:`品質評価の確認\n\n判定：${v1102GradeLabel(grade)}\n状態：${issues.join("、")||"なし"}\n写真：${v1102QualityPhotos.length}枚\n\n登録後も在庫数量は変わりません。登録しますか？`;if(!confirm(v138QualityConfirm))return
+;v1102QualitySaving=true;if(btn){btn.disabled=true;btn.textContent="登録中..."}v161ShowProcessing(v138T("品質評価を保存しています"));try{
 const ans=await callRpc("create_qr_quality_evaluation_v1102",{p_qr_key:q,p_grade:grade,p_issues:issues,p_memo:memo||null,
 p_correction_reason:correction||null,p_supersedes_id:supersedesId||null,p_evaluated_at:(new Date).toISOString()}),evaluationId=ans?.evaluation_id
 ;if(!evaluationId)throw new Error("品質評価IDを取得できません");let uploaded=0,photoError=null;for(const photo of v1102QualityPhotos){let reserve=null;try{
@@ -7205,11 +7205,11 @@ const v135QrHomeCore=qrHome;qrHome=async function(msg=''){await v135QrHomeCore(m
 const v135PendingSummaryCore=v133PendingSummary;v133PendingSummary=function(){const p=v135PendingSummaryCore(),batches=v135CurrentPendingBatchCount();return{...p,batches,total:Number(p.total||0)+batches}};
 const v135DiagnosticTextCore=v200DiagnosticText;v200DiagnosticText=function(sourceScreen=''){const base=v135DiagnosticTextCore(sourceScreen);return `${base}\n本人用保留：${v135CurrentPendingBatchCount()}件（QR連続処理）`};
 const v135SetScreenCore=setScreen;setScreen=function(name,args=[]){if(currentScreen==='v135BatchScanPage'&&name!=='v135BatchScanPage')v135BatchStopCamera().catch(()=>{});return v135SetScreenCore(name,args)};
-window.APP_VERSION='v1.137';document.title='SEIKA＋ v1.137 第3段階表示改善';
+window.APP_VERSION='v1.138';document.title='SEIKA＋ v1.138 日本語・インドネシア語対応';
 
 /* ===== v1.136 第3段階：スマートFIFO・ロス分析・品質傾向・判断支援 ===== */
-window.APP_VERSION='v1.137';
-document.title='SEIKA＋ v1.137 第3段階表示改善';
+window.APP_VERSION='v1.138';
+document.title='SEIKA＋ v1.138 日本語・インドネシア語対応';
 const V136_DB_NOT_APPLIED='第3段階DB未適用';
 const V136_FIFO_REASONS=['規格が異なる','量目が異なる','荷姿が異なる','出庫先から指定された','品質確認中','出庫停止中','現物が見つからない','先に開封済みのロットがある','その他'];
 let v136SettingsCache=null;
@@ -7453,6 +7453,47 @@ v136SaveMode=async function(current){
   if(!confirm(`${v136ModeLabel(mode)}へ変更します。既存ロット・履歴・在庫数量は変更しません。\n理由：${reason}\n\n続行しますか？`))return;
   try{const ans=await v136Rpc('set_seika_feature_mode_v1136',{p_mode:mode,p_reason:reason});if(!ans?.ok)throw new Error(ans?.message||'モードを変更できませんでした');v136SettingsCache=null;v136SettingsPage(`FIFOモードを${v136ModeLabel(mode)}へ変更しました。`);}catch(error){alert(error.message||error);}
 };
+
+/* ===== v1.138 Japanese / Bahasa Indonesia UI ===== */
+const V138_I18N_KEY="seika_v1138_language_device";
+const V138_I18N_USER_PREFIX="seika_v1138_language_user_";
+const V138_ID={
+ "ログイン":"Masuk","安全なログイン":"Masuk","名前を選択してください":"Pilih nama Anda","パスワード":"Kata sandi","確認中...":"Sedang memeriksa...","名前を選んで、パスワードを入力してください。":"Pilih nama Anda, lalu masukkan kata sandi.","現場オペレーション管理":"Pengelolaan Operasional Lapangan","入庫から在庫、廃棄、出庫まで。":"Dari penerimaan, stok, pembuangan, hingga barang keluar.","青果センターの毎日をひとつに。":"Semua pekerjaan harian pusat sayur dan buah dalam satu sistem.",
+ "戻る":"Kembali","ホーム":"Beranda","再読込":"Muat ulang","メニュー":"Menu","閉じる":"Tutup","次へ":"Berikutnya","保存":"Simpan","登録":"Simpan","保存中...":"Sedang menyimpan...","登録中...":"Sedang menyimpan...","読み込み中...":"Sedang memuat...","エラー":"Terjadi kesalahan","権限がありません":"Anda tidak memiliki izin.",
+ "在庫管理":"Pengelolaan stok","QR在庫管理":"Pengelolaan stok QR","在庫報告コピー":"Salin laporan stok","品目設定":"Pengaturan barang","適正在庫設定":"Pengaturan stok ideal","産地状況・市場動向メモ":"Catatan kondisi daerah asal dan pasar","網コンテナ在庫":"Stok kontainer jaring","廃棄管理":"Pengelolaan pembuangan","分析・判断支援":"Analisis dan bantuan keputusan","本日入力済み":"Sudah diisi hari ini","本日未入力":"Belum diisi hari ini","発注候補":"Kandidat pemesanan","過多品目":"Barang berlebih","担当品目":"Barang tanggung jawab","最終入力":"Input terakhir","記録なし":"Belum ada catatan","最新の情報を確認する場合は、再読込を押してください。":"Tekan “Muat ulang” untuk melihat informasi terbaru.",
+ "QR入庫":"Penerimaan Barang QR","品目と数量を入力して登録します":"Isi nama barang dan jumlah, lalu simpan.","入庫する品目":"Barang yang diterima","入庫日":"Tanggal penerimaan","品目":"Nama barang","マスターから選択してください":"Pilih dari daftar","通常品目の後に、じゃがいも品種をまとめて表示します。":"Nama barang ditampilkan dalam bahasa Jepang.","担当者":"Petugas","仕入れ担当者":"Petugas pembelian","荷受け担当者":"Petugas penerimaan","品目から自動入力":"Terisi otomatis dari nama barang","品目選択後に自動入力":"Terisi otomatis setelah memilih barang","荷姿と数量":"Jenis kemasan dan jumlah","荷姿":"Jenis kemasan","仕入先・保管場所":"Pemasok dan lokasi penyimpanan","仕入先":"Pemasok","産地":"Daerah asal","規格など（任意）":"Spesifikasi dan lainnya (opsional)","保管場所":"Lokasi penyimpanan","登録してQR貼り紙PDFへ":"Simpan dan buka PDF label QR","PDFを開く・印刷":"Buka dan cetak PDF","必須":"Wajib","任意":"Opsional","未設定":"Belum diatur","未確定":"Belum ditetapkan","確定":"Sudah ditetapkan",
+ "品質評価":"Penilaian kualitas","QR品質評価":"Penilaian Kualitas QR","品質評価を訂正":"Koreksi penilaian kualitas","在庫数量は変わりません":"Jumlah stok tidak berubah","品質状態だけをロットへ記録します。不良品を在庫から減らす場合は、評価後にQR廃棄を登録してください。":"Hanya kondisi kualitas yang dicatat pada lot. Untuk mengurangi barang bermasalah dari stok, simpan pembuangan QR setelah penilaian.","総合判定":"Hasil keseluruhan","良好":"Baik","要確認":"Perlu diperiksa","不良":"Buruk","確認された状態（複数選択可）":"Kondisi yang ditemukan (boleh pilih lebih dari satu)","写真（任意・最大3枚）":"Foto (opsional, maksimal 3)","問題時のみ登録します。長辺1280px、1枚500KB以下へ自動圧縮します。":"Tambahkan foto hanya jika ada masalah.","写真ライブラリから選択":"Pilih dari galeri foto","メモ（任意）":"Catatan (opsional)","訂正理由":"Alasan koreksi","品質評価を登録":"Simpan penilaian kualitas","品質評価を保存しています":"Sedang menyimpan penilaian kualitas","品質評価の確認":"Konfirmasi Penilaian Kualitas","訂正した評価を登録":"Simpan hasil koreksi","傷み":"Rusak","変色":"Perubahan warna","腐敗":"Busuk","カビ":"Berjamur","打撲・傷":"Memar atau luka","しおれ":"Layu","異臭":"Bau tidak normal","規格外":"Tidak sesuai standar","温度異常":"Suhu tidak normal","その他":"Lainnya",
+ "仕入先を入力":"Masukkan pemasok","例：茨城 → 茨城県産":"Contoh: Ibaraki","例：3L、秀品、フジ用":"Contoh: 3L, kelas bagus, untuk Fuji","品質状態や確認内容":"Kondisi kualitas atau hasil pemeriksaan","例：判定項目の選択間違い":"Contoh: salah memilih item penilaian","パスワードを入力してください。":"Masukkan kata sandi.","再ログインしてください。":"Silakan masuk kembali.","通信状況を確認してください。":"Periksa koneksi internet.","登録後も在庫数量は変わりません。":"Jumlah stok tidak berubah setelah disimpan.","なし":"Tidak ada","写真":"Foto","状態":"Kondisi","判定":"Hasil"
+};
+let v138Language="ja";
+function v138T(value){const text=String(value??"");return v138Language==="id"?(V138_ID[text]||text):text}
+function v138LanguageKey(){return db?.userId?V138_I18N_USER_PREFIX+String(db.userId):V138_I18N_KEY}
+function v138ReadLanguage(key){try{return localStorage.getItem(key)==="id"?"id":"ja"}catch(_){return"ja"}}
+function v138ApplyLanguage(language){v138Language=language==="id"?"id":"ja";document.documentElement.lang=v138Language;try{localStorage.setItem(v138LanguageKey(),v138Language)}catch(_){} }
+function v138RestoreLanguage(){const userKey=db?.userId?V138_I18N_USER_PREFIX+String(db.userId):"";let saved="";try{saved=userKey?localStorage.getItem(userKey)||"":localStorage.getItem(V138_I18N_KEY)||""}catch(_){};v138Language=saved==="id"?"id":saved==="ja"?"ja":v138ReadLanguage(V138_I18N_KEY);document.documentElement.lang=v138Language;if(userKey&&!saved)try{localStorage.setItem(userKey,v138Language)}catch(_){}}
+function v138LanguageSwitchHtml(){return `<div class="v138LangSwitch" role="group" aria-label="Language"><button type="button" class="${v138Language==="ja"?"on":""}" onclick="v138SetLanguage('ja')">日本語</button><button type="button" class="${v138Language==="id"?"on":""}" onclick="v138SetLanguage('id')">Bahasa Indonesia</button></div>`}
+function v138SetLanguage(language){v138ApplyLanguage(language);if(db?.user)renderCurrent();else login()}
+function v138TextNode(node){const source=node.nodeValue,trimmed=source.trim();if(!trimmed||!V138_ID[trimmed]||v138Language!=="id")return;node.nodeValue=source.replace(trimmed,V138_ID[trimmed])}
+function v138TranslateElement(el){if(v138Language!=="id"||!el)return;const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);nodes.forEach(v138TextNode)}
+function v138TranslateScreen(){document.documentElement.lang=v138Language;const common=[...document.querySelectorAll(".headAction,.title,.head .sub,#syncInfo")];common.forEach(v138TranslateElement);const screens=["login","home","qrHome","qrCreatePage","v1102QualityPage"],active=screens.includes(currentScreen);if(!active)return;const selectors=".opsLoginScreen h1,.opsLoginScreen h2,.opsLoginScreen .small,.opsLoginScreen .opsLogoSub,.homeSummary .summaryLabel,.homePrimary button,.qrCreateForm h2,.qrCreateForm .label,.qrCreateForm .small,.qrCreateForm button,.qrCreateForm .qrReadOnlyField,.qrCreateForm .notice,#v1102ProblemFields,.wrap > .notice,.wrap > .card > .label,.wrap > .card > .small,.wrap > .card > button,.wrap > .card > .grid label,.wrap > .card > .grid .box";document.querySelectorAll(selectors).forEach(v138TranslateElement);document.querySelectorAll(".qrCreateForm input[placeholder],.qrCreateForm textarea[placeholder],#v1102QualityMemo,#v1102CorrectionReason").forEach(el=>{const p=el.getAttribute("placeholder");if(v138Language==="id"&&V138_ID[p])el.setAttribute("placeholder",V138_ID[p])});if(currentScreen==="v1102QualityPage"){const memo=document.getElementById("v1102QualityMemo");if(memo&&v138Language==="id"){memo.setAttribute("placeholder","Tulis dalam bahasa Jepang (jika perlu, tanyakan kepada petugas Jepang).");let note=document.getElementById("v138JapaneseMemoNote");if(!note){note=document.createElement("div");note.id="v138JapaneseMemoNote";note.className="small";note.textContent="Tulis dalam bahasa Jepang (jika perlu, tanyakan kepada petugas Jepang).";memo.insertAdjacentElement("beforebegin",note)}}}}
+const v138PageShellCore=pageShell;
+pageShell=function(title,sub,body,opts={}){const result=v138PageShellCore(title,sub,body,opts);if(opts.login){const screen=document.querySelector(".opsLoginScreen");if(screen)screen.insertAdjacentHTML("afterbegin",`<div class="v138LoginLanguage">${v138LanguageSwitchHtml()}</div>`)}else{const headin=document.querySelector(".headin");if(headin){let host=headin.querySelector(".topBtns");if(!host){host=document.createElement("div");host.className="topBtns";headin.appendChild(host)}const old=host.querySelector(".v138LangSwitch");if(old)old.remove();host.insertAdjacentHTML("afterbegin",v138LanguageSwitchHtml())}}v138TranslateScreen();return result};
+const v138AuthApplyProfileCore=authApplyProfile;
+authApplyProfile=function(profile){const result=v138AuthApplyProfileCore(profile);v138RestoreLanguage();return result};
+const v138QrSaveLotCore=qrSaveLot;
+qrSaveLot=async function(){if(v138Language==="id"){const checks=[["qrReceivedDate","入庫日を入力してください。"],["qrItemName","品目を選択してください。"],["qrPurchaseStaff","仕入れ担当者を入力してください。"],["qrContainerType","荷姿を選択してください。"],["qrQty","数量を入力してください。"],["qrSupplier","仕入先を入力してください。"],["qrOrigin","産地を入力してください。"],["qrLoc","保管場所を選択してください。"]];for(const [id,message] of checks){const el=document.getElementById(id);if(el&&!String(el.value||"").trim()){alert(v138InputMessage(message));el.focus();return}}}return v138QrSaveLotCore()};
+function v138InputMessage(message){return({"入庫日を入力してください。":"Pilih tanggal penerimaan.","品目を選択してください。":"Pilih nama barang.","仕入れ担当者を入力してください。":"Masukkan petugas pembelian.","荷姿を選択してください。":"Pilih jenis kemasan.","数量を入力してください。":"Masukkan jumlah.","仕入先を入力してください。":"Masukkan pemasok.","産地を入力してください。":"Masukkan daerah asal.","保管場所を選択してください。":"Pilih lokasi penyimpanan."})[message]||message}
+const v138SaveQualityCore=v1102SaveQuality;
+v1102SaveQuality=async function(q,supersedesId=""){if(v138Language==="id"){const grade=document.querySelector('input[name="v1102Grade"]:checked')?.value||"",issues=[...document.querySelectorAll('input[name="v1102Issue"]:checked')],memo=document.getElementById("v1102QualityMemo")?.value.trim()||"",correction=document.getElementById("v1102CorrectionReason")?.value.trim()||"";if(!grade)return alert("Pilih hasil keseluruhan.");if(grade==="good"&&(issues.length||v1102QualityPhotos.length))return alert("Jika hasilnya “Baik”, kondisi masalah dan foto tidak dapat ditambahkan.");if((grade==="review"||grade==="bad")&&!issues.length)return alert("Untuk “Perlu diperiksa” atau “Buruk”, pilih minimal satu kondisi.");if(issues.some(x=>x.value==="その他")&&!memo)return alert("Masukkan rincian “Lainnya” pada catatan.");if(supersedesId&&!correction)return alert("Masukkan alasan koreksi.")}return v138SaveQualityCore(q,supersedesId)};
+const v138QualityPageCore=v1102QualityPage;
+v1102QualityPage=function(q,supersedesId=""){const result=v138QualityPageCore(q,supersedesId);return result};
+const v138Observer=new MutationObserver(()=>{if(v138Language==="id")v138TranslateScreen()});
+v138Observer.observe(document.getElementById("app"),{childList:true,subtree:true,characterData:true});
+v138RestoreLanguage();
+setTimeout(()=>{v138RestoreLanguage();if(db?.user&&typeof renderCurrent==="function"&&currentScreen)renderCurrent()},0);
+const v138Style=document.createElement("style");
+v138Style.textContent=`.v138LoginLanguage{display:flex;justify-content:flex-end;margin:0 0 10px}.v138LangSwitch{display:flex;gap:4px;align-items:center;white-space:nowrap}.v138LangSwitch button{border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);color:inherit;border-radius:999px;padding:6px 8px;font-size:12px;font-weight:800;line-height:1.1;cursor:pointer}.v138LangSwitch button.on{background:#fff;color:#142c52}@media(max-width:620px){.headin{gap:8px;align-items:flex-start}.topBtns{gap:5px;flex-wrap:wrap;justify-content:flex-end}.v138LangSwitch{width:100%;justify-content:flex-end}.v138LangSwitch button{font-size:11px;padding:5px 7px}.headAction{font-size:12px}}`;
+document.head.appendChild(v138Style);
 
 </script>
   </body>
