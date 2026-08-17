@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.136 第3段階</title>
+    <title>SEIKA＋ v1.137 第3段階表示改善</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -7205,11 +7205,11 @@ const v135QrHomeCore=qrHome;qrHome=async function(msg=''){await v135QrHomeCore(m
 const v135PendingSummaryCore=v133PendingSummary;v133PendingSummary=function(){const p=v135PendingSummaryCore(),batches=v135CurrentPendingBatchCount();return{...p,batches,total:Number(p.total||0)+batches}};
 const v135DiagnosticTextCore=v200DiagnosticText;v200DiagnosticText=function(sourceScreen=''){const base=v135DiagnosticTextCore(sourceScreen);return `${base}\n本人用保留：${v135CurrentPendingBatchCount()}件（QR連続処理）`};
 const v135SetScreenCore=setScreen;setScreen=function(name,args=[]){if(currentScreen==='v135BatchScanPage'&&name!=='v135BatchScanPage')v135BatchStopCamera().catch(()=>{});return v135SetScreenCore(name,args)};
-window.APP_VERSION='v1.136';document.title='SEIKA＋ v1.136 第3段階';
+window.APP_VERSION='v1.137';document.title='SEIKA＋ v1.137 第3段階表示改善';
 
 /* ===== v1.136 第3段階：スマートFIFO・ロス分析・品質傾向・判断支援 ===== */
-window.APP_VERSION='v1.136';
-document.title='SEIKA＋ v1.136 第3段階';
+window.APP_VERSION='v1.137';
+document.title='SEIKA＋ v1.137 第3段階表示改善';
 const V136_DB_NOT_APPLIED='第3段階DB未適用';
 const V136_FIFO_REASONS=['規格が異なる','量目が異なる','荷姿が異なる','出庫先から指定された','品質確認中','出庫停止中','現物が見つからない','先に開封済みのロットがある','その他'];
 let v136SettingsCache=null;
@@ -7218,7 +7218,7 @@ function v136DbNotAppliedHtml(){return `<div class="notice" style="border-left:4
 async function v136Rpc(name,args){try{return await callRpc(name,args)}catch(error){if(v136IsMissingDbError(error)){const e=new Error(V136_DB_NOT_APPLIED);e.v136MissingDb=true;throw e;}throw error;}}
 async function v136GetSettings(force=false){if(v136SettingsCache&&!force)return v136SettingsCache;const data=await v136Rpc('get_seika_v1136_settings',{});if(!data?.ok)throw new Error(data?.message||'第3段階設定を取得できませんでした');v136SettingsCache=data;return data;}
 function v136RoleCanAnalyze(){return ['admin','worker','buyer','clerk'].includes(db?.role);}
-function v136ModeLabel(mode){return({disabled:'停止',shadow:'shadow（記録のみ）',warn:'warn（理由付き続行）',enforce:'enforce（最古候補または管理者override）'}[mode]||String(mode||'未確認'));}
+function v136ModeLabel(mode){return({disabled:'停止',shadow:'お試し運転（案内・記録のみ）',warn:'注意運転（推奨外は理由を記録）',enforce:'制限運転（原則、最古候補から出庫）'}[mode]||String(mode||'未確認'));}
 function v136ReasonFields(prefix='v136'){return `<label class="label" style="margin-top:10px">FIFO例外理由</label><select id="${prefix}ViolationReason" class="input" onchange="v136ToggleOtherReason('${prefix}')"><option value="">選択してください</option>${V136_FIFO_REASONS.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select><div id="${prefix}OtherReasonBox" style="display:none"><label class="label">その他の内容（必須）</label><input id="${prefix}OtherReason" class="input" maxlength="500" placeholder="具体的な理由"></div>`;}
 function v136ToggleOtherReason(prefix){const reason=document.getElementById(prefix+'ViolationReason')?.value||'',box=document.getElementById(prefix+'OtherReasonBox');if(box)box.style.display=reason==='その他'?'block':'none';}
 function v136ReadReason(prefix='v136'){let reason=document.getElementById(prefix+'ViolationReason')?.value||'';const other=document.getElementById(prefix+'OtherReason')?.value.trim()||'';if(reason==='その他'){if(!other)throw new Error('FIFO例外の「その他」の内容を入力してください。');reason=`その他：${other}`;}return{violation:reason,override:(document.getElementById(prefix+'OverrideReason')?.value||'').trim()};}
@@ -7268,7 +7268,7 @@ qrLotDetail=async function(q,msg=''){await v136QrLotDetailCore(q,msg);if(!canAdm
 
 function v136RowsTable(headers,rows){return rows.length?`<div class="weeklyWrap"><table class="table"><thead><tr>${headers.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:'<div class="notice">条件に一致する集計データがありません。期間・入力状況を確認してください。</div>';}
 function v136DateRangeHtml(prefix,days){const to=todayKey(),from=new Date(Date.now()-(days-1)*86400000).toLocaleDateString('sv-SE');return `<div class="row"><div><label class="label">開始日</label><input id="${prefix}From" type="date" class="input" value="${from}"></div><div><label class="label">終了日</label><input id="${prefix}To" type="date" class="input" value="${to}"></div></div>`;}
-function v136AnalysisHome(){setScreen('v136AnalysisHome');if(!v136RoleCanAnalyze())return home();pageShell('第3段階 分析・判断支援','集計はSupabase側で行います。自動出庫・自動廃棄・仕入先ランキングは行いません。',`<div class="homePrimary"><button class="btn homeBtnWaste" onclick="v136LossPage()">在庫ロス分析</button><button class="btn homeBtnQr" onclick="v136SupplierQualityPage()">仕入先品質分析</button><button class="btn homeBtnCheck" onclick="v136DecisionPage()">判断支援</button>${canAdmin()?'<button class="btn homeBtnSettings" onclick="v136SettingsPage()">第3段階設定</button>':''}</div>`);}
+function v136AnalysisHome(){setScreen('v136AnalysisHome');if(!v136RoleCanAnalyze())return home();pageShell('第3段階 分析・判断支援','閲覧：管理者・青果社員・仕入担当・事務員。設定変更は管理者のみです。集計結果は参考情報で、自動出庫・自動廃棄・仕入先ランキングは行いません。',`<div class="homePrimary"><button class="btn homeBtnWaste" onclick="v136LossPage()">在庫ロス分析</button><button class="btn homeBtnQr" onclick="v136SupplierQualityPage()">仕入先品質分析</button><button class="btn homeBtnCheck" onclick="v136DecisionPage()">判断支援</button>${canAdmin()?'<button class="btn homeBtnSettings" onclick="v136SettingsPage()">第3段階設定（管理者）</button>':''}</div>`);}
 function v136LossPage(){setScreen('v136LossPage');if(!v136RoleCanAnalyze())return home();pageShell('在庫ロス分析','通常廃棄とQR廃棄を別ソースで集計します。単価未設定は0円扱いにしません。',`<div class="card">${v136DateRangeHtml('v136Loss',30)}<label class="label">品目・仕入先・産地で絞込（任意）</label><input id="v136LossFilter" class="input" placeholder="返却済み集計内を絞り込み"><button class="btn blue" style="width:100%;margin-top:12px" onclick="v136RunLoss()">集計する</button></div><div id="v136LossResult"></div>`);}
 async function v136RunLoss(){const host=document.getElementById('v136LossResult');if(!host)return;host.innerHTML='<div class="notice">集計中...</div>';try{const data=await v136Rpc('get_inventory_loss_cockpit_v1136',{p_from:document.getElementById('v136LossFrom').value,p_to:document.getElementById('v136LossTo').value}),filter=(document.getElementById('v136LossFilter').value||'').trim().toLowerCase(),rows=(data.rows||[]).filter(r=>!filter||[r.item_name,r.origin,r.supplier,r.unit,r.source].some(v=>String(v||'').toLowerCase().includes(filter))),unpriced=rows.reduce((n,r)=>n+Number(r.unassessed_price_records||0),0),amountKnown=rows.some(r=>r.amount_yen!==null&&r.amount_yen!==undefined);host.innerHTML=`<div class="card notice"><b>集計ルール</b><div class="small">${esc(data.aggregation_rule||'')}</div><div class="small">単価未設定：${unpriced}件${amountKnown?' / 金額がNULLの行は「金額未確定」です。':' / 金額確定済みの行はありません。'}。異なる単位は合算しません。</div></div>${v136RowsTable(['ソース','品目','産地','仕入先','単位','件数','数量','単価未設定','金額'],rows.map(r=>`<tr><td>${esc(r.source)}</td><td>${esc(r.item_name||'-')}</td><td>${esc(r.origin||'-')}</td><td>${esc(r.supplier||'-')}</td><td>${esc(r.unit||'不明')}</td><td>${fmt(r.record_count)}</td><td>${fmt(r.quantity)} ${esc(r.unit||'')}</td><td>${fmt(r.unassessed_price_records)}</td><td>${r.amount_yen===null||r.amount_yen===undefined?'<b>金額未確定</b>':money(r.amount_yen)+'円'}</td></tr>`))}`;}catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">ロス分析を取得できませんでした。${esc(error.message||error)}</div>`;}}
 function v136SupplierQualityPage(){setScreen('v136SupplierQualityPage');if(!v136RoleCanAnalyze())return home();pageShell('仕入先品質分析','評価件数と比率を参考表示します。仕入先名の自動統合・優劣ランキング・設定の自動変更は行いません。',`<div class="card">${v136DateRangeHtml('v136Supplier',90)}<label class="label">仕入先（任意・完全一致）</label><input id="v136SupplierName" class="input" placeholder="SQL集計対象の仕入先"><label class="label">品目・産地で表示絞込（任意）</label><input id="v136SupplierFilter" class="input" placeholder="返却済み集計内を絞り込み"><button class="btn blue" style="width:100%;margin-top:12px" onclick="v136RunSupplierQuality()">集計する</button></div><div id="v136SupplierResult"></div>`);}
@@ -7319,7 +7319,7 @@ function v136FifoCandidateHtml(data,lot){
   const controls=policy&&mode==='warn'?`<div class="notice" style="margin-top:10px"><b>推奨外または候補外を出庫する場合は、FIFO例外理由が必要です。</b>${v136ReasonFields('v136')}</div>`
     :policy&&mode==='enforce'?`<div class="notice" style="margin-top:10px"><b>enforce中</b><div class="small">候補外ロットは出庫できません。推奨外の候補を出庫する場合は、管理者がoverride理由を記録します。</div>${canAdmin()?`${v136ReasonFields('v136')}<label class="label" style="margin-top:10px">管理者override理由</label><input id="v136OverrideReason" class="input" maxlength="500" placeholder="推奨ロット以外を出庫する理由（必須）">`:''}</div>`
     :mode==='shadow'?'<div class="small" style="margin-top:9px">shadow中：案内と出庫時の判定を記録するだけで、在庫・出庫先・選択ロットを自動変更しません。</div>':'';
-  return `<div class="card" id="v136FifoPanel"><div class="itemHead"><div><b>${title}</b><div class="small">モード：${esc(v136ModeLabel(mode))}。候補表示は最大 ${fmt(data.display_limit||candidates.length)}件ですが、順位と推奨判定は全件で行います。</div></div><span class="badge ${mode==='shadow'?'normal':'excess'}">${esc(mode)}</span></div>${body}${rows}${controls}</div>`;
+  return `<div class="card" id="v136FifoPanel"><div class="itemHead"><div><b>${title}</b><div class="small">FIFOは、同じ条件のロットでは入庫日の古いものから先に出庫するための案内です。品質不良・保留中・条件が異なるロットは候補から外れます。</div><div class="small">現在：${esc(v136ModeLabel(mode))}。候補表示は最大 ${fmt(data.display_limit||candidates.length)}件ですが、順位と推奨判定は全件で行います。</div></div><span class="badge ${mode==='shadow'?'normal':'excess'}">${esc(v136ModeLabel(mode))}</span></div>${body}${rows}${controls}</div>`;
 }
 async function v136ShowFifoForLot(q,host){
   const panel=typeof host==='string'?document.getElementById(host):host;if(!panel)return;
@@ -7381,7 +7381,16 @@ v135StatusClass=function(row){return row?.status==='idempotency_conflict'?'exces
 const v136V135RetryButtonHtmlCore=v135RetryButtonHtml;
 v135RetryButtonHtml=function(batch,row){return row?.status==='idempotency_conflict'?'<div class="small" style="color:#b91c1c;margin-top:6px">この行は再送禁止です。管理者が既存履歴を確認してください。</div>':v136V135RetryButtonHtmlCore(batch,row);};
 
-function v136LossRowHtml(r){return `<tr><td>${esc(r.occurred_date||'-')}</td><td>${esc(r.item_name||'-')}</td><td>${esc(r.origin||'-')}</td><td>${esc(r.supplier||'-')}</td><td>${fmt(r.quantity)} ${esc(r.unit||'')}</td><td>${r.declared_weight??r.weight??'-'}</td><td>${r.amount_yen===null||r.amount_yen===undefined?'<b>金額未確定</b>':money(r.amount_yen)+'円'}</td><td>${esc(r.amount_status||'-')}<br><span class="small">${esc(typeof r.price_source==='string'?r.price_source:JSON.stringify(r.price_source||{}))}${r.unassessed_reason?` / ${esc(r.unassessed_reason)}`:''}</span></td><td>${Number(r.possible_duplicate_count||0)>0?`<b>重複の可能性：${fmt(r.possible_duplicate_count)}件</b><br><span class="small">${esc(r.possible_duplicate_note||'自動除外なし')}</span>`:'なし'}</td></tr>`;}
+function v136LossPriceInfo(r){
+  const status=String(r.amount_status||''),hasAmount=r.amount_yen!==null&&r.amount_yen!==undefined,unitPrice=Number(r.unit_price);
+  if(status==='amount_from_record')return{amount:money(r.amount_yen)+'円',state:'記録済み金額',source:'廃棄入力時に保存された金額'};
+  if(status==='amount_from_qr_record')return{amount:money(r.amount_yen)+'円',state:'QR廃棄の確定金額',source:'QR廃棄時に確定した仕入単価・金額'};
+  if(status==='unassessed_unit_price_and_amount'||(!hasAmount&&!(unitPrice>0)))return{amount:'金額未評価',state:'単価未設定',source:'当時の廃棄記録に単価がないため、金額を計算していません'};
+  if(status==='amount_missing_despite_unit_price')return{amount:'金額未評価',state:'金額未確定',source:'単価の記録はありますが、確定金額がありません'};
+  return{amount:hasAmount?money(r.amount_yen)+'円':'金額未評価',state:hasAmount?'金額記録あり':'確認が必要',source:r.unassessed_reason||'記録内容を確認してください'};
+}
+function v136LossDuplicateInfo(r){const count=Number(r.possible_duplicate_count||0);return count>0?`重複の可能性 ${fmt(count)}件（自動除外していません）`:'重複候補なし';}
+function v136LossRowHtml(r){const p=v136LossPriceInfo(r);return `<div class="memo" style="margin-top:10px"><div class="itemHead"><div><b>${esc(r.item_name||'品目未入力')}</b><div class="small">${esc(r.occurred_date||'-')} / ${esc(r.origin||'産地未入力')} / ${esc(r.supplier||'仕入先未入力')}</div></div><span class="badge">${esc(r.source==='qr_lot_movements'?'QR廃棄':'通常廃棄')}</span></div><div style="margin-top:8px">数量：<b>${fmt(r.quantity)} ${esc(r.unit||'単位不明')}</b>${r.declared_weight??r.weight?` / 記録重量：${esc(String(r.declared_weight??r.weight))}`:''}<br>金額：<b>${esc(p.amount)}</b><br>状態：<b>${esc(p.state)}</b><br><span class="small">${esc(p.source)}</span><br><span class="small">${esc(v136LossDuplicateInfo(r))}</span></div></div>`;}
 async function v136RunLoss(){
   const host=document.getElementById('v136LossResult');if(!host)return;host.innerHTML='<div class="notice">集計中...</div>';
   try{
@@ -7389,8 +7398,8 @@ async function v136RunLoss(){
     const filter=(document.getElementById('v136LossFilter').value||'').trim().toLowerCase();
     const matches=r=>!filter||[r.item_name,r.origin,r.supplier,r.unit,r.source_id].some(v=>String(v||'').toLowerCase().includes(filter));
     const normal=(data.waste_records_rows||[]).filter(matches),qr=(data.qr_waste_movement_rows||[]).filter(matches);
-    const headers=['日付','品目','産地','仕入先','数量','記録重量','金額','単価・金額状態 / 出典','重複確認'];
-    host.innerHTML=`<div class="card notice"><b>集計ルール</b><div class="small">${esc(data.note||'')}</div><div class="small">通常廃棄とQR廃棄の合計は表示しません。possible_duplicateは「重複の可能性」であり、自動除外はしていません。</div></div><div class="card"><b>通常廃棄（waste_records）</b>${v136RowsTable(headers,normal.map(v136LossRowHtml))}</div><div class="card"><b>QR廃棄（qr_lot_movements）</b>${v136RowsTable(headers,qr.map(v136LossRowHtml))}</div>`;
+    const cards=rows=>rows.length?rows.map(v136LossRowHtml).join(''):'<div class="notice">条件に一致する廃棄記録はありません。</div>';
+    host.innerHTML=`<div class="card notice"><b>表示の見方</b><div class="small">「単価未設定・金額未評価」は、当時の廃棄記録に仕入単価が保存されていない状態です。0円という意味ではありません。通常廃棄とQR廃棄は別々に表示し、合計や自動重複除外は行いません。</div></div><div class="card"><b>通常廃棄</b><div class="small">通常の廃棄入力から登録された記録です。</div>${cards(normal)}</div><div class="card"><b>QR廃棄</b><div class="small">QRロットから廃棄登録された記録です。</div>${cards(qr)}</div>`;
   }catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">ロス分析を取得できませんでした。${esc(error.message||error)}</div>`;}
 }
 function v136SupplierRows(rows,overall=false){return rows.map(r=>`<tr><td>${esc(r.supplier||'未入力')}</td><td>${esc(r.cooperative_name||'-')}</td>${overall?'':`<td>${esc(r.item_name||r.item_id||'-')}</td>`}<td>${fmt(r.evaluation_count)}</td><td>${fmt(r.good_count)}</td><td>${fmt(r.review_count)}</td><td>${fmt(r.bad_count)}</td><td>${(Number(r.good_ratio||0)*100).toFixed(1)}%</td><td>${(Number(r.review_ratio||0)*100).toFixed(1)}%</td><td>${(Number(r.bad_ratio||0)*100).toFixed(1)}%</td></tr>`);}
@@ -7430,6 +7439,7 @@ v136RenderSettings=async function(){
   const host=document.getElementById('v136SettingsHost');if(!host||host.querySelector('.err'))return;
   try{const data=await v136GetSettings();const mode=data.mode||'shadow';
     const card=host.querySelector('.card');if(!card)return;
+    card.querySelector('.small')?.insertAdjacentHTML('afterend','<div class="notice" style="margin-top:10px"><b>現在は「お試し運転」のままで使用してください。</b><div class="small">出庫を止めず、古いロットの案内と実績記録だけを行います。通常の担当者がこの設定を変更する必要はありません。</div></div>');
     /* Normal settings are intentionally limited to disabled/shadow; warn/enforce use the separate approval flow below. */
     const select=document.getElementById('v136Mode');if(select){select.innerHTML='<option value="disabled">停止（disabled）</option><option value="shadow">shadow（記録のみ）</option>';select.value=['disabled','shadow'].includes(mode)?mode:'shadow';}
     const button=[...card.querySelectorAll('button')].find(x=>/モードを変更/.test(x.textContent||''));if(button)button.textContent='停止 / shadow を変更';
