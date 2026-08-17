@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.143 今日のタスク・品質確認修正版</title>
+    <title>SEIKA＋ v1.144 入庫担当者連携・FIFO撤去版</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -2430,6 +2430,10 @@ to{
 </style>
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js">
 
+
+
+
+
 </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 
@@ -3215,7 +3219,7 @@ const itemRaw=document.getElementById("qrItemName").value.trim(),itemName=qrCano
 ;if(!qrIsManagedItemName(itemName))return alert("この品目はQR管理対象外のため登録できません。\n対象品目："+qrManagedItemList().map(r=>r.name).join("、"))
 ;if(!(qty>0))return alert(large?"入荷基数を入力してください":"数量を入力してください");const locEl=document.getElementById("qrLoc"),loc=locEl?.value||"";if(!loc){
 alert("保管場所を選択してください");locEl?.focus();return}
-const receivedDate=document.getElementById("qrReceivedDate").value||todayKey(),unit=qrUnitForContainer(containerType),supplier=document.getElementById("qrSupplier").value.trim(),cooperativeName=document.getElementById("qrCooperativeName")?.value.trim()||"",origin=qrNormalizeOrigin(document.getElementById("qrOrigin").value),purchaseStaff=document.getElementById("qrPurchaseStaff").value.trim()||qrBuyerNamesForName(itemName).join("、")||null,packWeight=large?null:qrNormalizeKgValue(document.getElementById("qrPackWeight")?.value)||null,twEl=document.getElementById("qrTotalWeight"),totalWeight=large&&twEl&&twEl.value!==""&&twEl.value!==null?Number(twEl.value):null,weightStatus=large?document.getElementById("qrWeightStatus")?.value||"未確定":"確定"
+const receivedDate=document.getElementById("qrReceivedDate").value||todayKey(),unit=qrUnitForContainer(containerType),supplier=document.getElementById("qrSupplier").value.trim(),cooperativeName=document.getElementById("qrCooperativeName")?.value.trim()||"",origin=qrNormalizeOrigin(document.getElementById("qrOrigin").value),purchaseStaffInfo=v1144ReadPurchaseStaff(),purchaseStaff=purchaseStaffInfo.display_name||null,packWeight=large?null:qrNormalizeKgValue(document.getElementById("qrPackWeight")?.value)||null,twEl=document.getElementById("qrTotalWeight"),totalWeight=large&&twEl&&twEl.value!==""&&twEl.value!==null?Number(twEl.value):null,weightStatus=large?document.getElementById("qrWeightStatus")?.value||"未確定":"確定"
 ;const currentWeight=large&&totalWeight?totalWeight:null,qrKey=qrMakeKey(),lotNo=qrLotNo(itemName,receivedDate),item=qrFindItemByName(itemName)||{},manageType=qrLotManageType(containerType),quantityLabel=large?`${fmt(qty)}基`:`${fmt(qty)}${unit}`
 ;const pallets=!large?qrPalletQuantities():[];if(!qrPalletTotalMatchesLot(qty,pallets))return alert("パレット別数量の合計をロット全体数量と一致させてください")
 ;const palletPrintOpts=pallets.length?{palletQtys:pallets,totalQty:qty,unit
@@ -3223,7 +3227,7 @@ const receivedDate=document.getElementById("qrReceivedDate").value||todayKey(),u
 qr_key:qrKey,item_id:item.id||null,item_name:itemName,origin:origin||null,supplier:supplier||null,cooperative_name:cooperativeName||null,
 received_date:receivedDate,received_qty:qty,current_qty:qty,unit,storage_location:loc||null,status:"在庫あり",memo:memoForSave||null,
 container_type:containerType,lot_manage_type:manageType,quantity_label:quantityLabel,pack_weight:packWeight,total_weight:totalWeight,
-current_weight:currentWeight,weight_status:weightStatus,purchase_staff:purchaseStaff,...qrUserFields()}
+current_weight:currentWeight,weight_status:weightStatus,purchase_staff:purchaseStaff,purchase_staff_profile_id:purchaseStaffInfo.profile_id||null,purchase_staff_legacy_user_id:purchaseStaffInfo.legacy_user_id||null,...qrUserFields()}
 ;const meta=operationMeta("qr_lot_create_v185",{qrKey,itemName,qty});const ans=await callRpc("create_qr_lot_v185",{p_lot:row,
 p_operation_id:meta.operationId,p_device_meta:{deviceId:meta.deviceId,userAgent:navigator.userAgent||""},p_operation_meta:meta})
 ;if(!ans?.ok)throw new Error(ans?.message||"QR入庫を保存できませんでした");qrSaveSupplierCandidate(supplier);qrSaveCooperativeCandidate(cooperativeName)
@@ -3399,7 +3403,7 @@ displayLimit:limit};qrLotDetailReturnsToList=false
 const stock=stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",stockQuery=stock==="outOfStock"?"&current_qty=lte.0":stock==="inStock"?"&current_qty=gt.0":"",lots=await qrSelect("qr_lots",`select=*&active=eq.true${stockQuery}&order=created_at.desc&limit=${limit+1}`),hasMore=lots.length>limit,visibleLots=lots.slice(0,limit),operate=canQrOperate(),selected=String(selectedItem||"").trim(),itemNames=[...new Set([...visibleLots.map(l=>String(l.item_name||"").trim()).filter(Boolean),...selected?[selected]:[]])].sort((a,b)=>a.localeCompare(b,"ja")),sort=sortOrder==="oldest"?"oldest":"newest",dateValue=lot=>String(lot.received_date||lot.created_at||""),filteredLots=(selected?visibleLots.filter(l=>String(l.item_name||"").trim()===selected):visibleLots).slice().sort((a,b)=>{
 const result=dateValue(a).localeCompare(dateValue(b));if(result)return sort==="oldest"?result:-result
 ;const tie=String(a.created_at||"").localeCompare(String(b.created_at||""));return sort==="oldest"?tie:-tie
-}),selectedLabel=selected||"すべての品目",sortLabel=sort==="oldest"?"入庫日が古い順":"入庫日が新しい順",stockLabel=stock==="outOfStock"?"在庫なし":stock==="all"?"すべて":"在庫あり",description=`${stockLabel} ${filteredLots.length}件`,oldest=stock!=="outOfStock"?filteredLots.filter(l=>Number(l.current_qty||0)>0).slice().sort((a,b)=>dateValue(a).localeCompare(dateValue(b)))[0]:null,fifo=oldest&&qrLotAgeDays(oldest)>=30?`<div class="card qrFifoGuide"><b>古いロットから出庫してください</b><div class="small" style="color:inherit;margin-top:4px">最古：${esc(oldest.item_name||"-")} / ${esc(oldest.lot_no||"-")} / 入荷日 ${esc(oldest.received_date||"-")}（${qrLotAgeDays(oldest)}日経過）</div></div>`:"",listControls=`<div class="card"><div class="row"><div><label class="label" for="qrLotItemFilter">品目で切替</label><select id="qrLotItemFilter" class="input" onchange="qrLotListPage(this.value,document.getElementById('qrLotSortOrder').value,document.getElementById('qrLotStockFilter').value,100)"><option value="">すべての品目</option>${itemNames.map(name=>`<option value="${esc(name)}" ${name===selected?"selected":""}>${esc(name)}</option>`).join("")}</select></div><div><label class="label" for="qrLotStockFilter">在庫状態</label><select id="qrLotStockFilter" class="input" onchange="qrLotListPage(document.getElementById('qrLotItemFilter').value,document.getElementById('qrLotSortOrder').value,this.value,100)"><option value="inStock" ${stock==="inStock"?"selected":""}>在庫あり</option><option value="outOfStock" ${stock==="outOfStock"?"selected":""}>在庫なし</option><option value="all" ${stock==="all"?"selected":""}>すべて</option></select></div><div><label class="label" for="qrLotSortOrder">表示順</label><select id="qrLotSortOrder" class="input" onchange="qrLotListPage(document.getElementById('qrLotItemFilter').value,this.value,document.getElementById('qrLotStockFilter').value,${limit})"><option value="newest" ${sort==="newest"?"selected":""}>入庫日が新しい順</option><option value="oldest" ${sort==="oldest"?"selected":""}>入庫日が古い順</option></select></div></div></div>`,tools=operate?`<button class="btn green" style="width:100%" onclick="qrCreatePage()">QR入庫</button><button class="btn blue" style="width:100%;margin-top:8px" onclick="qrManualSearchPage('detail')">検索する</button><button class="btn btn2" style="width:100%;margin-top:8px" onclick="qrManagedItemsPage()">QR対象品目設定</button>`:`<div class="small" style="margin-bottom:8px">${qrReadOnlyMessage()}</div><button class="btn blue" style="width:100%" onclick="qrManualSearchPage('detail')">検索する</button>`,more=hasMore?`<button class="btn btn2 qrLoadMore" onclick="qrLotListPage('${esc(selected)}','${sort}','${stock}',${limit+100})">さらに100件読み込む</button>`:`<div class="small" style="text-align:center;margin:16px 0">すべて読み込みました</div>`
+}),selectedLabel=selected||"すべての品目",sortLabel=sort==="oldest"?"入庫日が古い順":"入庫日が新しい順",stockLabel=stock==="outOfStock"?"在庫なし":stock==="all"?"すべて":"在庫あり",description=`${stockLabel} ${filteredLots.length}件`,fifo='',listControls=`<div class="card"><div class="row"><div><label class="label" for="qrLotItemFilter">品目で切替</label><select id="qrLotItemFilter" class="input" onchange="qrLotListPage(this.value,document.getElementById('qrLotSortOrder').value,document.getElementById('qrLotStockFilter').value,100)"><option value="">すべての品目</option>${itemNames.map(name=>`<option value="${esc(name)}" ${name===selected?"selected":""}>${esc(name)}</option>`).join("")}</select></div><div><label class="label" for="qrLotStockFilter">在庫状態</label><select id="qrLotStockFilter" class="input" onchange="qrLotListPage(document.getElementById('qrLotItemFilter').value,document.getElementById('qrLotSortOrder').value,this.value,100)"><option value="inStock" ${stock==="inStock"?"selected":""}>在庫あり</option><option value="outOfStock" ${stock==="outOfStock"?"selected":""}>在庫なし</option><option value="all" ${stock==="all"?"selected":""}>すべて</option></select></div><div><label class="label" for="qrLotSortOrder">表示順</label><select id="qrLotSortOrder" class="input" onchange="qrLotListPage(document.getElementById('qrLotItemFilter').value,this.value,document.getElementById('qrLotStockFilter').value,${limit})"><option value="newest" ${sort==="newest"?"selected":""}>入庫日が新しい順</option><option value="oldest" ${sort==="oldest"?"selected":""}>入庫日が古い順</option></select></div></div></div>`,tools=operate?`<button class="btn green" style="width:100%" onclick="qrCreatePage()">QR入庫</button><button class="btn blue" style="width:100%;margin-top:8px" onclick="qrManualSearchPage('detail')">検索する</button><button class="btn btn2" style="width:100%;margin-top:8px" onclick="qrManagedItemsPage()">QR対象品目設定</button>`:`<div class="small" style="margin-bottom:8px">${qrReadOnlyMessage()}</div><button class="btn blue" style="width:100%" onclick="qrManualSearchPage('detail')">検索する</button>`,more=hasMore?`<button class="btn btn2 qrLoadMore" onclick="qrLotListPage('${esc(selected)}','${sort}','${stock}',${limit+100})">さらに100件読み込む</button>`:`<div class="small" style="text-align:center;margin:16px 0">すべて読み込みました</div>`
 ;pageShell(`QRロット一覧（${esc(selectedLabel)}）`,esc(description),`${listControls}<div class="card">${tools}</div>${fifo}${filteredLots.map(lot=>qrLotCard(lot,true,true)).join("")||'<div class="notice">該当するロットがありません。</div>'}${more}`)
 }catch(e){pageShell("QRロット一覧","エラー",`<div class="err">${esc(e.message)}</div>`)}}const MESH_CONTAINER_ITEMS=[{id:"bluePurple",name:"せき青紫"},{
 id:"orange",name:"せきオレンジ"},{id:"newContainer",name:"せき(新)"},{id:"nikken",name:"日建せき"}];function seikaLogoHtml(size=""){
@@ -5902,7 +5906,7 @@ const grade=document.querySelector('input[name="v1102Grade"]:checked')?.value||"
 ;if(box)box.style.display=problem?"block":"none";if(!problem){document.querySelectorAll('input[name="v1102Issue"]').forEach(x=>x.checked=false)
 ;v1102QualityPhotos=[];v1102RenderPhotoList()}}function v1102QualityPhotoInput(){document.getElementById("v1102QualityPhoto")?.click()}
 function v1102RenderPhotoList(){const box=document.getElementById("v1102QualityPhotoList");if(!box)return
-;box.innerHTML=v1102QualityPhotos.length?v1102QualityPhotos.map((p,i)=>`<div class="box"><div class="itemHead"><div><b>写真 ${i+1}</b><div class="small">${Math.ceil(p.blob.size/1024)}KB</div></div><button class="btn red" onclick="v1102RemovePhoto(${i})">外す</button></div><img src="${p.preview}" alt="品質写真${i+1}" style="width:100%;max-height:220px;object-fit:contain;margin-top:8px;border-radius:8px"></div>`).join(""):'<div class="small">写真は未選択です。問題が分かる写真だけ登録してください。</div>'
+;box.innerHTML=v1102QualityPhotos.length?v1102QualityPhotos.map((p,i)=>`<div class="box"><div class="itemHead"><div><b>写真 ${i+1}</b><div class="small">${Math.ceil(p.blob.size/1024)}KB</div></div><button class="btn red" onclick="v1102RemovePhoto(${i})">外す</button></div><img src="${esc(p.preview)}" alt="品質写真${i+1}" style="width:100%;max-height:220px;object-fit:contain;margin-top:8px;border-radius:8px"></div>`).join(""):'<div class="small">写真は未選択です。問題が分かる写真だけ登録してください。</div>'
 }function v1102RemovePhoto(i){const p=v1102QualityPhotos.splice(i,1)[0];if(p?.preview)URL.revokeObjectURL(p.preview);v1102RenderPhotoList()}
 async function v1102LoadImage(file){const url=URL.createObjectURL(file);try{return await new Promise((resolve,reject)=>{const img=new Image
 ;img.onload=()=>resolve(img);img.onerror=()=>reject(new Error("この写真形式を読み込めませんでした。"));img.src=url})}finally{
@@ -7201,7 +7205,7 @@ async function v135ProcessRow(batchId,rowId,{mode='fresh'}={}){
   else if(mode==='freshRetry'){if(!['conflict','failed'].includes(row.status))throw new Error('最新在庫で再試行できるのは、未適用が明示された競合・登録失敗だけです。');v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(!b||!r)throw new Error('保留作業が見つかりません。');const meta=v135NewOperationMeta(b,r.qrKey);r.operationId=meta.operationId;r.operationMeta=meta;r.payload=null;r.wasteWeight=null;r.lastError='最新在庫を確認しています。';r.updatedAt=nowIso();v135MarkBatchStatus(b)});batch=v135GetBatch(batchId);row=batch?.rows?.find(r=>r.id===rowId)}
   let payload,patch={};try{if(mode==='reuse'){payload=row.payload}else{const made=await v135FreshPayload(batch,row);payload=made.payload;patch=made.patch}}catch(e){v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.lastError=e.message||String(e);if(mode==='freshRetry')r.status='conflict';r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:false,unknown:false}}
   v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(!b||!r)throw new Error('保留作業が見つかりません。');Object.assign(r,patch,{payload,status:'sending',sendingRuntimeId:V135_RUNTIME_ID,sendingAt:nowIso(),attempts:Number(r.attempts||0)+1,lastError:'',updatedAt:nowIso()});v135MarkBatchStatus(b)});
-  try{const ans=await callRpc(batch.kind==='out'?'apply_qr_lot_operation_v136':'apply_qr_lot_operation',payload);if(!ans?.ok){v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.status=ans?.conflict?'conflict':'failed';r.lastError=ans?.message||'サーバーはこの操作を適用していません。';r.sendingRuntimeId=null;r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:false,unknown:false}}
+  try{const ans=await callRpc('apply_qr_lot_operation',payload);if(!ans?.ok){v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.status=ans?.conflict?'conflict':'failed';r.lastError=ans?.message||'サーバーはこの操作を適用していません。';r.sendingRuntimeId=null;r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:false,unknown:false}}
     let priceError='';if(batch.kind==='waste'){try{const price=await callRpc('finalize_qr_waste_price_v1118',{p_operation_id:payload.p_operation_id,p_qr_key:payload.p_qr_key,p_waste_weight_kg:patch.wasteWeight??row.wasteWeight});if(!price?.ok)priceError=price?.reason||price?.message||'廃棄価格を確定できませんでした。'}catch(e){priceError=e.message||String(e)}}
     v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.status=priceError?'price_failed':'success';r.lastError=priceError;r.sendingRuntimeId=null;r.movementResult={ok:true,at:nowIso()};r.priceResult=batch.kind==='waste'?{ok:!priceError,at:nowIso()}:null;r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:true,unknown:false}
   }catch(e){v135MutateStore(s=>{const b=s.batches.find(x=>x.id===batchId),r=b?.rows.find(x=>x.id===rowId);if(r){r.status='unknown';r.lastError='通信または応答の結果を確認できません。同じ内容・同じ操作IDで再試行してください。';r.sendingRuntimeId=null;r.updatedAt=nowIso();v135MarkBatchStatus(b)}});return{ok:false,unknown:true}}
@@ -7581,6 +7585,157 @@ home=function(){v1143HomeCore();const generation=++v1143TodayTaskGeneration;v114
 const v1143QrHomeCore=qrHome;
 qrHome=async function(msg=''){await v1143QrHomeCore(msg);['v136HomeAnalysis','v136HomeSettings','v136QrFifoEntry'].forEach(id=>document.getElementById(id)?.remove())};
 v1103Acknowledge=async function(id,source){id=String(id||'');if(!id)return alert('品質評価IDが見つかりません。');if(v1143AckInFlight.has(id))return;if(!confirm('この低評価を確認済みにしますか？\n評価データや写真は削除されません。'))return;v1143AckInFlight.add(id);const buttons=[...document.querySelectorAll(`[data-v1140-quality-action="ack"][data-evaluation-id="${id}"]`)];buttons.forEach(button=>button.disabled=true);v161ShowProcessing('確認済みを記録しています');try{const ans=await callRpc('acknowledge_qr_quality_evaluation_v1103',{p_evaluation_id:id});if(!ans?.ok)throw new Error(ans?.message||'確認済みを記録できませんでした。');if(currentScreen==='v1103QualityListPage')await v1103LoadQualityList(false);else if(source==='home')await v1103LoadBuyerAlerts();alert('確認済みとして記録しました。')}catch(e){const raw=String(e?.message||e||'');const detail=typeof v161ErrorText==='function'?v161ErrorText(e):raw;const hint=/P0002|対象QRロットの品目が見つかりません/.test(raw)?'\n\nSupabaseへv1.143品質確認SQLを適用してください。':'';alert(`確認済みにできませんでした。\n${detail}${hint}`)}finally{v1143AckInFlight.delete(id);buttons.forEach(button=>button.disabled=false);v161HideProcessing()}};
+
+
+
+/* ===== v1.144 入庫担当者の正式連携・スマートFIFO撤去 ===== */
+window.APP_VERSION='v1.144';
+document.title='SEIKA＋ v1.144 入庫担当者連携・FIFO撤去版';
+/* QR入庫では氏名を手入力せず、ログイン利用者の仕入担当候補を選択します。
+   保存値は legacy_user_id、表示値は氏名です。SQLトリガーで profile UUID も確定します。 */
+function v1144PurchaseStaffCandidates(){
+  const seen=new Set(), rows=[];
+  for(const u of (db?.users||[])){
+    if(!u||u.active===false||!u.id||!u.name||u.role!=='buyer'||seen.has(String(u.id)))continue;
+    seen.add(String(u.id));rows.push({legacy_user_id:String(u.id),display_name:String(u.name),profile_id:null});
+  }
+  /* 管理画面の最新ユーザー一覧が未読込の場合も既存ログイン一覧から候補を補います。 */
+  for(const row of (typeof v188LoginUsers==='function'?v188LoginUsers():[])){
+    const [id,name,group]=row||[];if(!id||!name||!String(group||'').includes('仕入れ担当者')||seen.has(String(id)))continue;
+    seen.add(String(id));rows.push({legacy_user_id:String(id),display_name:String(name),profile_id:null});
+  }
+  return rows.sort((a,b)=>a.display_name.localeCompare(b.display_name,'ja'));
+}
+function v1144PurchaseStaffOptionHtml(selectedLegacy='',selectedName=''){
+  const rows=v1144PurchaseStaffCandidates(), selected=String(selectedLegacy||'');
+  const fallback=selectedName&&!rows.some(x=>x.display_name===selectedName)?`<option value="" selected>既存値：${esc(selectedName)}（候補を選択してください）</option>`:'';
+  return `<option value="">選択してください</option>${fallback}${rows.map(x=>`<option value="${esc(x.legacy_user_id)}" ${x.legacy_user_id===selected?'selected':''}>${esc(x.display_name)}</option>`).join('')}`;
+}
+function v1144ReadPurchaseStaff(){
+  const el=document.getElementById('qrPurchaseStaff');
+  if(!el)return{legacy_user_id:null,profile_id:null,display_name:null};
+  const legacy=String(el.value||'').trim(), match=v1144PurchaseStaffCandidates().find(x=>x.legacy_user_id===legacy);
+  return match?{legacy_user_id:match.legacy_user_id,profile_id:match.profile_id,display_name:match.display_name}:{legacy_user_id:null,profile_id:null,display_name:null};
+}
+function v1144ReplacePurchaseStaffControl(){
+  const input=document.getElementById('qrPurchaseStaff');if(!input||input.tagName==='SELECT')return;
+  const guessed=String(input.value||'').trim();
+  const candidates=v1144PurchaseStaffCandidates();
+  const match=candidates.find(x=>x.display_name===guessed)||null;
+  const select=document.createElement('select');select.id='qrPurchaseStaff';select.className=input.className||'input';select.required=true;
+  select.innerHTML=v1144PurchaseStaffOptionHtml(match?.legacy_user_id||'',guessed);
+  select.onchange=()=>{const note=document.getElementById('qrStaffNote');if(note)note.textContent=select.value?'選択した担当者を入庫ロットと品質評価へ連携します。':'仕入れ担当者を選択してください。'};
+  input.replaceWith(select);select.dispatchEvent(new Event('change'));
+}
+const v1144QrCreatePageCore=qrCreatePage;
+qrCreatePage=async function(){const result=await v1144QrCreatePageCore();v1144ReplacePurchaseStaffControl();return result;};
+/* 品目を選んだときは、従来の担当マスタ名から候補を一意に選びます。候補外の氏名を入力する余地は残しません。 */
+qrAutoFillStaff=function(){const item=document.getElementById('qrItemName'),staff=document.getElementById('qrPurchaseStaff');if(!item||!staff)return;
+  const names=qrBuyerNamesForName(item.value), candidates=v1144PurchaseStaffCandidates();
+  const match=names.length===1?candidates.find(x=>x.display_name===names[0]):null;
+  if(match)staff.value=match.legacy_user_id;else if(!staff.value)staff.value='';
+  const note=document.getElementById('qrStaffNote');if(note)note.textContent=match?'品目担当を候補から選択しました。':'仕入れ担当者を候補から選択してください。';
+  const mn=document.getElementById('qrManagedNotice');if(mn)mn.innerHTML=qrManagedNotice(item.value);
+};
+qrMarkStaffManual=function(){};
+/* FIFO関連の最終上書きを解除して、FIFO導入前の安全な出庫処理へ戻します。
+   apply_qr_lot_operation は expected quantity / operation_id / 冪等性を保持します。 */
+if(typeof v136QrOperationLotPageCore==='function')qrOperationLotPage=v136QrOperationLotPageCore;
+if(typeof v136QrSaveLotMovementCore==='function')qrSaveLotMovement=v136QrSaveLotMovementCore;
+if(typeof v136QrLotDetailCore==='function')qrLotDetail=v136QrLotDetailCore;
+if(typeof v136V135DefaultsHtmlCore==='function')v135DefaultsHtml=v136V135DefaultsHtmlCore;
+if(typeof v136V135ReadDefaultsCore==='function')v135ReadDefaults=v136V135ReadDefaultsCore;
+if(typeof v136V135FreshPayloadCore==='function')v135FreshPayload=v136V135FreshPayloadCore;
+if(typeof v136V135CreateBatchCore==='function')v135CreateBatch=v136V135CreateBatchCore;
+/* FIFOは最終実効経路で生成しません。旧DBデータ・監査履歴は残します。 */
+function v1144RemoveFifoDom(){}
+const v1144PageShellCore=pageShell;
+pageShell=function(title,sub,body,opts={}){return v1144PageShellCore(title,sub,body,opts);};
+const v1144SetScreenCore=setScreen;
+setScreen=function(name,args=[]){return v1144SetScreenCore(name,args);};
+/* 主要入力画面共通：モバイルで横にはみ出さず、操作ボタンは通常フロー中に隠れません。 */
+/* 品質評価カードは入庫時の担当者を明示し、旧品目担当へのフォールバックも区別します。 */
+function v1144QualityBuyerLabel(x){
+  const names=(x.buyers||[]).map(b=>b.display_name||b.legacy_user_id).filter(Boolean).join('、');
+  const source=x.buyer_source||'';
+  return {label:source==='item_assignment'?'品目担当':'入庫時仕入担当者',names:names||v138T('担当未設定')};
+}
+v1140QualityCard=function(x){
+  const buyer=v1144QualityBuyerLabel(x),canAck=!x.acknowledged_at&&['review','bad'].includes(x.grade)&&(db.role==='admin'||db.role==='buyer'&&(x.buyers||[]).some(b=>b.legacy_user_id===db.userId)),color=x.grade==='bad'?'#dc2626':x.grade==='review'?'#f59e0b':'#16a34a',id=String(x.id||''),qrKey=String(x.qr_key||'');
+  return `<div class="box" style="margin:10px 0;border-left:7px solid ${color}"><div class="itemHead"><div><b>${esc(x.item_name||'-')}</b><div class="small">${esc(x.lot_no||'-')} / ${dt(x.evaluated_at)}</div></div><span class="badge ${x.grade==='bad'?'shortage':x.grade==='review'?'excess':'normal'}">${esc(v1140GradeLabel(x.grade))}</span></div><div style="margin-top:8px"><b>${esc(v138T('状態：'))}</b>${(x.issues||[]).map(esc).join('、')||v138T('なし')}</div>${x.memo?`<div class="memo"><b>${esc(v138T('メモ：'))}</b>${esc(x.memo)}</div>`:''}<div class="small" style="margin-top:7px">${esc(v138T('評価者：'))}${esc(x.evaluated_by_name||'-')}<br>${esc(v138T(buyer.label))}：${esc(buyer.names)} / ${esc(v138T('写真：'))}${(x.photos||[]).length}${esc(v138T('枚'))}</div><div style="margin-top:8px">${v1140QualityStatus(x)}</div><div class="grid" style="margin-top:9px"><button type="button" class="btn blue" data-v1140-quality-action="lot" data-qr-key="${esc(qrKey)}">${esc(v138T('QRロット詳細'))}</button>${(x.photos||[]).length?`<button type="button" class="btn btn2" data-v1140-quality-action="photos" data-evaluation-id="${esc(id)}">${esc(v138T('写真を見る'))}</button>`:''}${canAck?`<button type="button" class="btn green" data-v1140-quality-action="ack" data-evaluation-id="${esc(id)}">${esc(v138T('確認済みにする'))}</button>`:''}</div><div id="v1103Photos_${esc(id)}_list"></div></div>`;
+};
+const v1144Style=document.createElement('style');
+v1144Style.textContent=`
+  .appShell,.wrap,.card,.box,.row,.grid,.table{max-width:100%;box-sizing:border-box}
+  .wrap{overflow-x:hidden}.row>*,.grid>*{min-width:0}.table{display:block;overflow-x:auto}
+  @media(max-width:620px){.row,.grid{grid-template-columns:1fr!important}.qrCreateForm .qrFormSection{padding:12px}.bottom{position:static!important}.notice{padding:10px}.qrQuickGuide{gap:6px}.qrQuickGuide>div{font-size:14px}}
+`;
+document.head.appendChild(v1144Style);
+
+/* ===== v1.144 本番前最終修正 ===== */
+function v1144PurchaseStaffOptionHtml(selectedLegacy='', selectedName='', allowKeep=false){
+  const rows=v1144PurchaseStaffCandidates();
+  const selected=String(selectedLegacy||'');
+  const known=rows.some(x=>x.legacy_user_id===selected);
+  const current=selectedName&&!rows.some(x=>x.display_name===selectedName);
+  const keep=allowKeep&&current?`<option value="__keep__" selected>現在値（未登録）：${esc(selectedName)}（変更しない）</option>`:'';
+  return `<option value="">選択してください</option>${keep}${rows.map(x=>`<option value="${esc(x.legacy_user_id)}" ${known&&x.legacy_user_id===selected?'selected':''}>${esc(x.display_name)}</option>`).join('')}`;
+}
+function v1144ReadPurchaseStaffFrom(el){
+  const legacy=String(el?.value||'').trim();
+  const match=v1144PurchaseStaffCandidates().find(x=>x.legacy_user_id===legacy);
+  return match?{legacy_user_id:match.legacy_user_id,profile_id:null,display_name:match.display_name}:{legacy_user_id:null,profile_id:null,display_name:null};
+}
+v1144ReadPurchaseStaff=function(){return v1144ReadPurchaseStaffFrom(document.getElementById('qrPurchaseStaff'));};
+function v1144ReplaceEditPurchaseStaffControl(lot){
+  const input=document.getElementById('qrEditStaff'); if(!input||input.tagName==='SELECT')return;
+  const select=document.createElement('select');
+  select.id='qrEditStaff'; select.className=input.className||'input';
+  select.innerHTML=v1144PurchaseStaffOptionHtml(lot.purchase_staff_legacy_user_id||'', lot.purchase_staff||'', true);
+  input.replaceWith(select);
+}
+const v1144QrEditLotPageCore=qrEditLotPage;
+qrEditLotPage=async function(q){
+  const result=await v1144QrEditLotPageCore(q);
+  const lot=await qrFindLot(q).catch(()=>null);
+  if(lot)v1144ReplaceEditPurchaseStaffControl(lot);
+  return result;
+};
+const v1144QrSaveLotEditCore=qrSaveLotEdit;
+qrSaveLotEdit=async function(q){
+  const input=document.getElementById('qrEditStaff');
+  if(!input||input.value==='__keep__') return v1144QrSaveLotEditCore(q);
+  const staff=v1144ReadPurchaseStaffFrom(input);
+  if(!staff.legacy_user_id)return alert('仕入れ担当者を有効な候補から選択してください。');
+  const originalPatch=qrPatch;
+  qrPatch=async function(table, filter, patch, ...rest){
+    if(table==='qr_lots')Object.assign(patch,{purchase_staff:staff.display_name,purchase_staff_profile_id:null,purchase_staff_legacy_user_id:staff.legacy_user_id});
+    return originalPatch.call(this, table, filter, patch, ...rest);
+  };
+  try{return await v1144QrSaveLotEditCore(q);}finally{qrPatch=originalPatch;}
+};
+/* FIFO導入前のcore関数のみを使用。v136 prepare/inject/load/RPCに到達しません。 */
+if(typeof v136QrOperationLotPageCore==='function')qrOperationLotPage=v136QrOperationLotPageCore;
+if(typeof v136QrSaveLotMovementCore==='function')qrSaveLotMovement=v136QrSaveLotMovementCore;
+if(typeof v136QrLotDetailCore==='function')qrLotDetail=v136QrLotDetailCore;
+if(typeof v136V135DefaultsHtmlCore==='function')v135DefaultsHtml=v136V135DefaultsHtmlCore;
+if(typeof v136V135ReadDefaultsCore==='function')v135ReadDefaults=v136V135ReadDefaultsCore;
+if(typeof v136V135FreshPayloadCore==='function')v135FreshPayload=v136V135FreshPayloadCore;
+if(typeof v136V135CreateBatchCore==='function')v135CreateBatch=v136V135CreateBatchCore;
+if(typeof v136V135ProcessRowCore==='function')v135ProcessRow=v136V135ProcessRowCore;
+/* 同一テキストノードの再翻訳を避け、MutationObserverによる二重接頭辞を防止します。 */
+const v1144TranslatedNodes=new WeakSet();
+const v1144V138TextNodeCore=v138TextNode;
+v138TextNode=function(node){
+  if(v1144TranslatedNodes.has(node))return;
+  const before=node?.nodeValue;
+  v1144V138TextNodeCore(node);
+  if(node?.nodeValue!==before)v1144TranslatedNodes.add(node);
+};
+const v1144V138ObserverCallback=()=>{if(v138Language==='id')v138TranslateScreen();};
+if(typeof v138Observer!=='undefined')v138Observer.disconnect();
+const v1144V138Observer=new MutationObserver(v1144V138ObserverCallback);
+v1144V138Observer.observe(document.getElementById('app'),{childList:true,subtree:true});
 
 </script>
   </body>
