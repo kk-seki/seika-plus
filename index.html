@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.138 日本語・インドネシア語対応</title>
+    <title>SEIKA＋ v1.139 フレンキ専用インドネシア語対応</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -2836,7 +2836,7 @@ item20:[["15k/6k","中山/A"],["13k/8k","中山/B"],["5k/〇","福島"],["5k/L",
 id:"cu_"+(i+1),spec:x[0],origin:x[1],sort:i+1,active:true}))};const DEFAULT_DISPLAY_SETTINGS={fontSize:"normal",theme:"light"};const FONT_SIZE_MAP={
 small:{fontScale:0.92,spaceScale:0.96,label:"小"},normal:{fontScale:1,spaceScale:1,label:"標準"},large:{fontScale:1.08,spaceScale:1.06,label:"大"},
 xlarge:{fontScale:1.15,spaceScale:1.1,label:"特大"}}
-;const DEFAULT_USERS=[["hirata","平田","admin","管理者",""],["hitomi","人見","worker","青果社員",""],["yokosuka_ryo","横須賀(良)","worker","青果社員",""],["kurosawa","黒澤","worker","青果社員",""],["yokosuka_ru","横須賀(瑠)","worker","青果社員",""],["seki_hiroshi","関(宏)","buyer","仕入れ担当者",""],["araki","荒木","buyer","仕入れ担当者",""],["saito_dai","斎藤(大)","buyer","仕入れ担当者",""],["yoshida","吉田","buyer","仕入れ担当者",""],["sakamoto","坂本","buyer","仕入れ担当者",""],["sales_saito_ayaka","斉藤(綾)","sales","営業担当者",""],["sales_warabioka_aki","蕨岡","sales","営業担当者",""],["sales_hamamatsu_junko","浜松","sales","営業担当者",""],["sales_yatsuda_hiromu","八ツ田","sales","営業担当者",""],["clerk_iizuka_miyuki","飯塚","clerk","事務員",""],["clerk_kase_yoko","加瀬","clerk","事務員",""],["clerk_shirata_nozomi","白田","clerk","事務員",""],["viewer","閲覧者","viewer","閲覧者",""]].map(x=>({
+;const DEFAULT_USERS=[["hirata","平田","admin","管理者",""],["hitomi","人見","worker","青果社員",""],["yokosuka_ryo","横須賀(良)","worker","青果社員",""],["kurosawa","黒澤","worker","青果社員",""],["yokosuka_ru","横須賀(瑠)","worker","青果社員",""],["furenki","フレンキ","worker","青果社員",""],["seki_hiroshi","関(宏)","buyer","仕入れ担当者",""],["araki","荒木","buyer","仕入れ担当者",""],["saito_dai","斎藤(大)","buyer","仕入れ担当者",""],["yoshida","吉田","buyer","仕入れ担当者",""],["sakamoto","坂本","buyer","仕入れ担当者",""],["sales_saito_ayaka","斉藤(綾)","sales","営業担当者",""],["sales_warabioka_aki","蕨岡","sales","営業担当者",""],["sales_hamamatsu_junko","浜松","sales","営業担当者",""],["sales_yatsuda_hiromu","八ツ田","sales","営業担当者",""],["clerk_iizuka_miyuki","飯塚","clerk","事務員",""],["clerk_kase_yoko","加瀬","clerk","事務員",""],["clerk_shirata_nozomi","白田","clerk","事務員",""],["viewer","閲覧者","viewer","閲覧者",""]].map(x=>({
 id:x[0],name:x[1],role:x[2],group:x[3],password:x[4],active:true,displaySettings:{...DEFAULT_DISPLAY_SETTINGS}}));const FORCED_USER_NAMES={
 sales_saito_ayaka:"斉藤(綾)",sales_warabioka_aki:"蕨岡",sales_hamamatsu_junko:"浜松",sales_yatsuda_hiromu:"八ツ田",clerk_iizuka_miyuki:"飯塚",
 clerk_kase_yoko:"加瀬",clerk_shirata_nozomi:"白田"};const BUYER_SOURCE_NOTE="07_営業仕入れ担当者カード.xlsx / 品目別_仕入れ検索用 / 2026.5月版";const ITEM_BUYER_MASTER={
@@ -5219,7 +5219,7 @@ if(!result.ok||v161PendingCount())throw new Error("クラウド保存が完了�
 setSyncState(v161IsConflictError(e)?"競合":"失敗","入力は端末に保持されています");alert(`保存できませんでした。\n${v161ErrorText(e)}\n\n入力データはこの端末に保持されています。`)}finally{
 v161HideProcessing();updateSyncDisplay()}};
 /* ===== v1.87 Supabase Auth migration ===== */const V187_SUPABASE_AUTH=true;const AUTH_STORAGE_KEY=STORE+"_supabase_auth_v187"
-;const AUTH_LOGIN_USERS=[["hirata","平田","管理者"],["yokosuka_ryo","横須賀(良)","管理者"],["hitomi","人見","青果社員"],["kurosawa","黒澤","青果社員"],["yokosuka_ru","横須賀(瑠)","青果社員"],["saito_yuji","斎藤(雄)","青果社員"],["seki_hiroshi","関(宏)","仕入れ担当者"],["araki","荒木","仕入れ担当者"],["saito_dai","斎藤(大)","仕入れ担当者"],["yoshida","吉田","仕入れ担当者"],["sakamoto","坂本","仕入れ担当者"],["sales_saito_ayaka","斉藤(綾)","営業担当者"],["sales_warabioka_aki","蕨岡","営業担当者"],["sales_hamamatsu_junko","浜松","営業担当者"],["sales_yatsuda_hiromu","八ツ田","営業担当者"],["clerk_iizuka_miyuki","飯塚","事務員"],["clerk_kase_yoko","加瀬","事務員"],["clerk_shirata_nozomi","白田","事務員"],["office_haga","芳賀","総務部"],["viewer","閲覧者","閲覧者"]]
+;const AUTH_LOGIN_USERS=[["hirata","平田","管理者"],["yokosuka_ryo","横須賀(良)","管理者"],["hitomi","人見","青果社員"],["kurosawa","黒澤","青果社員"],["yokosuka_ru","横須賀(瑠)","青果社員"],["saito_yuji","斎藤(雄)","青果社員"],["furenki","フレンキ","青果社員"],["seki_hiroshi","関(宏)","仕入れ担当者"],["araki","荒木","仕入れ担当者"],["saito_dai","斎藤(大)","仕入れ担当者"],["yoshida","吉田","仕入れ担当者"],["sakamoto","坂本","仕入れ担当者"],["sales_saito_ayaka","斉藤(綾)","営業担当者"],["sales_warabioka_aki","蕨岡","営業担当者"],["sales_hamamatsu_junko","浜松","営業担当者"],["sales_yatsuda_hiromu","八ツ田","営業担当者"],["clerk_iizuka_miyuki","飯塚","事務員"],["clerk_kase_yoko","加瀬","事務員"],["clerk_shirata_nozomi","白田","事務員"],["office_haga","芳賀","総務部"],["viewer","閲覧者","閲覧者"]]
 ;let authSession=null,authProfile=null;function authEmailForLegacyId(id){return String(id||"").toLowerCase()+"@seika-plus.invalid"}
 function authReadSession(){try{return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)||"null")}catch(e){return null}}function authWriteSession(v){
 authSession=v||null;try{if(v)localStorage.setItem(AUTH_STORAGE_KEY,JSON.stringify(v));else localStorage.removeItem(AUTH_STORAGE_KEY)}catch(e){}}
@@ -5277,7 +5277,7 @@ Authorization:"Bearer "+authToken(),"Content-Type":"application/json"},body:JSON
 if(!done.ok||ans?.ok===false)throw new Error(ans?.message||"変更できませんでした");authProfile.must_change_password=false
 ;authProfile.password_changed_at=(new Date).toISOString();alert("パスワードを変更しました");home()}catch(e){alert(e.message)}}
 ;const V188_USER_ADMIN_FUNCTION="seika-user-admin";let v188AdminUsers=[];const V188_FULL_NAMES={hirata:"平田 祐希",yokosuka_ryo:"横須賀 良太",hitomi:"人見 和之",
-kurosawa:"黒澤 正行",yokosuka_ru:"横須賀 瑠河",saito_yuji:"斎藤 雄二",seki_hiroshi:"関 宏世",araki:"荒木 貴裕",saito_dai:"斎藤 大明",yoshida:"吉田 智彦",sakamoto:"坂本 美穂",
+kurosawa:"黒澤 正行",yokosuka_ru:"横須賀 瑠河",saito_yuji:"斎藤 雄二",furenki:"フレンキ",seki_hiroshi:"関 宏世",araki:"荒木 貴裕",saito_dai:"斎藤 大明",yoshida:"吉田 智彦",sakamoto:"坂本 美穂",
 sales_saito_ayaka:"斉藤 綾香",sales_warabioka_aki:"蕨岡 愛姫",sales_hamamatsu_junko:"浜松 淳子",sales_yatsuda_hiromu:"八ツ田 紘睦",clerk_iizuka_miyuki:"飯塚 美由紀",
 clerk_kase_yoko:"加瀬 洋子",clerk_shirata_nozomi:"白田 望実",office_haga:"芳賀 克則",viewer:"閲覧者"};function v188FullNameUsers(rows){
 return(rows||[]).map(([id,name,group])=>[id,V188_FULL_NAMES[id]||name,group])}function v188LoginUsers(){try{
@@ -7205,11 +7205,11 @@ const v135QrHomeCore=qrHome;qrHome=async function(msg=''){await v135QrHomeCore(m
 const v135PendingSummaryCore=v133PendingSummary;v133PendingSummary=function(){const p=v135PendingSummaryCore(),batches=v135CurrentPendingBatchCount();return{...p,batches,total:Number(p.total||0)+batches}};
 const v135DiagnosticTextCore=v200DiagnosticText;v200DiagnosticText=function(sourceScreen=''){const base=v135DiagnosticTextCore(sourceScreen);return `${base}\n本人用保留：${v135CurrentPendingBatchCount()}件（QR連続処理）`};
 const v135SetScreenCore=setScreen;setScreen=function(name,args=[]){if(currentScreen==='v135BatchScanPage'&&name!=='v135BatchScanPage')v135BatchStopCamera().catch(()=>{});return v135SetScreenCore(name,args)};
-window.APP_VERSION='v1.138';document.title='SEIKA＋ v1.138 日本語・インドネシア語対応';
+window.APP_VERSION='v1.139';document.title='SEIKA＋ v1.139 フレンキ専用インドネシア語対応';
 
 /* ===== v1.136 第3段階：スマートFIFO・ロス分析・品質傾向・判断支援 ===== */
-window.APP_VERSION='v1.138';
-document.title='SEIKA＋ v1.138 日本語・インドネシア語対応';
+window.APP_VERSION='v1.139';
+document.title='SEIKA＋ v1.139 フレンキ専用インドネシア語対応';
 const V136_DB_NOT_APPLIED='第3段階DB未適用';
 const V136_FIFO_REASONS=['規格が異なる','量目が異なる','荷姿が異なる','出庫先から指定された','品質確認中','出庫停止中','現物が見つからない','先に開封済みのロットがある','その他'];
 let v136SettingsCache=null;
@@ -7494,6 +7494,32 @@ setTimeout(()=>{v138RestoreLanguage();if(db?.user&&typeof renderCurrent==="funct
 const v138Style=document.createElement("style");
 v138Style.textContent=`.v138LoginLanguage{display:flex;justify-content:flex-end;margin:0 0 10px}.v138LangSwitch{display:flex;gap:4px;align-items:center;white-space:nowrap}.v138LangSwitch button{border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);color:inherit;border-radius:999px;padding:6px 8px;font-size:12px;font-weight:800;line-height:1.1;cursor:pointer}.v138LangSwitch button.on{background:#fff;color:#142c52}@media(max-width:620px){.headin{gap:8px;align-items:flex-start}.topBtns{gap:5px;flex-wrap:wrap;justify-content:flex-end}.v138LangSwitch{width:100%;justify-content:flex-end}.v138LangSwitch button{font-size:11px;padding:5px 7px}.headAction{font-size:12px}}`;
 document.head.appendChild(v138Style);
+
+
+/* ===== v1.139 フレンキ専用インドネシア語UI ===== */
+const V139_FURENKI_LANGUAGE_KEY="seika_v1139_language_user_furenki";
+function v139IsFurenkiWorker(){return db?.userId==="furenki"&&db?.role==="worker"}
+function v139IsFurenkiSelected(){return currentScreen==="login"&&document.getElementById("loginUser")?.value==="furenki"}
+function v139CanUseLanguage(){return v139IsFurenkiWorker()||v139IsFurenkiSelected()}
+function v139ForceJapanese(){v138Language="ja";document.documentElement.lang="ja"}
+function v139ReadFurenkiLanguage(){try{return localStorage.getItem(V139_FURENKI_LANGUAGE_KEY)==="id"?"id":"ja"}catch(_){return"ja"}}
+v138T=function(value){const text=String(value??"");return v139CanUseLanguage()&&v138Language==="id"?(V138_ID[text]||text):text};
+v138LanguageKey=function(){return v139IsFurenkiWorker()||v139IsFurenkiSelected()?V139_FURENKI_LANGUAGE_KEY:""};
+v138ApplyLanguage=function(language){if(!v139CanUseLanguage()){v139ForceJapanese();return}v138Language=language==="id"?"id":"ja";document.documentElement.lang=v138Language;try{localStorage.setItem(V139_FURENKI_LANGUAGE_KEY,v138Language)}catch(_){}};
+v138RestoreLanguage=function(){if(!v139IsFurenkiWorker()){v139ForceJapanese();return}v138Language=v139ReadFurenkiLanguage();document.documentElement.lang=v138Language};
+v138LanguageSwitchHtml=function(){if(!v139CanUseLanguage())return"";return `<div class="v138LangSwitch" role="group" aria-label="Language"><button type="button" class="${v138Language==="ja"?"on":""}" onclick="v138SetLanguage('ja')">日本語</button><button type="button" class="${v138Language==="id"?"on":""}" onclick="v138SetLanguage('id')">Bahasa Indonesia</button></div>`};
+v138SetLanguage=function(language){if(!v139CanUseLanguage()){v139ForceJapanese();return}v138ApplyLanguage(language);if(db?.user){renderCurrent();return}login();const select=document.getElementById("loginUser");if(select)select.value="furenki";v139RefreshLoginLanguageSwitch()};
+v138TextNode=function(node){const source=node.nodeValue,trimmed=source.trim();if(!trimmed||!V138_ID[trimmed]||!v139CanUseLanguage()||v138Language!=="id")return;node.nodeValue=source.replace(trimmed,V138_ID[trimmed])};
+v138TranslateElement=function(el){if(!v139CanUseLanguage()||v138Language!=="id"||!el)return;const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);nodes.forEach(v138TextNode)};
+v138TranslateScreen=function(){if(!v139CanUseLanguage()){v139ForceJapanese();return}document.documentElement.lang=v138Language;const common=[...document.querySelectorAll(".headAction,.title,.head .sub,#syncInfo")];common.forEach(v138TranslateElement);const screens=["login","home","qrHome","qrCreatePage","v1102QualityPage"],active=screens.includes(currentScreen);if(!active)return;const selectors=".opsLoginScreen h1,.opsLoginScreen h2,.opsLoginScreen .small,.opsLoginScreen .opsLogoSub,.homeSummary .summaryLabel,.homePrimary button,.qrCreateForm h2,.qrCreateForm .label,.qrCreateForm .small,.qrCreateForm button,.qrCreateForm .qrReadOnlyField,.qrCreateForm .notice,#v1102ProblemFields,.wrap > .notice,.wrap > .card > .label,.wrap > .card > .small,.wrap > .card > button,.wrap > .card > .grid label,.wrap > .card > .grid .box";document.querySelectorAll(selectors).forEach(v138TranslateElement);document.querySelectorAll(".qrCreateForm input[placeholder],.qrCreateForm textarea[placeholder],#v1102QualityMemo,#v1102CorrectionReason").forEach(el=>{const placeholder=el.getAttribute("placeholder");if(v138Language==="id"&&V138_ID[placeholder])el.setAttribute("placeholder",V138_ID[placeholder])});if(currentScreen==="v1102QualityPage"){const memo=document.getElementById("v1102QualityMemo");if(memo&&v138Language==="id"){memo.setAttribute("placeholder","Tulis dalam bahasa Jepang (jika perlu, tanyakan kepada petugas Jepang).");let note=document.getElementById("v138JapaneseMemoNote");if(!note){note=document.createElement("div");note.id="v138JapaneseMemoNote";note.className="small";note.textContent="Tulis dalam bahasa Jepang (jika perlu, tanyakan kepada petugas Jepang).";memo.insertAdjacentElement("beforebegin",note)}}}};
+function v139RefreshLoginLanguageSwitch(){const holder=document.querySelector(".v138LoginLanguage");if(!holder)return;if(!v139IsFurenkiSelected()){holder.hidden=true;holder.innerHTML="";return}holder.hidden=false;v138Language=v139ReadFurenkiLanguage();document.documentElement.lang=v138Language;holder.innerHTML=v138LanguageSwitchHtml();v138TranslateScreen()}
+function v139HandleLoginUserChange(){const selected=document.getElementById("loginUser")?.value||"";if(selected==="furenki"){v139RefreshLoginLanguageSwitch();return}v139ForceJapanese();login();const replacement=document.getElementById("loginUser");if(replacement)replacement.value=selected}
+function v139InstallLoginLanguageControl(){if(currentScreen!=="login")return;const select=document.getElementById("loginUser");if(select)select.onchange=v139HandleLoginUserChange;v139RefreshLoginLanguageSwitch()}
+const v139PageShellCore=pageShell;
+pageShell=function(title,sub,body,opts={}){const result=v139PageShellCore(title,sub,body,opts);if(opts.login)v139InstallLoginLanguageControl();else if(!v139IsFurenkiWorker()){document.querySelector(".v138LangSwitch")?.remove();v139ForceJapanese()}return result};
+const v139LoginUsersCore=v188LoginUsers;
+v188LoginUsers=function(){const rows=v139LoginUsersCore();if(!rows.some(row=>row[0]==="furenki"))rows.push(["furenki","フレンキ","青果社員"]);return rows};
+v138RestoreLanguage();
 
 </script>
   </body>
