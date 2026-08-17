@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.141 品質評価一覧表示修正</title>
+    <title>SEIKA＋ v1.142 品質評価一覧直接表示修正</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -3191,7 +3191,8 @@ card:"",badge:"",text:""
 }async function qrHome(msg=""){setScreen("qrHome",[msg]);qrEnsureMasters();try{
 const lots=await qrSelect("qr_lots","select=*&active=eq.true&order=created_at.desc&limit=10")
 ;const operate=canQrOperate(),notice=operate?"入出庫・廃棄・調整":qrReadOnlyMessage()
-;const actions=operate?`<button class="btn homeBtnQr" onclick="qrCreatePage()">QR入庫</button><button class="btn homeBtnCheck" onclick="qrOperationSelectPage('detail')">QR在庫処理<br><span style="font-size:15px;font-weight:800">出庫・廃棄・実数調整</span></button><button class="btn homeBtnTable" onclick="qrLotListPage()">QRロット一覧・検索</button><button class="btn homeBtnSettings" onclick="qrManagedItemsPage()">QR対象品目設定</button>`:`<button class="btn homeBtnTable" onclick="qrLotListPage()">QRロット一覧・検索</button>`
+;const qualityListButton=`<button id="v1140QualityHomeButton" type="button" class="btn homeBtnTable" onclick="v1103QualityListPage()">${esc(v138T("品質評価一覧"))}<br><span style="font-size:15px;font-weight:800">${esc(v138T("評価済みロット・写真を確認"))}</span></button>`
+;const actions=operate?`<button class="btn homeBtnQr" onclick="qrCreatePage()">QR入庫</button><button class="btn homeBtnCheck" onclick="qrOperationSelectPage('detail')">QR在庫処理<br><span style="font-size:15px;font-weight:800">出庫・廃棄・実数調整</span></button><button class="btn homeBtnTable" onclick="qrLotListPage()">QRロット一覧・検索</button>${qualityListButton}<button class="btn homeBtnSettings" onclick="qrManagedItemsPage()">QR対象品目設定</button>`:`<button class="btn homeBtnTable" onclick="qrLotListPage()">QRロット一覧・検索</button>${qualityListButton}`
 ;pageShell("QR在庫管理",`${esc(db.user)} / ${operate?"ロット管理":"閲覧専用"}`,`${okHtml(msg)}<div class="card ${operate?"notice":"ok"}"><b>${operate?"QRロット管理":"閲覧専用"}</b><div class="small">${notice}</div></div><div class="homePrimary">${actions}</div>`)
 }catch(e){pageShell("QR在庫管理","エラー",`<div class="err">読み込みに失敗しました。<br>${esc(e.message)}</div><button class="btn btn2" onclick="home()">ホームへ</button>`)}
 }async function qrCreatePageBase(){setScreen("qrCreatePage");qrEnsureMasters();if(!canQrOperate()){alert("QR入庫は管理者・青果社員のみです");return qrHome()}
@@ -7523,8 +7524,8 @@ v138RestoreLanguage();
 
 
 /* ===== v1.140 QR品質評価一覧 ===== */
-window.APP_VERSION='v1.141';
-document.title='SEIKA＋ v1.141 品質評価一覧表示修正';
+window.APP_VERSION='v1.142';
+document.title='SEIKA＋ v1.142 品質評価一覧直接表示修正';
 Object.assign(V138_ID,{
   "品質評価一覧":"Daftar Penilaian Kualitas","評価済みロット・写真を確認":"Periksa lot yang sudah dinilai dan foto","QRロットごとの最新評価を検索・確認":"Cari dan periksa penilaian terbaru setiap lot QR","評価月":"Bulan penilaian","すべて":"Semua","品名の一部":"Sebagian nama barang","未確認の評価だけ表示":"Tampilkan hanya penilaian yang belum dikonfirmasi","検索":"Cari","条件をクリア":"Hapus kondisi","評価を読み込んでいます...":"Sedang memuat penilaian...","表示中":"Ditampilkan","全":"Total","件":"data","不良を先頭に、要確認・良好の順で表示します。訂正前の評価は除外し、最新評価だけを表示しています。":"Urutan tampilan: Buruk, Perlu diperiksa, lalu Baik. Hanya penilaian terbaru yang ditampilkan.","条件に一致する品質評価はありません。":"Tidak ada penilaian kualitas yang sesuai.","さらに50件読み込む":"Muat 50 data lagi","状態：":"Kondisi:","メモ：":"Catatan:","評価者：":"Penilai:","写真：":"Foto:","確認不要":"Tidak perlu konfirmasi","確認済み":"Sudah dikonfirmasi","未確認":"Belum dikonfirmasi","QRロット詳細":"Detail lot QR","写真を見る":"Lihat foto","確認済みにする":"Tandai sudah dikonfirmasi","担当未設定":"Belum ada penanggung jawab","読み込みに失敗しました。通信状況を確認して再度検索してください。":"Gagal memuat. Periksa koneksi lalu cari kembali."
 });
@@ -7541,8 +7542,7 @@ function v1140ClearQualityFilters(){++v1140QualityRequestGeneration;v1140Quality
 async function v1103LoadQualityList(append=false,generation=++v1140QualityRequestGeneration){if(v1103QualityLoading&&generation===v1140QualityLoadingGeneration)return;v1103QualityLoading=true;v1140QualityLoadingGeneration=generation;v1140QualityError="";const f=append?v1140QualityState.filters:v1140QualityFilters(),summary=document.getElementById("v1103QualitySummary"),offset=append?v1103QualityRows.length:0;if(!append){v1103QualityRows=[];v1103QualityTotal=0;v1140QualityState.filters={...f};v1140QualityState.scrollY=0}if(summary)summary.textContent=v138T("評価を読み込んでいます...");v1140QualitySetControlsDisabled(true);try{const ans=await callRpc("list_qr_quality_evaluations_v1103",{p_target_month:f.month?`${f.month}-01`:null,p_grade:f.grade||null,p_item_query:f.item||null,p_buyer_legacy_user_id:f.buyer||null,p_unacknowledged_only:f.unack,p_limit:50,p_offset:offset});if(generation!==v1140QualityRequestGeneration)return;const incoming=Array.isArray(ans?.evaluations)?ans.evaluations:[],known=new Set(v1103QualityRows.map(x=>x.id));v1103QualityRows=append?[...v1103QualityRows,...incoming.filter(x=>!known.has(x.id))]:incoming;v1103QualityTotal=Number.isFinite(Number(ans?.total_count))?Number(ans.total_count):v1103QualityRows.length;v1140QualityState={filters:{...f},rows:v1103QualityRows.slice(),total:v1103QualityTotal,scrollY:window.scrollY||0};v1140RenderQualityList()}catch(e){if(generation!==v1140QualityRequestGeneration)return;v1140QualityError="load_failed";v1140RenderQualityList()}finally{if(generation!==v1140QualityRequestGeneration)return;v1103QualityLoading=false;v1140QualityLoadingGeneration=0;v1140QualitySetControlsDisabled(false)}}
 function v1140OpenLotDetail(q){v1140QualityDetailReturn=currentScreen==="v1103QualityListPage";if(v1140QualityDetailReturn)v1140QualityState.scrollY=window.scrollY||0;return qrLotDetail(q)}
 const v1140GoBackCore=goBack;goBack=function(){if(currentScreen==="qrLotDetail"&&v1140QualityDetailReturn){v1140QualityDetailReturn=false;return v1103QualityListPage("",true)}return v1140GoBackCore()};
-function v1141InsertQualityHomeButton(){const primary=document.querySelector(".homePrimary");if(!primary)return;let button=document.getElementById("v1140QualityHomeButton");if(!button){button=document.createElement("button");button.id="v1140QualityHomeButton";button.type="button";button.className="btn homeBtnTable";button.onclick=()=>v1103QualityListPage();button.innerHTML=`${esc(v138T("品質評価一覧"))}<br><span style="font-size:15px;font-weight:800">${esc(v138T("評価済みロット・写真を確認"))}</span>`}const lotListButton=[...primary.querySelectorAll("button")].find(x=>x!==button&&x.textContent.replace(/\s/g,"").includes("QRロット一覧・検索"));if(lotListButton)lotListButton.insertAdjacentElement("afterend",button);else primary.appendChild(button)}
-const v1140QrHomeCore=qrHome;qrHome=async function(msg=""){await v1140QrHomeCore(msg);v1141InsertQualityHomeButton();const old=document.getElementById("v1104QrQualityArea");if(old){const entry=[...old.querySelectorAll("button")].find(x=>x.textContent.includes("品質評価一覧"));entry?.remove();if(!["buyer","admin"].includes(db.role))old.remove();else{const title=old.querySelector("h2");if(title)title.textContent="未確認の低評価";const small=old.querySelector(".small");if(small)small.textContent="担当品目の低評価を確認します。"}}};
+const v1142QrHomeCore=qrHome;qrHome=async function(msg=""){await v1142QrHomeCore(msg);const old=document.getElementById("v1104QrQualityArea");if(old){const entry=[...old.querySelectorAll("button")].find(x=>x.textContent.includes("品質評価一覧"));entry?.remove();if(!["buyer","admin"].includes(db.role))old.remove();else{const title=old.querySelector("h2");if(title)title.textContent="未確認の低評価";const small=old.querySelector(".small");if(small)small.textContent="担当品目の低評価を確認します。"}}};
 
 </script>
   </body>
