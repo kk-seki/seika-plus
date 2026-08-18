@@ -1979,6 +1979,11 @@ body{
   background:linear-gradient(135deg, #1769b2 0%, #2f83df 100%) !important; background-size:100% 100% !important; color:#fff !important;
   text-shadow:0 1px 2px rgba(0, 0, 0, 0.28) !important; box-shadow:0 7px 16px rgba(15, 23, 42, 0.14) !important; border-color:transparent !important;
       }
+.homePrimary .btn.homeBtnOutboundHistory,
+      .viewerHome .btn.homeBtnOutboundHistory{
+  background:linear-gradient(135deg, #3f4c5f 0%, #718096 100%) !important; background-size:100% 100% !important; color:#fff !important;
+  text-shadow:0 1px 2px rgba(0, 0, 0, 0.28) !important; box-shadow:0 7px 16px rgba(15, 23, 42, 0.14) !important; border-color:transparent !important;
+      }
 .homePrimary .btn.homeBtnReport,
       .viewerHome .btn.homeBtnReport{
   background:linear-gradient(135deg, #3548bd 0%, #5964df 100%) !important; background-size:100% 100% !important; color:#fff !important;
@@ -3207,7 +3212,7 @@ card:"",badge:"",text:""
 const lots=await qrSelect("qr_lots","select=*&active=eq.true&order=created_at.desc&limit=10")
 ;const operate=canQrOperate(),notice=operate?"入出庫・廃棄・調整":qrReadOnlyMessage()
 ;const qualityListButton=`<button id="v1140QualityHomeButton" type="button" class="btn homeBtnQuality" onclick="v1103QualityListPage()">${esc(v138T("品質評価一覧"))}<br><span style="font-size:15px;font-weight:800">${esc(v138T("評価済みロット・写真を確認"))}</span></button>`
-;const outboundHistoryButton=`<button id="v1144QrOutboundHistoryButton" type="button" class="btn homeBtnTable" onclick="v1144QrOutboundHistoryPage()">QR出庫履歴<br><span style="font-size:15px;font-weight:800">出庫先・日付ごとの全品目を確認</span></button>`
+;const outboundHistoryButton=`<button id="v1144QrOutboundHistoryButton" type="button" class="btn homeBtnOutboundHistory" onclick="v1144QrOutboundHistoryPage()">QR出庫履歴<br><span style="font-size:15px;font-weight:800">出庫先・日付ごとの全品目を確認</span></button>`
 ;const actions=operate?`<button class="btn homeBtnQr" onclick="qrCreatePage()">QR入庫</button><button class="btn homeBtnCheck" onclick="qrOperationSelectPage('detail')">QR在庫処理<br><span style="font-size:15px;font-weight:800">出庫・廃棄・実数調整</span></button><button class="btn homeBtnTable" onclick="qrLotListPage()">QRロット一覧・検索</button>${outboundHistoryButton}${qualityListButton}<button class="btn homeBtnSettings" onclick="qrManagedItemsPage()">QR対象品目設定</button>`:`<button class="btn homeBtnTable" onclick="qrLotListPage()">QRロット一覧・検索</button>${outboundHistoryButton}${qualityListButton}`
 ;pageShell("QR在庫管理",`${esc(db.user)} / ${operate?"ロット管理":"閲覧専用"}`,`${okHtml(msg)}<div class="card ${operate?"notice":"ok"}"><b>${operate?"QRロット管理":"閲覧専用"}</b><div class="small">${notice}</div></div><div class="homePrimary">${actions}</div>`)
 }catch(e){pageShell("QR在庫管理","エラー",`<div class="err">読み込みに失敗しました。<br>${esc(e.message)}</div><button class="btn btn2" onclick="home()">ホームへ</button>`)}
