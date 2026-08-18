@@ -6010,8 +6010,8 @@ steps:["前月以前の月を選び、写真付きExcelを出力します。","�
 check:"評価件数・写真枚数・対象月を確認してください。",caution:"写真を1枚でも取得できなかった場合は作成済みになりません。削除してもQRロット本体と在庫数量は残ります。"})}
 /* ===== v1.103 品質評価一覧・仕入れ担当者低評価アラート ===== */let v1103QualityRows=[],v1103QualityTotal=0,v1103BuyerAlerts=[],v1103QualityLoading=false
 ;function v1103QualityBuyerOptions(selected=""){
-const users=(db.users||[]).filter(x=>x.role==="buyer"&&x.active!==false).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"ja"))
-;return`<option value="">すべて</option>${users.map(x=>`<option value="${esc(x.id)}" ${x.id===selected?"selected":""}>${esc(x.name)}</option>`).join("")}`
+const users=typeof v1144PurchaseStaffCandidates==="function"?v1144PurchaseStaffCandidates():(db.users||[]).filter(x=>x.role==="buyer"&&x.active!==false).map(x=>({legacy_user_id:x.id,display_name:x.name}))
+;return`<option value="">すべて</option>${users.map(x=>`<option value="${esc(x.legacy_user_id)}" ${x.legacy_user_id===selected?"selected":""}>${esc(x.display_name)}</option>`).join("")}`
 }function v1103QualityFilterValues(){return{month:document.getElementById("v1103QualityMonth")?.value||"",
 grade:document.getElementById("v1103QualityGrade")?.value||"",item:document.getElementById("v1103QualityItem")?.value.trim()||"",
 buyer:document.getElementById("v1103QualityBuyer")?.value||"",unack:!!document.getElementById("v1103QualityUnack")?.checked}}
@@ -7976,16 +7976,25 @@ qrSaveLot=async function(){
   };
   const candidatesCore=window.v1144PurchaseStaffCandidates;
   window.v1144PurchaseStaffCandidates=function(){
-    const source=(candidatesCore?candidatesCore():[])||[], byId=new Map();
+    const source=(candidatesCore?candidatesCore():[])||[], byName=new Map();
     source.forEach(row=>{
       let legacy=String(row.legacy_user_id||'').trim();
       if(legacy==='seki')legacy='seki_hiroshi'; if(legacy==='saito')legacy='saito_dai';
       if(!legacy)return;
       const display_name=FORMAL[legacy]||v1144FormalPurchaseStaffName(row.display_name)||String(row.display_name||'').trim();
       if(!display_name||Object.keys(ALIASES).includes(display_name))return;
-      const prior=byId.get(legacy); if(!prior||row.profile_id)byId.set(legacy,{...row,legacy_user_id:legacy,display_name});
+      const nameKey=display_name.replace(/[\s　]/g,'');
+      const prior=byName.get(nameKey);
+      const candidate={...row,legacy_user_id:legacy,display_name};
+      if(!prior||row.profile_id||legacy==='seki_hiroshi'||legacy==='saito_dai')byName.set(nameKey,candidate);
     });
-    return [...byId.values()].filter(x=>x.display_name&&x.display_name!==x.legacy_user_id).sort((a,b)=>a.display_name.localeCompare(b.display_name,'ja'));
+    return [...byName.values()].filter(x=>x.display_name&&x.display_name!==x.legacy_user_id).sort((a,b)=>a.display_name.localeCompare(b.display_name,'ja'));
+  };
+  window.v1103QualityBuyerOptions=function(selected=''){
+    const rows=v1144PurchaseStaffCandidates();
+    const selectedRow=v1144CandidateForReference(selected,rows);
+    const selectedId=selectedRow?.legacy_user_id||String(selected||'');
+    return `<option value="">すべて</option>${rows.map(x=>`<option value="${esc(x.legacy_user_id)}" ${x.legacy_user_id===selectedId?'selected':''}>${esc(x.display_name)}</option>`).join('')}`;
   };
   window.v1144PurchaseStaffDatalistHtml=function(){return v1144PurchaseStaffCandidates().map(x=>`<option value="${esc(x.display_name)}"></option>`).join('');};
   window.v1144StaffInfoFromText=function(el){
