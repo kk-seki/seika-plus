@@ -2434,6 +2434,8 @@ to{
 
 
 
+
+
 </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 
@@ -2853,11 +2855,11 @@ xlarge:{fontScale:1.15,spaceScale:1.1,label:"特大"}}
 id:x[0],name:x[1],role:x[2],group:x[3],password:x[4],active:true,displaySettings:{...DEFAULT_DISPLAY_SETTINGS}}));const FORCED_USER_NAMES={
 sales_saito_ayaka:"斉藤(綾)",sales_warabioka_aki:"蕨岡",sales_hamamatsu_junko:"浜松",sales_yatsuda_hiromu:"八ツ田",clerk_iizuka_miyuki:"飯塚",
 clerk_kase_yoko:"加瀬",clerk_shirata_nozomi:"白田"};const BUYER_SOURCE_NOTE="07_営業仕入れ担当者カード.xlsx / 品目別_仕入れ検索用 / 2026.5月版";const ITEM_BUYER_MASTER={
-長葱:"saito_dai",南瓜:"saito_dai",レンコン:"saito_dai",蓮根:"saito_dai",れんこん:"saito_dai",ニラ:"saito_dai",青梗菜:"saito_dai",茄子:"saito_dai",ピーマン:"saito_dai",
-キャベツ:"saito_dai",紫キャベツ:"saito_dai",胡瓜:"saito_dai",きゅうり:"saito_dai",トマト:"saito_dai",ミニトマト:"saito_dai",レタス:"yoshida",グリーンカール:"yoshida",リーフ:"yoshida",
-サニーレタス:"yoshida",サニー:"yoshida",ロメインレタス:"yoshida",ロメイン:"yoshida",白菜:"yoshida",水菜:"sakamoto",ほうれん草:"sakamoto",小松菜:"sakamoto",小葱:"sakamoto",
-大葉:"sakamoto","人参（国産）":"araki",国産人参:"araki",人参:"araki",さつまいも:"seki_hiroshi",さつま芋:"seki_hiroshi",玉葱:"seki_hiroshi",玉ねぎ:"seki_hiroshi",
-紫玉葱:"seki_hiroshi"};const DEFAULT_BUYER_ASSIGNMENTS={seki_hiroshi:[],araki:[],
+小蕪:"sakamoto",小かぶ:"sakamoto",こかぶ:"sakamoto",水菜:"sakamoto",小松菜:"sakamoto",ほうれん草:"sakamoto",ズッキーニ:"sakamoto",大葉:"sakamoto",小葱:"sakamoto",
+ニラ:"saito_dai",青梗菜:"saito_dai",茄子:"saito_dai",長茄子:"saito_dai",ゴーヤ:"saito_dai",ゴーヤー:"saito_dai",ピーマン:"saito_dai",胡瓜:"saito_dai",きゅうり:"saito_dai",キュウリ:"saito_dai",トマト:"saito_dai",ミニトマト:"saito_dai",南瓜:"saito_dai",キャベツ:"saito_dai",紫キャベツ:"saito_dai",長葱:"saito_dai",大根:"saito_dai",カット大根:"saito_dai",葉付き大根:"saito_dai",葉付大根:"saito_dai",蓮根:"saito_dai",レンコン:"saito_dai",れんこん:"saito_dai",
+国産人参:"araki","人参（国産）":"araki",人参:"araki",
+レタス:"yoshida",グリーンカール:"yoshida",サニーレタス:"yoshida",サニー:"yoshida",リーフレタス:"yoshida",リーフ:"yoshida",ロメインレタス:"yoshida",ロメイン:"yoshida",白菜:"yoshida",
+さつま芋:"seki_hiroshi",さつまいも:"seki_hiroshi",玉葱:"seki_hiroshi",玉ねぎ:"seki_hiroshi",紫玉葱:"seki_hiroshi",じゃが芋:"seki_hiroshi",ジャガイモ:"seki_hiroshi",馬鈴薯:"seki_hiroshi",男爵じゃが芋:"seki_hiroshi",メークインじゃが芋:"seki_hiroshi",きたあかりじゃが芋:"seki_hiroshi",北あかりじゃが芋:"seki_hiroshi",とうや:"seki_hiroshi",インカのめざめ:"seki_hiroshi",北海黄金:"seki_hiroshi"};const DEFAULT_BUYER_ASSIGNMENTS={seki_hiroshi:[],araki:[],
 saito_dai:["item6","item9","item13","item15","item16","item18","item19","item20"],yoshida:["item1","item2","item3","item4","item17"],
 sakamoto:["item5","item7","item8","item10","item11"]};const STORE="ishioka_inventory_production_v2"
 ;const LEGACY_STATE_ID="ishioka_inventory_"+"de"+"mo_v6_linecopy_weekly";const STATE_ID=STORE;const ROLE={admin:"管理者",worker:"青果社員",buyer:"仕入れ担当者",
@@ -3027,11 +3029,11 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&l
 ;const QR_LARGE_CONTAINERS=["網コンテナ","鉄コンテナ","パレテーナ"];const QR_NORMAL_CONTAINERS=["ダンボール","コンテナ","紙袋"]
 ;const QR_STORAGE_LOCATIONS=["第2冷蔵庫","第3冷蔵庫","片岡冷蔵庫","その他"];const QR_ADJUST_REASONS=["実数合わせ","入力ミス","移動","廃棄","その他"]
 ;const QR_OUT_DESTINATIONS=["本社","埼玉","深谷","社外","荻沼","石岡冷凍","その他","廃棄"];const QR_SHIP_TIMINGS=["当日分","翌日分先送り"]
-;const QR_PURCHASE_STAFF_BY_ITEM_DEFAULT={長葱:"斎藤（大）",南瓜:"斎藤（大）",レンコン:"斎藤（大）",蓮根:"斎藤（大）",れんこん:"斎藤（大）",ニラ:"斎藤（大）",青梗菜:"斎藤（大）",茄子:"斎藤（大）",ピーマン:"斎藤（大）",
-キャベツ:"斎藤（大）",紫キャベツ:"斎藤（大）",胡瓜:"斎藤（大）",きゅうり:"斎藤（大）",キュウリ:"斎藤（大）",トマト:"斎藤（大）",ミニトマト:"斎藤（大）",ゴーヤ:"斎藤（大）",ゴーヤー:"斎藤（大）",カット大根:"斎藤（大）",葉付き大根:"斎藤（大）",
-葉付大根:"斎藤（大）",レタス:"吉田",グリーンカール:"吉田",サニーレタス:"吉田",サニー:"吉田",リーフレタス:"吉田",リーフ:"吉田",ロメインレタス:"吉田",ロメイン:"吉田",白菜:"吉田",水菜:"坂本",ほうれん草:"坂本",小松菜:"坂本",小葱:"坂本",
-大葉:"坂本",ズッキーニ:"坂本","人参（国産）":"荒木",国産人参:"荒木",人参:"荒木",さつまいも:"関（宏）",さつま芋:"関（宏）",玉葱:"関（宏）",玉ねぎ:"関（宏）",紫玉葱:"関（宏）",じゃが芋:"関（宏）",ジャガイモ:"関（宏）",馬鈴薯:"関（宏）",
-男爵じゃが芋:"関（宏）",メークインじゃが芋:"関（宏）",きたあかりじゃが芋:"関（宏）",北あかりじゃが芋:"関（宏）",とうや:"関（宏）",インカのめざめ:"関（宏）",北海黄金:"関（宏）"};function qrEnsureMasters(){
+;const QR_PURCHASE_STAFF_BY_ITEM_DEFAULT={小蕪:"坂本",小かぶ:"坂本",こかぶ:"坂本",水菜:"坂本",小松菜:"坂本",ほうれん草:"坂本",ズッキーニ:"坂本",大葉:"坂本",小葱:"坂本",
+ニラ:"斎藤（大）",青梗菜:"斎藤（大）",茄子:"斎藤（大）",長茄子:"斎藤（大）",ゴーヤ:"斎藤（大）",ゴーヤー:"斎藤（大）",ピーマン:"斎藤（大）",胡瓜:"斎藤（大）",きゅうり:"斎藤（大）",キュウリ:"斎藤（大）",トマト:"斎藤（大）",ミニトマト:"斎藤（大）",南瓜:"斎藤（大）",キャベツ:"斎藤（大）",紫キャベツ:"斎藤（大）",長葱:"斎藤（大）",大根:"斎藤（大）",カット大根:"斎藤（大）",葉付き大根:"斎藤（大）",葉付大根:"斎藤（大）",蓮根:"斎藤（大）",レンコン:"斎藤（大）",れんこん:"斎藤（大）",
+国産人参:"荒木","人参（国産）":"荒木",人参:"荒木",
+レタス:"吉田",グリーンカール:"吉田",サニーレタス:"吉田",サニー:"吉田",リーフレタス:"吉田",リーフ:"吉田",ロメインレタス:"吉田",ロメイン:"吉田",白菜:"吉田",
+さつま芋:"関（宏）",さつまいも:"関（宏）",玉葱:"関（宏）",玉ねぎ:"関（宏）",紫玉葱:"関（宏）",じゃが芋:"関（宏）",ジャガイモ:"関（宏）",馬鈴薯:"関（宏）",男爵じゃが芋:"関（宏）",メークインじゃが芋:"関（宏）",きたあかりじゃが芋:"関（宏）",北あかりじゃが芋:"関（宏）",とうや:"関（宏）",インカのめざめ:"関（宏）",北海黄金:"関（宏）"};function qrEnsureMasters(){
 db.qrManagedItems=Array.isArray(db.qrManagedItems)?db.qrManagedItems:[]
 ;if(!db.qrManagedItems.length)db.qrManagedItems=qrDefaultManagedItems();else db.qrManagedItems=qrMergeRequiredCanonicalRules(db.qrManagedItems)
 ;if(Number(db.qrManagedPresetVersion||0)<QR_MANAGED_PRESET_VERSION)db.qrManagedPresetVersion=QR_MANAGED_PRESET_VERSION
@@ -5958,7 +5960,7 @@ async function v1102SaveQuality(q,supersedesId=""){if(v1102QualitySaving)return;
 ;v1102QualitySaving=true;if(btn){btn.disabled=true;btn.textContent="登録中..."}v161ShowProcessing(v138T("品質評価を保存しています"));try{
 const ans=await callRpc("create_qr_quality_evaluation_v1102",{p_qr_key:q,p_grade:grade,p_issues:issues,p_memo:memo||null,
 p_correction_reason:correction||null,p_supersedes_id:supersedesId||null,p_evaluated_at:(new Date).toISOString()}),evaluationId=ans?.evaluation_id
-;if(!evaluationId)throw new Error("品質評価IDを取得できません");let uploaded=0,photoError=null;for(const photo of v1102QualityPhotos){let reserve=null;try{
+;if(!evaluationId)throw new Error("品質評価IDを取得できません");if((grade==="review"||grade==="bad")&&typeof v1144PushDispatch==="function")v1144PushDispatch().catch(()=>{});let uploaded=0,photoError=null;for(const photo of v1102QualityPhotos){let reserve=null;try{
 reserve=await callRpc("create_qr_quality_photo_upload_v1102",{p_evaluation_id:evaluationId,p_original_name:photo.name,p_content_type:"image/jpeg",
 p_byte_size:photo.blob.size});await v1102StorageUpload(reserve.storage_path,photo.blob);await callRpc("finalize_qr_quality_photo_upload_v1102",{
 p_photo_id:reserve.photo_id});uploaded++}catch(e){photoError=e;if(reserve?.photo_id){
@@ -7658,7 +7660,7 @@ setScreen=function(name,args=[]){return v1144SetScreenCore(name,args);};
 function v1144QualityBuyerLabel(x){
   const names=(x.buyers||[]).map(b=>b.display_name||b.legacy_user_id).filter(Boolean).join('、');
   const source=x.buyer_source||'';
-  return {label:source==='item_assignment'?'品目担当':'入庫時仕入担当者',names:names||v138T('担当未設定')};
+  return {label:(source==='item_assignment'||source==='item_name_master')?'品目担当':'入庫時仕入担当者',names:names||v138T('担当未設定')};
 }
 v1140QualityCard=function(x){
   const buyer=v1144QualityBuyerLabel(x),canAck=!x.acknowledged_at&&['review','bad'].includes(x.grade)&&(db.role==='admin'||db.role==='buyer'&&(x.buyers||[]).some(b=>b.legacy_user_id===db.userId)),color=x.grade==='bad'?'#dc2626':x.grade==='review'?'#f59e0b':'#16a34a',id=String(x.id||''),qrKey=String(x.qr_key||'');
@@ -7736,6 +7738,186 @@ const v1144V138ObserverCallback=()=>{if(v138Language==='id')v138TranslateScreen(
 if(typeof v138Observer!=='undefined')v138Observer.disconnect();
 const v1144V138Observer=new MutationObserver(v1144V138ObserverCallback);
 v1144V138Observer.observe(document.getElementById('app'),{childList:true,subtree:true});
+
+/* ===== v1.144 品質評価 低品質Web Push通知 =====
+ * VAPID秘密鍵はSupabase Edge FunctionのSecretsにだけ保存し、HTMLには保存しません。 */
+const V1144_PUSH_FUNCTION='seika-quality-push';
+let v1144PushConfigLoadPromise=null,v1144PushDispatchLastAt=0;
+function v1144PushIsBuyer(){return db?.role==='buyer';}
+function v1144PushStandalone(){return window.matchMedia?.('(display-mode: standalone)')?.matches||window.navigator.standalone===true;}
+function v1144PushSupported(){return !!(window.isSecureContext&&'Notification'in window&&'serviceWorker'in navigator&&'PushManager'in window);}
+function v1144PushIos(){return /iPad|iPhone|iPod/.test(navigator.userAgent||'')||(/Macintosh/.test(navigator.userAgent||'')&&navigator.maxTouchPoints>1);}
+function v1144PushStateText(){
+ if(!v1144PushSupported())return 'このブラウザは通知に対応していません';
+ if(v1144PushIos()&&!v1144PushStandalone())return 'iPhone/iPadはホーム画面に追加したSEIKA＋から設定してください';
+ if(Notification.permission==='denied')return '通知が拒否されています。端末またはブラウザの設定で通知を許可してください';
+ if(Notification.permission==='granted')return 'この端末の通知は許可されています';
+ return 'まだ通知は許可されていません';
+}
+function v1144PushCardHtml(){
+ if(!v1144PushIsBuyer())return '';
+ const available=v1144PushSupported()&&!(v1144PushIos()&&!v1144PushStandalone());
+ return `<section id="v1144PushCard" class="card"><b>品質評価の通知</b><div id="v1144PushState" class="small" style="margin-top:7px">${esc(v1144PushStateText())}</div><div class="small" style="margin-top:7px">担当品目に「要確認」または「不良」が新規登録されたとき、この端末へ通知します。通知内容にはメモ・状態・仕入先を表示しません。</div>${v1144PushIos()&&!v1144PushStandalone()?'<div class="notice small" style="margin-top:10px">Safariの共有ボタンから「ホーム画面に追加」を行い、追加したSEIKA＋アイコンを開いてから設定してください。</div>':''}<div class="grid" style="margin-top:10px"><button id="v1144PushEnable" type="button" class="btn blue" onclick="v1144PushSubscribe()" ${available?'':'disabled'}>この端末で通知を受け取る</button><button id="v1144PushDisable" type="button" class="btn btn2" onclick="v1144PushUnsubscribe()" ${available?'':'disabled'}>この端末の通知を停止</button></div></section>`;
+}
+async function v1144PushFunction(action){
+ if(!await authEnsure())throw new Error('再ログインしてください');
+ const res=await fetch(`${SUPABASE_URL}/functions/v1/${V1144_PUSH_FUNCTION}`,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:'Bearer '+authToken(),'Content-Type':'application/json'},body:JSON.stringify({action})});
+ const text=await res.text();let data={};try{data=text?JSON.parse(text):{}}catch(e){}
+ if(!res.ok||!data?.ok)throw new Error(data?.message||'通知サービスに接続できません');
+ return data;
+}
+function v1144PushBase64UrlToUint8Array(value){
+ const base64=String(value||'').replace(/-/g,'+').replace(/_/g,'/');
+ const padded=base64+'='.repeat((4-base64.length%4)%4);const binary=atob(padded);const bytes=new Uint8Array(binary.length);
+ for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return bytes;
+}
+function v1144PushDeviceLabel(){
+ const ua=navigator.userAgent||'';return v1144PushIos()?'iPhone/iPad':/Android/i.test(ua)?'Android':'PCブラウザ';
+}
+async function v1144PushLoadConfig(){
+ if(!v1144PushIsBuyer())return null;
+ if(!v1144PushConfigLoadPromise)v1144PushConfigLoadPromise=callRpc('get_push_notification_config_v1144',{}).catch(()=>null).finally(()=>{v1144PushConfigLoadPromise=null});
+ return await v1144PushConfigLoadPromise;
+}
+async function v1144PushRefreshUi(){
+ const el=document.getElementById('v1144PushState');if(!el)return;
+ let text=v1144PushStateText();const config=await v1144PushLoadConfig();
+ if(config?.subscription_count&&Notification.permission==='granted')text+='（登録済み）';
+ el.textContent=text;
+}
+async function v1144PushSubscribe(){
+ if(!v1144PushIsBuyer())return;
+ if(!v1144PushSupported())return alert('この端末・ブラウザでは通知を利用できません。');
+ if(v1144PushIos()&&!v1144PushStandalone())return alert('iPhone/iPadでは、SafariでSEIKA＋をホーム画面に追加し、追加したアイコンから開いて設定してください。');
+ const button=document.getElementById('v1144PushEnable');if(button){button.disabled=true;button.textContent='設定中...';}
+ try{
+  const permission=await Notification.requestPermission();if(permission!=='granted')throw new Error(permission==='denied'?'通知が拒否されました。端末またはブラウザの設定で許可してください。':'通知が許可されませんでした。');
+  const registration=await navigator.serviceWorker.ready;const key=await v1144PushFunction('public-key');
+  const existing=await registration.pushManager.getSubscription();const subscription=existing||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:v1144PushBase64UrlToUint8Array(key.publicKey)});
+  const json=subscription.toJSON(),keys=json.keys||{};
+  await callRpc('upsert_my_push_subscription_v1144',{p_endpoint:subscription.endpoint,p_p256dh:keys.p256dh||'',p_auth:keys.auth||'',p_user_agent:navigator.userAgent||'',p_device_label:v1144PushDeviceLabel()});
+  await v1144PushRefreshUi();alert('この端末で品質評価の通知を受け取る設定にしました。');
+ }catch(error){await v1144PushRefreshUi();alert('通知を有効にできませんでした。\n'+(error?.message||error));}
+ finally{if(button){button.disabled=false;button.textContent='この端末で通知を受け取る';}}
+}
+async function v1144PushUnsubscribe(){
+ if(!v1144PushIsBuyer()||!v1144PushSupported())return;
+ const button=document.getElementById('v1144PushDisable');if(button){button.disabled=true;button.textContent='停止中...';}
+ try{
+  const registration=await navigator.serviceWorker.ready;const subscription=await registration.pushManager.getSubscription();
+  if(subscription){await callRpc('disable_my_push_subscription_v1144',{p_endpoint:subscription.endpoint});await subscription.unsubscribe().catch(()=>{});}
+  await v1144PushRefreshUi();alert('この端末への品質評価通知を停止しました。');
+ }catch(error){alert('通知を停止できませんでした。\n'+(error?.message||error));}
+ finally{if(button){button.disabled=false;button.textContent='この端末の通知を停止';}}
+}
+async function v1144PushDispatch(){
+ if(!authToken())return null;
+ return await v1144PushFunction('dispatch');
+}
+function v1144PushDispatchBestEffort(){
+ if(!authToken())return;
+ const now=Date.now();if(now-v1144PushDispatchLastAt<30000)return;
+ v1144PushDispatchLastAt=now;setTimeout(()=>v1144PushDispatch().catch(()=>{}),700);
+}
+const v1144DisplaySettingsPageCore=displaySettingsPage;
+displaySettingsPage=function(){v1144DisplaySettingsPageCore();const wrap=document.querySelector('.wrap');if(v1144PushIsBuyer()&&wrap&&!document.getElementById('v1144PushCard')){wrap.insertAdjacentHTML('beforeend',v1144PushCardHtml());v1144PushRefreshUi();}};
+function v1144QualityPushDeepLink(){
+ const query=new URLSearchParams(location.search),open=query.get('open'),id=query.get('evaluation');
+ if(open!=='quality'||!id||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)||!db?.user)return false;
+ history.replaceState(null,'',location.pathname+location.hash);setTimeout(()=>v1103QualityListPage(),0);return true;
+}
+const v1144PushHomeCore=home;
+home=function(){v1144PushHomeCore();v1144PushDispatchBestEffort();v1144QualityPushDeepLink();};
+const v1144PushBootCore=boot;
+boot=async function(){const result=await v1144PushBootCore();v1144PushDispatchBestEffort();v1144QualityPushDeepLink();return result;};
+
+/* ===== v1.144 QR入庫：仕入担当者ID自動選択 修正 =====
+   品目の担当は表示名ではなく legacy_user_id で確定して送信する。 */
+function v1144ProfileIdForLegacyId(legacyUserId){
+  const id=String(legacyUserId||'');
+  if(authProfile&&String(authProfile.legacy_user_id||'')===id&&authProfile.id)return String(authProfile.id);
+  const row=(v188AdminUsers||[]).find(x=>String(x.legacy_user_id||'')===id);
+  return row&&row.id?String(row.id):null;
+}
+function v1144PurchaseStaffCandidates(){
+  const seen=new Set(), rows=[];
+  const add=(legacyUserId,displayName,role,active=true,profileId=null)=>{
+    const id=String(legacyUserId||'').trim();
+    if(!id||!displayName||active===false||role!=='buyer'||seen.has(id))return;
+    seen.add(id);rows.push({legacy_user_id:id,display_name:String(displayName),profile_id:profileId||v1144ProfileIdForLegacyId(id)||null});
+  };
+  for(const u of (db?.users||[]))add(u.id,V188_FULL_NAMES?.[u.id]||u.name,u.role,u.active,u.profile_id||u.id_uuid||null);
+  for(const p of (v188AdminUsers||[]))add(p.legacy_user_id,V188_FULL_NAMES?.[p.legacy_user_id]||p.display_name,p.role,p.active,p.id);
+  for(const row of (typeof v188LoginUsers==='function'?v188LoginUsers():[])){
+    const [id,name,group]=row||[];add(id,name,String(group||'').includes('仕入れ担当者')?'buyer':'',true,null);
+  }
+  return rows.sort((a,b)=>a.display_name.localeCompare(b.display_name,'ja'));
+}
+function v1144CandidateForReference(reference,candidates=v1144PurchaseStaffCandidates()){
+  const raw=String(reference||'').trim(), normalized=qrNormalizeName(raw);
+  return candidates.find(x=>x.legacy_user_id===raw)||candidates.find(x=>qrNormalizeName(x.display_name)===normalized)||candidates.find(x=>qrNormalizeName(findUser(x.legacy_user_id)?.name)===normalized)||null;
+}
+function v1144FixedBuyerReference(itemName){
+  const master=qrPurchaseStaffMaster(), normalized=qrNormalizeName(itemName);
+  for(const [name,value] of Object.entries(master))if(qrNormalizeName(name)===normalized)return value;
+  return qrIsPotatoVarietyName(itemName)?(master['じゃが芋']||ITEM_BUYER_MASTER['じゃが芋']||null):null;
+}
+function v1144AutoPurchaseStaffForItemName(itemName){
+  const candidates=v1144PurchaseStaffCandidates(), item=qrFindItemByName(itemName);
+  const assigned=(item?assignedBuyerIds(item.id):[]).map(id=>candidates.find(x=>x.legacy_user_id===String(id))).filter(Boolean);
+  const unique=[...new Map(assigned.map(x=>[x.legacy_user_id,x])).values()];
+  if(unique.length===1)return unique[0];
+  const fixed=v1144CandidateForReference(v1144FixedBuyerReference(itemName),candidates);
+  if(unique.length>1&&fixed&&unique.some(x=>x.legacy_user_id===fixed.legacy_user_id))return fixed;
+  return fixed||null;
+}
+function v1144PurchaseStaffOptionHtml(selectedLegacy='',selectedName='',allowKeep=false){
+  const rows=v1144PurchaseStaffCandidates(), selected=String(selectedLegacy||'');
+  const known=rows.some(x=>x.legacy_user_id===selected);
+  const current=selectedName&&!rows.some(x=>qrNormalizeName(x.display_name)===qrNormalizeName(selectedName));
+  const keep=allowKeep&&current?`<option value="__keep__" selected>現在値（未登録）：${esc(selectedName)}（変更しない）</option>`:'';
+  return `<option value="">選択してください</option>${keep}${rows.map(x=>`<option value="${esc(x.legacy_user_id)}" ${known&&x.legacy_user_id===selected?'selected':''}>${esc(x.display_name)}</option>`).join('')}`;
+}
+function v1144ReadPurchaseStaffFrom(el){
+  const match=v1144CandidateForReference(el?.value);
+  return match?{legacy_user_id:match.legacy_user_id,profile_id:match.profile_id||null,display_name:match.display_name}:{legacy_user_id:null,profile_id:null,display_name:null};
+}
+v1144ReadPurchaseStaff=function(){return v1144ReadPurchaseStaffFrom(document.getElementById('qrPurchaseStaff'));};
+function v1144ReplacePurchaseStaffControl(){
+  const old=document.getElementById('qrPurchaseStaff');if(!old||old.tagName==='SELECT')return old;
+  const guessed=String(old.value||'').trim(), match=v1144CandidateForReference(guessed);
+  const select=document.createElement('select');
+  select.id='qrPurchaseStaff';select.className=old.className||'input';select.required=true;
+  select.innerHTML=v1144PurchaseStaffOptionHtml(match?.legacy_user_id||'',guessed);
+  select.onchange=()=>{const note=document.getElementById('qrStaffNote');if(note)note.textContent=select.value?'選択した担当者を入庫ロットと品質評価へ連携します。':'仕入れ担当者を選択してください。';};
+  old.replaceWith(select);return select;
+}
+qrAutoFillStaff=function(){
+  const item=document.getElementById('qrItemName'),staff=document.getElementById('qrPurchaseStaff');if(!item||!staff)return;
+  const itemName=String(item.value||'').trim(), changed=staff.dataset.itemName!==itemName;
+  if(changed){
+    const match=v1144AutoPurchaseStaffForItemName(itemName);
+    staff.value=match?.legacy_user_id||'';staff.dataset.itemName=itemName;
+    const note=document.getElementById('qrStaffNote');if(note)note.textContent=match?'品目担当を自動設定しました。必要な場合のみ変更してください。':'この品目の仕入れ担当者が未設定です。担当者を選択してから登録してください。';
+  }
+  const mn=document.getElementById('qrManagedNotice');if(mn)mn.innerHTML=qrManagedNotice(itemName);
+};
+qrMarkStaffManual=function(){};
+const v1144QrCreatePageBuyerFixCore=qrCreatePage;
+qrCreatePage=async function(){
+  const result=await v1144QrCreatePageBuyerFixCore();
+  v1144ReplacePurchaseStaffControl();
+  qrAutoFillStaff();
+  return result;
+};
+const v1144QrSaveLotBuyerFixCore=qrSaveLot;
+qrSaveLot=async function(){
+  const item=document.getElementById('qrItemName'),staff=document.getElementById('qrPurchaseStaff');
+  if(item&&staff&&!String(staff.value||'').trim()){
+    alert('仕入れ担当者が未設定です。品目を選び直すか、有効な仕入れ担当者を選択してください。');staff.focus();return;
+  }
+  return v1144QrSaveLotBuyerFixCore();
+};
 
 </script>
   </body>
