@@ -7839,23 +7839,58 @@ function v1144ProfileIdForLegacyId(legacyUserId){
   const row=(v188AdminUsers||[]).find(x=>String(x.legacy_user_id||'')===id);
   return row&&row.id?String(row.id):null;
 }
-function v1144PurchaseStaffCandidates(){
-  const seen=new Set(), rows=[];
-  const add=(legacyUserId,displayName,role,active=true,profileId=null)=>{
-    const id=String(legacyUserId||'').trim();
-    if(!id||!displayName||active===false||role!=='buyer'||seen.has(id))return;
-    seen.add(id);rows.push({legacy_user_id:id,display_name:String(displayName),profile_id:profileId||v1144ProfileIdForLegacyId(id)||null});
-  };
-  for(const u of (db?.users||[]))add(u.id,V188_FULL_NAMES?.[u.id]||u.name,u.role,u.active,u.profile_id||u.id_uuid||null);
-  for(const p of (v188AdminUsers||[]))add(p.legacy_user_id,V188_FULL_NAMES?.[p.legacy_user_id]||p.display_name,p.role,p.active,p.id);
-  for(const row of (typeof v188LoginUsers==='function'?v188LoginUsers():[])){
-    const [id,name,group]=row||[];add(id,name,String(group||'').includes('仕入れ担当者')?'buyer':'',true,null);
+/* 正式氏名は profiles（有効な仕入れ担当者）を最優先する。略称は旧データ・マスタの
+   参照解決専用で、候補表示および qr_lots.purchase_staff には使用しない。 */
+const V1144_BUYER_FORMAL_NAMES=Object.freeze({
+  saito_dai:'斎藤 大明', seki_hiroshi:'関 宏世', sakamoto:'坂本 美穂',
+  araki:'荒木 貴裕', yoshida:'吉田 智彦'
+});
+const V1144_BUYER_REFERENCE_ALIASES=Object.freeze({
+  '斎藤(大)':'saito_dai', '斎藤（大）':'saito_dai',
+  '関(宏)':'seki_hiroshi', '関（宏）':'seki_hiroshi'
+});
+function v1144CanonicalBuyerLegacyId(reference){
+  const raw=String(reference||'').trim();
+  if(!raw)return '';
+  /* ID は常にそのまま優先する。例: 旧ID seki を seki_hiroshi と誤統合しない。 */
+  if(/^[a-z0-9_-]+$/i.test(raw))return raw;
+  const normalized=qrNormalizeName(raw);
+  for(const [alias,id] of Object.entries(V1144_BUYER_REFERENCE_ALIASES)){
+    if(qrNormalizeName(alias)===normalized)return id;
   }
-  return rows.sort((a,b)=>a.display_name.localeCompare(b.display_name,'ja'));
+  return '';
+}
+function v1144PurchaseStaffCandidates(){
+  const sourceById=new Map();
+  const record=(legacyUserId,displayName,role,active=true,profileId=null,isProfile=false)=>{
+    const id=String(legacyUserId||'').trim();
+    if(!id||active===false||role!=='buyer')return;
+    const previous=sourceById.get(id);
+    /* profiles の有効buyer表示名を最優先。profile以外は固定正式名、次に元データ名。 */
+    const name=isProfile&&displayName?String(displayName):V1144_BUYER_FORMAL_NAMES[id]||String(displayName||'').trim();
+    if(!name)return;
+    if(!previous||isProfile||(!previous.profile_id&&profileId)){
+      sourceById.set(id,{legacy_user_id:id,display_name:name,profile_id:profileId||previous?.profile_id||v1144ProfileIdForLegacyId(id)||null,is_profile:!!isProfile});
+    }
+  };
+  for(const u of (db?.users||[]))record(u.id,u.name,u.role,u.active,u.profile_id||u.id_uuid||null,false);
+  for(const row of (typeof v188LoginUsers==='function'?v188LoginUsers():[])){
+    const [id,name,group]=row||[];record(id,name,String(group||'').includes('仕入れ担当者')?'buyer':'',true,null,false);
+  }
+  for(const p of (v188AdminUsers||[]))record(p.legacy_user_id,p.display_name,p.role,p.active,p.id,true);
+  return [...sourceById.values()].map(({is_profile,...row})=>row).sort((a,b)=>a.display_name.localeCompare(b.display_name,'ja'));
 }
 function v1144CandidateForReference(reference,candidates=v1144PurchaseStaffCandidates()){
   const raw=String(reference||'').trim(), normalized=qrNormalizeName(raw);
-  return candidates.find(x=>x.legacy_user_id===raw)||candidates.find(x=>qrNormalizeName(x.display_name)===normalized)||candidates.find(x=>qrNormalizeName(findUser(x.legacy_user_id)?.name)===normalized)||null;
+  /* まずIDを完全一致させるため、旧ID sekiなどを別人として維持する。 */
+  const direct=candidates.find(x=>x.legacy_user_id===raw);
+  if(direct)return direct;
+  const aliasId=v1144CanonicalBuyerLegacyId(raw);
+  if(aliasId){const alias=candidates.find(x=>x.legacy_user_id===aliasId);if(alias)return alias;}
+  return candidates.find(x=>qrNormalizeName(x.display_name)===normalized)
+    ||candidates.find(x=>qrNormalizeName(V1144_BUYER_FORMAL_NAMES[x.legacy_user_id]||'')===normalized)
+    ||candidates.find(x=>qrNormalizeName(findUser(x.legacy_user_id)?.name)===normalized)
+    ||null;
 }
 function v1144FixedBuyerReference(itemName){
   const master=qrPurchaseStaffMaster(), normalized=qrNormalizeName(itemName);
@@ -7872,9 +7907,12 @@ function v1144AutoPurchaseStaffForItemName(itemName){
   return fixed||null;
 }
 function v1144PurchaseStaffOptionHtml(selectedLegacy='',selectedName='',allowKeep=false){
-  const rows=v1144PurchaseStaffCandidates(), selected=String(selectedLegacy||'');
+  const rows=v1144PurchaseStaffCandidates();
+  const selectedMatch=v1144CandidateForReference(selectedLegacy,rows)||v1144CandidateForReference(selectedName,rows);
+  const selected=selectedMatch?.legacy_user_id||String(selectedLegacy||'');
   const known=rows.some(x=>x.legacy_user_id===selected);
-  const current=selectedName&&!rows.some(x=>qrNormalizeName(x.display_name)===qrNormalizeName(selectedName));
+  /* 旧略称のロットも正式名候補へ解決し、編集保存時に正式名へ統一する。 */
+  const current=selectedName&&!v1144CandidateForReference(selectedName,rows);
   const keep=allowKeep&&current?`<option value="__keep__" selected>現在値（未登録）：${esc(selectedName)}（変更しない）</option>`:'';
   return `<option value="">選択してください</option>${keep}${rows.map(x=>`<option value="${esc(x.legacy_user_id)}" ${known&&x.legacy_user_id===selected?'selected':''}>${esc(x.display_name)}</option>`).join('')}`;
 }
