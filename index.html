@@ -8222,9 +8222,43 @@ makeLineCopyText=async function(){
 window.APP_VERSION=V1146_VERSION;
 document.title='SEIKA＋ v1.146 適正在庫週次見直し対応版';
 
+
+/* ===== v1.147 管理者通知クラウド保存修正 ===== */
+function v1147NoticeOnlyChange(item,payload){
+  if(db?.role!=='admin')return false;
+  const base=v188RolePayload(item?.basePayload||{},'admin'),local=v188RolePayload(payload||{},'admin'),keys=new Set([...Object.keys(base),...Object.keys(local)]),changed=[];
+  for(const key of keys)if(!v188Equal(base[key],local[key]))changed.push(key);
+  return changed.length>0&&changed.every(key=>key==='adminNotices'||key==='operationLogs');
+}
+const v1147SendSyncItemBase=v188SendSyncItem;
+window.v1147NoticeRpcCall=async function(args){return v186CallRpc('save_admin_notices_v1147',args)};
+v188SendSyncItem=async function(item,payload,expectedVersion){
+  if(v1147NoticeOnlyChange(item,payload)){
+    const safe=v188RolePayload(payload,'admin');
+    return window.v1147NoticeRpcCall({
+      p_id:STATE_ID,
+      p_expected_version:expectedVersion,
+      p_admin_notices:Array.isArray(safe.adminNotices)?safe.adminNotices:[],
+      p_operation_logs:Array.isArray(safe.operationLogs)?safe.operationLogs:[],
+      p_operation_id:item?.operationId||newId()
+    });
+  }
+  return v1147SendSyncItemBase(item,payload,expectedVersion);
+};
+function v1147PendingErrorText(){
+  const item=v161ReadQueue()?.[0],text=String(item?.lastError||'').trim();
+  return text?text.slice(0,240):'なし';
+}
+const v1147DiagnosticTextBase=v200DiagnosticText;
+v200DiagnosticText=function(sourceScreen=''){
+  return `${v1147DiagnosticTextBase(sourceScreen)}\n未同期エラー：${v1147PendingErrorText()}`;
+};
+window.APP_VERSION='v1.147';
+document.title='SEIKA＋ v1.147 管理者通知保存修正版';
+
 /* ===== v1.145 品質評価写真350KB上限 ===== */
-window.APP_VERSION='v1.146';
-document.title='SEIKA＋ v1.146 適正在庫週次見直し対応版';
+window.APP_VERSION='v1.147';
+document.title='SEIKA＋ v1.147 管理者通知保存修正版';
 </script>
   </body>
 </html>
