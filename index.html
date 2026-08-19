@@ -4320,9 +4320,9 @@ const qr=dk===today?Number(qrStandaloneTotals[row.qrKey]?.total||0):0
 const r=normalMap[row.id+"_"+dk],l=r?(r.lines||[]).find(x=>x.detail&&detailLineKey(x)===row.detailKey&&String(x.qty||"").trim()!==""):null
 ;return`<td class="${dk===today?"today ":""}${l?"normal":"unset"}">${l?`<span class="stockVal">${fmt(Number(l.subtotal||detailSubtotal(l)))}kg</span>`:"-"}</td>`
 }if(row.kind==="normal_detail_total"||row.kind==="normal"){
-const r=normalMap[row.id+"_"+dk],base=r?Number(r.total||0):0,qr=dk===today?Number(qrTotals[row.id]||0):0,shown=base+qr,st=r?judge(base,db.settings[row.id]):"unset"
-;if(!r&&!qr)return`<td class="${dk===today?"today ":""}unset">-</td>`
-;return`<td class="${dk===today?"today ":""}${r?st:"normal"}"><span class="stockVal">${fmt(shown)}kg</span>${qr?`<br><span class="small">通常 ${fmt(base)} + QR ${fmt(qr)}kg</span>`:""}${r?`<br><span class="badge ${st}">${label(st)}</span>`:""}</td>`
+const r=normalMap[row.id+"_"+dk],base=r?Number(r.total||0):0,qr=dk===today?Number(qrTotals[row.id]||0):0,shown=base+qr,hasStock=!!r||qr>0,st=hasStock?judge(shown,db.settings[row.id]):"unset"
+;if(!hasStock)return`<td class="${dk===today?"today ":""}unset">-</td>`
+;return`<td class="${dk===today?"today ":""}${st}"><span class="stockVal">${fmt(shown)}kg</span>${base>0&&qr>0?`<br><span class="small">通常 ${fmt(base)} + QR ${fmt(qr)}kg</span>`:""}<br><span class="badge ${st}">${label(st)}</span></td>`
 }const r=specialMap[row.tableId+"_"+row.id+"_"+dk]
 ;return`<td class="${dk===today?"today ":""}${r?"normal":"unset"}">${r?`<span class="stockVal">${fmt(r.qty)}${esc(r.unit||row.item.unit||"")}</span>`:"-"}</td>`
 }).join("");return`<tr class="${row.group==='kataoka'?'stockRowKataoka':''}"><td>${row.group==='kataoka'?'<span class="stockKataokaBadge">片岡在庫</span> ':''}${esc(row.name)}</td>${cells}</tr>`}).join("")
@@ -8135,9 +8135,96 @@ v1101Purge=async function(module,key){if(module==='waste'&&!v1144WastePurgeOnlyN
 
 
 
+
+/* ===== v1.146 QR在庫適正在庫判定・週次見直し・LINE表示改善 ===== */
+const V1146_VERSION='v1.146';
+let v1146QrStockByItem={},v1146QrStockLoaded=false,v1146HomeGeneration=0;
+window.v1146LoadQrStock=async function(){
+  const rows=await v1115LineInventoryRows(),next={};
+  rows.forEach(row=>{next[String(row.item.id)]={qrKg:Number(row.qrKg||0),unconvertible:!!row.unconvertible};});
+  v1146QrStockByItem=next;v1146QrStockLoaded=true;return next;
+};
+window.v1146CombinedStock=function(item){
+  const normalKg=item.active===false?0:yen(latestTotal(item.id)),qr=Number(v1146QrStockByItem[String(item.id)]?.qrKg||0);
+  return{normalKg,qrKg:yen(qr),totalKg:yen(normalKg+qr)};
+};
+window.v1146CandidateRows=function(kind){
+  return allSortedItems().filter(item=>hasOptimalStockSetting(db.settings[item.id])&&(item.active!==false||Number(v1146QrStockByItem[String(item.id)]?.qrKg||0)>0)).map(it=>{
+    const stock=v1146CombinedStock(it),s=db.settings[it.id],shortage=yen(Math.max(0,Number(s.min)-stock.totalKg)),excess=yen(Math.max(0,stock.totalKg-Number(s.max)));
+    return{it,r:latestMap()[it.id]||null,total:stock.totalKg,normalKg:stock.normalKg,qrKg:stock.qrKg,s,shortage,excess};
+  }).filter(row=>kind==='shortage'?row.shortage>0:row.excess>0);
+};
+orderCandidates=function(){return v1146CandidateRows('shortage')};
+excessCandidates=function(){return v1146CandidateRows('excess')};
+
+const v1146OrderCandidatePageBase=orderCandidatePage;
+orderCandidatePage=async function(msg=''){
+  setScreen('orderCandidatePage',[msg]);
+  pageShell('発注候補','QR在庫を含む現在庫を確認中','<div class="card notice">通常在庫とQR在庫を合算しています。</div>');
+  try{await v1146LoadQrStock();if(currentScreen!=='orderCandidatePage')return;v1146OrderCandidatePageBase(msg)}catch(e){pageShell('発注候補','読み込みエラー',`<div class="err">QR在庫を取得できないため、不完全な発注候補は表示しません。<br>${esc(v161ErrorText(e))}</div><button class="btn blue" onclick="orderCandidatePage()">再読み込み</button>`)}
+};
+const v1146ExcessCandidatePageBase=excessCandidatePage;
+excessCandidatePage=async function(){
+  setScreen('excessCandidatePage');
+  pageShell('過多品目','QR在庫を含む現在庫を確認中','<div class="card notice">通常在庫とQR在庫を合算しています。</div>');
+  try{await v1146LoadQrStock();if(currentScreen!=='excessCandidatePage')return;v1146ExcessCandidatePageBase()}catch(e){pageShell('過多品目','読み込みエラー',`<div class="err">QR在庫を取得できないため、不完全な過多判定は表示しません。<br>${esc(v161ErrorText(e))}</div><button class="btn blue" onclick="excessCandidatePage()">再読み込み</button>`)}
+};
+
+window.v1146ReviewTargetItems=function(){
+  if(db.role!=='buyer')return[];
+  return activeItems().filter(it=>isMyBuyerItem(it.id)&&hasOptimalStockSetting(db.settings[it.id])&&v1144OptimalIsStale(it.id));
+};
+window.v1146ReviewModeChanged=function(id){
+  const mode=document.getElementById(`reviewMode_${id}`)?.value||'keep',fields=document.getElementById(`reviewFields_${id}`);
+  if(fields)fields.style.display=mode==='change'?'grid':'none';
+};
+window.optimalStockReviewPage=function(){
+  if(db.role!=='buyer')return alert('仕入れ担当者のみ確認できます');
+  const rows=v1146ReviewTargetItems();setScreen('optimalStockReviewPage');
+  const cards=rows.map(it=>{const s=db.settings[it.id]||{};return `<section class="card" data-review-item="${esc(it.id)}"><h2 style="margin:0 0 6px">${esc(it.name)}</h2><div class="small">現在の設定：下限 ${fmt(s.min)}kg / 上限 ${fmt(s.max)}kg<br>${optimalStockLastText(it.id)}</div><label class="label" style="margin-top:12px">今回の確認</label><select id="reviewMode_${esc(it.id)}" class="input" onchange="v1146ReviewModeChanged('${esc(it.id)}')"><option value="keep">変更しない（現在の数字を維持）</option><option value="change">数字を変更する</option></select><div id="reviewFields_${esc(it.id)}" class="grid" style="display:none;margin-top:10px"><div><label class="label">新しい下限kg</label><input id="reviewMin_${esc(it.id)}" class="input" inputmode="decimal" value="${esc(s.min)}"></div><div><label class="label">新しい上限kg</label><input id="reviewMax_${esc(it.id)}" class="input" inputmode="decimal" value="${esc(s.max)}"></div></div></section>`}).join('');
+  pageShell('適正在庫の週次見直し','担当品目ごとに「維持」または「変更」を選択してください。',`${rows.length?cards:'<div class="card notice">現在、見直しが必要な担当品目はありません。</div>'}${rows.length?'<button class="btn green bottom" onclick="v1146SaveOptimalReview()">選択内容を保存</button>':''}`);
+};
+window.v1146SaveOptimalReview=function(){
+  if(db.role!=='buyer')return alert('保存できません');
+  const rows=v1146ReviewTargetItems();if(!rows.length)return home();
+  const changes=[];
+  for(const it of rows){
+    if(!isMyBuyerItem(it.id))return alert(`${it.name}は担当品目ではありません。`);
+    const mode=document.getElementById(`reviewMode_${it.id}`)?.value||'keep',before={...(db.settings[it.id]||{})};
+    if(mode==='change'){
+      const minText=String(document.getElementById(`reviewMin_${it.id}`)?.value||'').replace(/,/g,'').trim(),maxText=String(document.getElementById(`reviewMax_${it.id}`)?.value||'').replace(/,/g,'').trim();
+      const min=Number(minText),max=Number(maxText);if(minText===''||maxText===''||!(min>=0)||!(max>=0)||min>max)return alert(`${it.name}の下限・上限を確認してください。`);
+      const after={min:yen(min),max:yen(max)};if(Number(before.min)!==after.min||Number(before.max)!==after.max){db.settings[it.id]=after;addOptimalStockChangeLog(it,before,after,'週次見直しで変更');changes.push(it.name)}
+    }
+  }
+  db.optimalStockMeta=db.optimalStockMeta||{};const checkedAt=nowIso();rows.forEach(it=>{db.optimalStockMeta[it.id]={updatedAt:checkedAt,updatedBy:db.user||'',userId:db.userId||'',reviewResult:changes.includes(it.name)?'changed':'kept'}});
+  save();alert(`週次見直しを保存しました（変更 ${changes.length}品目 / 維持 ${rows.length-changes.length}品目）`);home();
+};
+
+const v1146HomeBase=window.home;
+window.home=function(){
+  const generation=++v1146HomeGeneration;v1146HomeBase();
+  if(db.role==='buyer'){
+    document.querySelectorAll('button[onclick="settings()"],button[onclick="settings();"]').forEach(btn=>{if(btn.textContent.includes('適正在庫設定')){btn.setAttribute('onclick','optimalStockReviewPage()');btn.textContent='週次見直しを開く';}});
+  }
+  v1146LoadQrStock().then(()=>{if(generation!==v1146HomeGeneration||currentScreen!=='home')return;v1146HomeBase();if(db.role==='buyer')document.querySelectorAll('button[onclick="settings()"],button[onclick="settings();"]').forEach(btn=>{if(btn.textContent.includes('適正在庫設定')){btn.setAttribute('onclick','optimalStockReviewPage()');btn.textContent='週次見直しを開く';}})}).catch(()=>{});
+};
+
+const v1146MakeLineCopyTextBase=makeLineCopyText;
+makeLineCopyText=async function(){
+  const rows=await v1115LineInventoryRows(),excess=[],shortage=[];
+  for(const row of rows){
+    const warning=row.unconvertible?'\n  ※kg換算できないQRロットがあります':'',breakdown=row.normalKg>0&&row.qrKg>0?`（通常${fmt(row.normalKg)}kg＋QR${fmt(row.qrKg)}kg）`:'',line=`・${row.item.name}：${fmt(row.totalKg)}kg${breakdown}${warning}`;
+    if(row.status==='excess')excess.push(line);else if(row.status==='shortage')shortage.push(line);
+  }
+  return `【在庫報告】\n※通常在庫とQR在庫の合計\n\n■ 過多品目\n${excess.length?excess.join('\n'):'なし'}\n\n■ 不足品目\n${shortage.length?shortage.join('\n'):'なし'}`;
+};
+window.APP_VERSION=V1146_VERSION;
+document.title='SEIKA＋ v1.146 適正在庫週次見直し対応版';
+
 /* ===== v1.145 品質評価写真350KB上限 ===== */
-window.APP_VERSION='v1.145';
-document.title='SEIKA＋ v1.145 品質写真350KB対応版';
+window.APP_VERSION='v1.146';
+document.title='SEIKA＋ v1.146 適正在庫週次見直し対応版';
 </script>
   </body>
 </html>
