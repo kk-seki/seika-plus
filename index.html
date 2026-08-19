@@ -5597,7 +5597,7 @@ console.error("ログイン状態の更新に失敗しました",e)
 const message=esc(e?.message||"クラウドデータを読み込めませんでした")
 ;app.innerHTML=`<main class="wrap"><div class="card err"><h2 style="margin-top:0">データを読み込めませんでした</h2><p>${message}</p><p class="small">ログイン情報と端末内の未同期データは保持されています。</p><button class="btn blue" style="width:100%" onclick="location.reload()">再試行</button></div></main>`
 }};
-/* ===== v1.95 権限別操作ガイド・改善連絡・管理者通知 ===== */const V195_FEEDBACK_STATUSES={new:"未確認",reviewing:"確認中",planned:"対応予定",done:"対応済み"}
+/* ===== v1.95 権限別操作ガイド・改善連絡・管理者お知らせ ===== */const V195_FEEDBACK_STATUSES={new:"未確認",reviewing:"確認中",planned:"対応予定",done:"対応済み"}
 ;const V195_ROLE_GUIDES={admin:{name:"管理者",intro:"日常入力に加え、確定・削除・ユーザー管理など、取り消しに注意が必要な管理操作を行えます。",sections:[{title:"毎日の通常在庫を入力する",where:"ホーム → 在庫入力",
 steps:["入力する冷蔵庫を選びます。","品目ごとにケース数を入力します。産地・規格別の明細がある品目は、その内訳も入力します。","確認画面で「今回数量」「前回数量」「差」を見比べ、品目や桁の間違いがないか確認します。","内容が正しければ登録します。"],
 check:"画面上部が「クラウド保存済み」になるまで確認してください。間違えた場合は「在庫修正」から履歴を残して直します。",caution:"QR管理品目の入出庫は通常の在庫入力ではなく「QR在庫管理」から行います。"},{title:"QRを入庫する",
@@ -8223,7 +8223,7 @@ window.APP_VERSION=V1146_VERSION;
 document.title='SEIKA＋ v1.146 適正在庫週次見直し対応版';
 
 
-/* ===== v1.147 管理者通知クラウド保存修正 ===== */
+/* ===== v1.147 管理者お知らせクラウド保存修正 ===== */
 function v1147NoticeOnlyChange(item,payload){
   if(db?.role!=='admin')return false;
   const base=v188RolePayload(item?.basePayload||{},'admin'),local=v188RolePayload(payload||{},'admin'),keys=new Set([...Object.keys(base),...Object.keys(local)]),changed=[];
@@ -8254,11 +8254,73 @@ v200DiagnosticText=function(sourceScreen=''){
   return `${v1147DiagnosticTextBase(sourceScreen)}\n未同期エラー：${v1147PendingErrorText()}`;
 };
 window.APP_VERSION='v1.147';
-document.title='SEIKA＋ v1.147 管理者通知保存修正版';
+document.title='SEIKA＋ v1.147 管理者お知らせ保存修正版';
+
+
+/* ===== v1.148 管理者お知らせ競合再送修正 ===== */
+function v1148NoticeBusinessValue(row){
+  if(!row||typeof row!=='object')return row;
+  const out={};
+  for(const key of ['id','title','body','startsAt','endsAt','active','createdAt','createdBy','createdById'])if(Object.prototype.hasOwnProperty.call(row,key))out[key]=row[key];
+  return out;
+}
+function v1148MergeNoticeRow(base,local,remote,id,conflicts){
+  if(local===undefined&&remote===undefined)return undefined;
+  if(base===undefined){
+    if(local===undefined)return v188Clone(remote);
+    if(remote===undefined)return v188Clone(local);
+    if(v188Equal(v1148NoticeBusinessValue(local),v1148NoticeBusinessValue(remote)))return v188Clone(String(local.updatedAt||'')>=String(remote.updatedAt||'')?local:remote);
+    conflicts.push(`管理者お知らせ「${local.title||remote.title||id}」`);return undefined;
+  }
+  if(local===undefined){
+    if(v188Equal(remote,base)||remote===undefined)return undefined;
+    conflicts.push(`管理者お知らせ「${base.title||id}」の削除と変更`);return undefined;
+  }
+  if(remote===undefined){
+    if(v188Equal(local,base))return undefined;
+    conflicts.push(`管理者お知らせ「${base.title||id}」の変更と削除`);return undefined;
+  }
+  const rowConflicts=[],merged=v188MergeValue(base,local,remote,`管理者お知らせ「${base.title||local.title||remote.title||id}」`,rowConflicts);
+  if(rowConflicts.length){conflicts.push(...rowConflicts);return undefined}
+  if(merged&&typeof merged==='object')merged.updatedAt=[base.updatedAt,local.updatedAt,remote.updatedAt].filter(Boolean).sort().pop()||merged.updatedAt;
+  return merged;
+}
+function v1148MergeAdminNotices(baseRows,localRows,remoteRows){
+  const base=Array.isArray(baseRows)?baseRows:[],local=Array.isArray(localRows)?localRows:[],remote=Array.isArray(remoteRows)?remoteRows:[],conflicts=[];
+  if([...base,...local,...remote].some(row=>!row||typeof row!=='object'||!String(row.id||''))){return{ok:false,merged:local,conflicts:['IDのない管理者お知らせ']}}
+  const bm=new Map(base.map(row=>[String(row.id),row])),lm=new Map(local.map(row=>[String(row.id),row])),rm=new Map(remote.map(row=>[String(row.id),row]));
+  const order=[...remote,...local,...base].map(row=>String(row.id)),seen=new Set(),merged=[];
+  for(const id of order){if(seen.has(id))continue;seen.add(id);const row=v1148MergeNoticeRow(bm.get(id),lm.get(id),rm.get(id),id,conflicts);if(row!==undefined)merged.push(row)}
+  return{ok:conflicts.length===0,merged,conflicts:[...new Set(conflicts)].slice(0,12)};
+}
+function v1148MergeOperationLogs(localRows,remoteRows){
+  const out=[],seen=new Set();
+  for(const row of [...(Array.isArray(remoteRows)?remoteRows:[]),...(Array.isArray(localRows)?localRows:[])]){
+    const key=String(row?.id||row?.operationId||row?.operation_id||JSON.stringify(row));if(seen.has(key))continue;seen.add(key);out.push(v188Clone(row));
+  }
+  return out.slice(-500);
+}
+function v1148IsNoticeOnlyPending(item){return db?.role==='admin'&&v1147NoticeOnlyChange(item,item?.localPayload||item?.payload||{})}
+const v1148ResolvePendingBase=v178ResolvePendingInventoryConflict;
+v178ResolvePendingInventoryConflict=async function(){
+  await v188IdbFlush();v188AssertPendingOwner();const original=v161ReadQueue()[0];
+  if(!original||!v1148IsNoticeOnlyPending(original))return v1148ResolvePendingBase();
+  const base=v121RestoreBase(original);if(!base)throw new Error('管理者お知らせの統合基準がありません。未同期データは端末に保持しています。');
+  const remote=await v188FetchRemoteState(),local=v121Clone(original.localPayload||original.payload),noticeResult=v1148MergeAdminNotices(base.adminNotices,local.adminNotices,remote.payload.adminNotices);
+  if(!noticeResult.ok){setSyncState('競合','管理者お知らせの内容を確認してください');throw new Error(`同じ管理者お知らせが別端末でも変更されています：${noticeResult.conflicts.join('、')}`)}
+  const mergedPayload={...v121Clone(remote.payload),adminNotices:noticeResult.merged,operationLogs:v1148MergeOperationLogs(local.operationLogs,remote.payload.operationLogs)};
+  const candidate={...original,id:newId(),operationId:newId(),expectedVersion:remote.version,baseVersion:remote.version,basePayload:v121Clone(remote.payload),payload:v121Clone(mergedPayload),localPayload:v121Clone(mergedPayload),lastError:'',updatedAt:nowIso()};
+  try{
+    const ans=await v188SendSyncItem(candidate,candidate.localPayload,remote.version);if(ans?.conflict)throw new Error('統合中に別の更新が入りました。もう一度「再送」を押してください。');if(!ans?.ok)throw new Error(ans?.message||'管理者お知らせを保存できませんでした。');
+    stateVersion=Number(ans.version);const auth={user:db.user,userId:db.userId,role:db.role};db=normalize({...candidate.localPayload,...auth});v188PersistDb();v188WriteBase(candidate.localPayload,stateVersion);v161WriteQueue([]);markSync();setSyncState('保存済み','管理者お知らせを安全に統合して保存');await v188IdbFlush();return{ok:true,merged:1};
+  }catch(e){original.lastError=v161ErrorText(e);v161WriteQueue([original]);await v188IdbFlush();throw e}
+};
+window.APP_VERSION='v1.148';
+document.title='SEIKA＋ v1.148 管理者お知らせ再送修正版';
 
 /* ===== v1.145 品質評価写真350KB上限 ===== */
-window.APP_VERSION='v1.147';
-document.title='SEIKA＋ v1.147 管理者通知保存修正版';
+window.APP_VERSION='v1.148';
+document.title='SEIKA＋ v1.148 管理者お知らせ再送修正版';
 </script>
   </body>
 </html>
