@@ -1,4 +1,4 @@
-const CACHE_NAME="seika-static-v1.152";
+const CACHE_NAME="seika-static-v1.153";
 const APP_SHELL=["./","./index.html","./manifest.webmanifest","./icons/seika-192.png","./icons/seika-512.png","./vendor/exceljs-4.4.0.min.js","./vendor/html2canvas-1.4.1.min.js","./vendor/html5-qrcode-2.3.8.min.js","./vendor/jspdf-2.5.1.umd.min.js","./vendor/xlsx-js-style-1.2.0.bundle.js"];
 const CACHEABLE_PATHS=new Set(APP_SHELL.map(path=>new URL(path,self.registration.scope).pathname));
 self.addEventListener("install",event=>{
@@ -10,13 +10,13 @@ self.addEventListener("activate",event=>{
     await Promise.all(keys.filter(key=>key.startsWith("seika-static-")&&key!==CACHE_NAME).map(key=>caches.delete(key)));
     await self.clients.claim();
     const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
-    windows.forEach(client=>client.postMessage({type:"SEIKA_VERSION_READY",version:"v1.152"}));
+    windows.forEach(client=>client.postMessage({type:"SEIKA_VERSION_READY",version:"v1.153"}));
   })());
 });
 self.addEventListener("message",event=>{
   if(event.data&&event.data.type==="SKIP_WAITING")self.skipWaiting();
   if(event.data&&event.data.type==="GET_VERSION"){
-    const reply={type:"SEIKA_VERSION",version:"v1.152"};
+    const reply={type:"SEIKA_VERSION",version:"v1.153"};
     if(event.ports&&event.ports[0])event.ports[0].postMessage(reply);
     else if(event.source)event.source.postMessage(reply);
   }

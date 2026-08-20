@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.152 PWA更新判定・案内更新修正版</title>
+    <title>SEIKA＋ v1.153 停止品目適正在庫継続・品質評価修正版</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -3611,7 +3611,7 @@ noBack:true,login:true})}function doLogin(){alert("安全な認証を準備中�
 const r=latest[it.id];if(r){if(isToday(r.createdAt))todayEntered++;if(!lastInputAt||new Date(r.createdAt)>new Date(lastInputAt)){
 lastInputAt=r.createdAt;lastInputTime=new Date(r.createdAt).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});lastInputName=r.user||"記録なし"
 }const st=judge(Number(r.total||0),db.settings[it.id]);if(st==="shortage")shortageCount++;if(st==="excess")excessCount++}})
-;const missing=todayMissingItems(),noticeText=canWorkerReport()&&missing.length?`本日未入力：${missing.length}品<br>${esc(missing.slice(0,20).map(it=>it.name).join("、"))}${missing.length>20?" ほか":""}`:"最新の情報を確認する場合は、再読込を押してください。",simpleNotice=`<div class="homeNoticeCompact">${noticeText}</div>`,lastInputHtml=`<span>${lastInputTime}</span>${lastInputName&&lastInputName!=="記録なし"?` <span class="summarySub">/ ${esc(lastInputName)}</span>`:""}`,isBuyer=db.role==="buyer",myRows=isBuyer?orderCandidatesForBuyer(db.userId):[],myExcess=isBuyer?excessCandidatesForBuyer(db.userId):[],summary=isBuyer?`<div class="homeSummary"><button class="summaryBox" data-seika-click-action="orderCandidatePage" data-seika-click-args="%5B%5D"><div class="summaryLabel">発注候補</div><div class="summaryValue">${myRows.length}</div></button><button class="summaryBox" data-seika-click-action="excessCandidatePage" data-seika-click-args="%5B%5D"><div class="summaryLabel">過多品目</div><div class="summaryValue">${myExcess.length}</div></button><div class="summaryBox"><div class="summaryLabel">担当品目</div><div class="summaryValue">${activeItems().filter(it=>isMyBuyerItem(it.id)).length}<span class="summarySub"> 品</span></div></div></div>`:`<div class="homeSummary ${["viewer","office_viewer","sales","clerk"].includes(db.role)?"viewerSummary":""}"><div class="summaryBox"><div class="summaryLabel">本日入力済み</div><div class="summaryValue">${todayEntered}<span class="summarySub">/${activeItems().length}</span></div></div><button class="summaryBox" data-seika-click-action="orderCandidatePage" data-seika-click-args="%5B%5D"><div class="summaryLabel">発注候補</div><div class="summaryValue">${shortageCount}</div></button><button class="summaryBox" data-seika-click-action="excessCandidatePage" data-seika-click-args="%5B%5D"><div class="summaryLabel">過多品目</div><div class="summaryValue">${excessCount}</div></button><div class="summaryBox"><div class="summaryLabel">最終入力</div><div class="summaryValue">${lastInputHtml}</div></div></div>`
+;const missing=todayMissingItems(),noticeText=canWorkerReport()&&missing.length?`本日未入力：${missing.length}品<br>${esc(missing.slice(0,20).map(it=>it.name).join("、"))}${missing.length>20?" ほか":""}`:"最新の情報を確認する場合は、再読込を押してください。",simpleNotice=`<div class="homeNoticeCompact">${noticeText}</div>`,lastInputHtml=`<span>${lastInputTime}</span>${lastInputName&&lastInputName!=="記録なし"?` <span class="summarySub">/ ${esc(lastInputName)}</span>`:""}`,isBuyer=db.role==="buyer",myRows=isBuyer?orderCandidatesForBuyer(db.userId):[],myExcess=isBuyer?excessCandidatesForBuyer(db.userId):[],summary=isBuyer?`<div class="homeSummary"><button class="summaryBox" data-seika-click-action="orderCandidatePage" data-seika-click-args="%5B%5D"><div class="summaryLabel">発注候補</div><div class="summaryValue">${myRows.length}</div></button><button class="summaryBox" data-seika-click-action="excessCandidatePage" data-seika-click-args="%5B%5D"><div class="summaryLabel">過多品目</div><div class="summaryValue">${myExcess.length}</div></button><div class="summaryBox"><div class="summaryLabel">担当品目</div><div class="summaryValue">${v1153BuyerOptimalItems().length}<span class="summarySub"> 品</span></div></div></div>`:`<div class="homeSummary ${["viewer","office_viewer","sales","clerk"].includes(db.role)?"viewerSummary":""}"><div class="summaryBox"><div class="summaryLabel">本日入力済み</div><div class="summaryValue">${todayEntered}<span class="summarySub">/${activeItems().length}</span></div></div><button class="summaryBox" data-seika-click-action="orderCandidatePage" data-seika-click-args="%5B%5D"><div class="summaryLabel">発注候補</div><div class="summaryValue">${shortageCount}</div></button><button class="summaryBox" data-seika-click-action="excessCandidatePage" data-seika-click-args="%5B%5D"><div class="summaryLabel">過多品目</div><div class="summaryValue">${excessCount}</div></button><div class="summaryBox"><div class="summaryLabel">最終入力</div><div class="summaryValue">${lastInputHtml}</div></div></div>`
 ;const homeButtons=[{label:"在庫管理",cls:"homeBtnInventoryManage",go:"inventoryManagementPage()",can:()=>true},{label:"QR在庫管理",cls:"homeBtnQr",
 go:"qrHome()",can:()=>qrCanUse()},{label:"在庫報告コピー",cls:"homeBtnReport",go:"lineCopyPage()",can:()=>canWorkerReport()},{label:"品目設定",
 cls:"homeBtnItems",go:"itemsPage()",can:()=>canManageItems()},{label:"適正在庫設定",cls:"homeBtnSettings",go:"settings()",can:()=>canSetSettings()},{
@@ -4316,7 +4316,7 @@ const keys=Object.keys(weekStarts).sort().reverse()
 ;const notice=qrInfo.unconvertible.length?`<div class="warn">QR在庫のうち${qrInfo.unconvertible.length}ロットはkg換算できない、通常品目との照合が曖昧、またはQR対象ルール外のため、在庫表の合計には加算していません。量目・総重量・品目名を確認してください。</div>`:""
 ;pageShell("在庫表","冷蔵庫を選択",weeklyRoomTabsHtml()+notice+(keys.length?keys.map((k,i)=>weeklyTableHtml(k,recs,spRecs,i===0,weeklyRoom,qrInfo.totals,qrInfo.standaloneTotals,qrInfo.specs,qrInfo.standaloneSpecs,qrInfo)).join(""):'<div class="card notice">通常・その他在庫の履歴はまだありません。</div>'))
 }catch(e){pageShell("在庫表","エラー",weeklyRoomTabsHtml()+`<div class="err">QR在庫の取得に失敗しました。${esc(e.message||e)}</div>`)}}
-function weeklyDisplayRows(room,qrStandaloneTotals={}){const rows=[];allSortedItems().filter(it=>it.active!==false).forEach(it=>rows.push({
+function weeklyDisplayRows(room,qrStandaloneTotals={}){const rows=[];allSortedItems().filter(it=>it.active!==false||hasOptimalStockSetting(db.settings[it.id])).forEach(it=>rows.push({
 kind:"normal",group:"optimal",room:coldRoomForNormalItem(it),id:it.id,name:it.name,item:it,sort:Number(it.sort||0)}))
 ;specialItems("exchange").forEach(it=>rows.push({kind:"special",group:"nonoptimal",tableId:"exchange",room:coldRoomForSpecialItem("exchange",it),
 id:it.id,name:it.name,item:it,sort:Number(it.sort||0)}));specialItems("kataoka").forEach(it=>rows.push({kind:"special",group:"kataoka",
@@ -7139,7 +7139,7 @@ function v133WorkerVersion(worker){return new Promise(resolve=>{if(!worker)retur
 async function v133AssessWaitingWorker(worker){if(!worker||!navigator.serviceWorker.controller)return;await v133LoadReleaseNotes();const workerVersion=await v133WorkerVersion(worker),candidate=workerVersion||v133ReleaseVersion;if(!v133IsNewerVersion(candidate)){v133WaitingWorker=null;v133WaitingVersion='';if(workerVersion&&v133NormalizeVersion(workerVersion)===v133NormalizeVersion(window.APP_VERSION))worker.postMessage({type:'SKIP_WAITING'});v133RefreshNotices();return}v133WaitingWorker=worker;v133WaitingVersion=candidate;v133RefreshNotices()}
 function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133AssessWaitingWorker(worker)}
 async function v133ApplyUpdate(){if(!v133HasNewVersion())return alert('この端末はすでに最新です。');if(!v133CanApplyUpdate()){const p=v133PendingSummary();return alert(`未同期・下書きが ${p.total}件あります。保存・再送を完了してから更新してください。`)}if(!confirm(`SEIKA＋ ${v133WaitingVersion||v133ReleaseVersion}へ更新して再起動しますか？`))return;try{await v188IdbFlush?.()}catch(e){return alert('端末内データの保護が完了していません。画面を閉じず、もう一度お試しください。')}v133ReloadForUpdate=true;v133WaitingWorker.postMessage({type:'SKIP_WAITING'})}
-async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.152',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
+async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.153',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
 function v133InstallEvents(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();v133DeferredInstallPrompt=e;v133RefreshNotices()});window.addEventListener('appinstalled',()=>{v133DeferredInstallPrompt=null;v133GuideDismiss();v133Toast('SEIKA＋をホーム画面へ追加しました','ok')});navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(v133ReloadForUpdate)location.reload()});navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='SEIKA_VERSION_READY'&&event.data.version!==String(window.APP_VERSION||'')){v133Toast('新しいアプリ版を取得しました。画面を再読み込みしてください','info',false)}});window.addEventListener('online',()=>{v133Toast('オンラインに戻りました','ok',false);updateSyncDisplay();v133RefreshNotices()});window.addEventListener('offline',()=>{v133Toast('オフラインです。確定操作は行わないでください','err',false);updateSyncDisplay();v133RefreshNotices()});document.addEventListener('pointerdown',()=>{v133UserInteracted=true},{once:true,passive:true});document.addEventListener('keydown',()=>{v133UserInteracted=true},{once:true})}
 const v133PageShellCore=pageShell;pageShell=function(title,sub,body,opts={}){v133PageShellCore(title,sub,body,opts);const sync=document.getElementById('syncInfo');if(sync&&!document.getElementById('v133HeaderMeta'))sync.insertAdjacentHTML('beforebegin',`<div id="v133HeaderMeta">${v133HeaderMetaHtml()}</div>`);const main=document.querySelector('.wrap');if(main&&v133HasNewVersion()&&!document.getElementById('v133UpdateBanner'))main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())};
 const v133HomeCore=home;home=function(){v133HomeCore();const main=document.querySelector('.wrap');if(!main)return;const extra=`${v133InstallBannerHtml()}${v133StartupCheckHtml()}`,first=main.firstElementChild;if(first)first.insertAdjacentHTML('beforebegin',extra);else main.innerHTML=extra};
@@ -8611,6 +8611,67 @@ document.title='SEIKA＋ v1.151 QR葉物適正在庫・仕入担当ホーム修�
 const V1152_VERSION='v1.152';
 window.APP_VERSION=V1152_VERSION;
 document.title='SEIKA＋ v1.152 PWA更新判定・案内更新修正版';
+
+
+/* ===== v1.153 停止品目の適正在庫継続・品質評価取得修正 ===== */
+const V1153_VERSION='v1.153';
+function v1153OptimalStockItems(){
+  return allSortedItems().filter(item=>hasOptimalStockSetting(db.settings[item.id]));
+}
+function v1153BuyerOptimalItems(userId=db.userId){
+  const canonical=v1151CanonicalBuyerId(userId);
+  return v1153OptimalStockItems().filter(item=>v1151BuyerIdsForItem(item.id).includes(canonical));
+}
+function v1153LeafNormalItem(name){
+  const target=V1151_LEAF_NORMAL_NAMES[String(name||'').normalize('NFKC').replace(/[\s　]+/g,'')];
+  if(!target)return null;
+  return allSortedItems().find(item=>String(item.name||'').normalize('NFKC').replace(/[\s　]+/g,'')===target)||null;
+}
+v1151LeafNormalItem=v1153LeafNormalItem;
+const v1153QrResolveCore=qrResolveInventoryItem;
+qrResolveInventoryItem=function(lot){
+  const items=allSortedItems(),id=String(lot?.item_id||''),byId=id?items.filter(item=>String(item.id)===id):[];
+  if(byId.length===1)return{item:byId[0],method:'停止品目を含むitem_id'};
+  const leaf=v1153LeafNormalItem(lot?.item_name);
+  if(leaf)return{item:leaf,method:'停止品目を含むQR葉物統合'};
+  const normalized=qrNormalizeName(lot?.item_name),exact=items.filter(item=>qrNormalizeName(item.name)===normalized);
+  if(exact.length===1)return{item:exact[0],method:'停止品目を含む品目名一致'};
+  return v1153QrResolveCore(lot);
+};
+qrFindItemByName=function(name){
+  const leaf=v1153LeafNormalItem(name);if(leaf)return leaf;
+  const normalized=qrNormalizeName(name),matches=allSortedItems().filter(item=>qrNormalizeName(item.name)===normalized);
+  return matches.length===1?matches[0]:null;
+};
+v1146CandidateRows=function(kind){
+  return v1153OptimalStockItems().map(item=>{
+    const stock=v1146CombinedStock(item),s=db.settings[item.id],shortage=yen(Math.max(0,Number(s.min)-stock.totalKg)),excess=yen(Math.max(0,stock.totalKg-Number(s.max)));
+    return{it:item,r:latestMap()[item.id]||null,total:stock.totalKg,normalKg:stock.normalKg,qrKg:stock.qrKg,s,shortage,excess};
+  }).filter(row=>kind==='shortage'?row.shortage>0:row.excess>0);
+};
+v1151StaleBuyerItems=function(){
+  if(db.role!=='buyer')return[];
+  return v1153BuyerOptimalItems().filter(item=>v1144OptimalIsStale(item.id));
+};
+v1144StaleOptimalItems=function(){return v1151StaleBuyerItems().map(it=>({it,days:v1144OptimalAge(it.id)}))};
+v1146ReviewTargetItems=function(){return v1151StaleBuyerItems()};
+const v1153QualityTaskCore=v1143LoadQualityTask;
+v1143LoadQualityTask=async function(generation){
+  await v1153QualityTaskCore(generation);
+  if(generation!==v1143TodayTaskGeneration||currentScreen!=='home')return;
+  const box=document.getElementById('v1143QualityTask');
+  if(box&&box.textContent.includes('品質評価情報を取得できません')){
+    box.insertAdjacentHTML('beforeend','<button class="btn blue" style="width:100%;margin-top:10px" data-seika-click-action="v1143RetryQualityTask" data-seika-click-args="%5B%5D">品質評価を再読み込み</button>');
+  }
+};
+function v1143RetryQualityTask(){
+  const generation=++v1143TodayTaskGeneration;
+  const box=document.getElementById('v1143QualityTask');
+  if(box)box.innerHTML='<div class="small">品質評価情報を再取得しています。</div>';
+  v1143LoadQualityTask(generation);
+}
+window.APP_VERSION=V1153_VERSION;
+document.title='SEIKA＋ v1.153 停止品目適正在庫継続・品質評価修正版';
 </script>
   </body>
 </html>
