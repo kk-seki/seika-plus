@@ -2628,8 +2628,8 @@ n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>
 
 </script>
     <script src="vendor/html5-qrcode-2.3.8.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="vendor/html2canvas-1.4.1.min.js"></script>
+    <script src="vendor/jspdf-2.5.1.umd.min.js"></script>
     <style id="v193QrEditFix">
 #qrEditReason{
   margin-bottom:18px !important;
@@ -3712,9 +3712,7 @@ const updatedAt=nowIso();entries.forEach(x=>{const r=x.record,price=yen(wastePri
 ;r.priceUser=db.user;r.priceUserId=db.userId;r.priceUpdatedAt=updatedAt;r.updatedAt=updatedAt});wastePriceDrafts={};save();filterWasteList()
 ;alert(`${entries.length}件の単価を保存しました。画面上部が「クラウド保存済み」になるまでお待ちください。`)}finally{wastePriceBulkSaving=false;refreshWastePriceDraftUi()}}
 function saveWasteUnitPrice(id){const input=document.getElementById("wastePrice_"+id);if(input)trackWasteUnitPrice(id);saveWasteUnitPricesBulk()}
-function deleteWasteRecord(id){if(!canWasteEdit()){alert("削除できません");return}if(!confirm("この廃棄記録を削除しますか？"))return;ensureWasteRecords()
-;deleteHistoryRows(HISTORY_TABLES.wasteRecords,[id]).catch(console.warn);db.wasteRecords=db.wasteRecords.filter(r=>r.id!==id);save()
-;wasteListPage("廃棄記録を削除しました")}function uniqText(values){return[...new Set(values.filter(Boolean).map(v=>String(v).trim()).filter(Boolean))].join("、")}
+function deleteWasteRecord(){alert("安全な削除処理の準備中です。画面を再読み込みしてください。") }function uniqText(values){return[...new Set(values.filter(Boolean).map(v=>String(v).trim()).filter(Boolean))].join("、")}
 function wasteExcelGroupRows(rows,keyFn,labelFn){const m={};rows.forEach(r=>{const k=keyFn(r);if(!m[k])m[k]={key:k,label:labelFn(r),kg:0,amount:0,
 count:0,items:[],origins:[],suppliers:[],memos:[]};m[k].kg+=Number(r.qty||0);m[k].amount+=wasteAmount(r);m[k].count+=1;m[k].items.push(r.itemName||"")
 ;m[k].origins.push(r.origin||"");m[k].suppliers.push(r.supplier||"");m[k].memos.push(r.memo||"")});return Object.values(m)}
@@ -4422,17 +4420,7 @@ const groups=duplicateGroups(),latest=latestMap()
 const isLatest=latest[r.itemId]&&latest[r.itemId].id===r.id
 ;return`<tr><td><input class="dupCheck" type="checkbox" value="${r.id}" ${ri>0&&!isLatest?"checked":""} ${isLatest?"disabled":""}></td><td>${dt(r.createdAt)}${isLatest?'<br><span class="badge normal">現在庫</span>':""}</td><td>${esc(r.itemName)}</td><td>${esc(r.kind)}</td><td>${fmt(r.total)}kg</td><td>${esc(r.user||"")}</td><td>${esc(r.id)}</td></tr>`
 }).join("")}</table></div>`).join("")+'<button class="btn danger bottom" data-seika-click-action="deleteSelectedDuplicates" data-seika-click-args="%5B%5D">選択した重複データを削除</button>':'<div class="card ok">重複候補はありません。</div>'}`)
-}function deleteSelectedDuplicates(){if(!canAdmin())return;const ids=[...document.querySelectorAll(".dupCheck:checked")].map(x=>x.value)
-;if(!ids.length)return alert("削除するデータを選択してください");const latest=latestMap()
-;if(ids.some(id=>Object.values(latest).some(r=>r&&r.id===id)))return alert("現在庫に使われている最新データは削除できません")
-;if(!confirm("選択した重複データを削除します。\nこの操作は元に戻せません。\n本当に削除しますか？"))return
-;const idSet=new Set(ids),movementIdsToDelete=db.movements.filter(m=>idSet.has(m.recordId)).map(m=>m.id),beforeR=db.records.length,beforeM=db.movements.length,beforeN=db.notifications.length
-;deleteHistoryRows(HISTORY_TABLES.records,ids).catch(console.warn);deleteHistoryRows(HISTORY_TABLES.movements,movementIdsToDelete).catch(console.warn)
-;db.records=db.records.filter(r=>!idSet.has(r.id));db.movements=db.movements.filter(m=>!idSet.has(m.recordId))
-;db.notifications=db.notifications.filter(n=>!idSet.has(n.recordId));db.duplicateDeleteLogs=db.duplicateDeleteLogs||[];db.duplicateDeleteLogs.push({
-id:newId(),deletedRecordCount:beforeR-db.records.length,deletedMovementCount:beforeM-db.movements.length,
-deletedNotificationCount:beforeN-db.notifications.length,deletedBy:db.user,deletedAt:nowIso()});save()
-;duplicateAdminPage(`重複データを削除しました。削除件数：${beforeR-db.records.length}件`)}function oldMovementRows(){const cutoff=Date.now()-RETENTION_DAYS*DAY_MS
+}function deleteSelectedDuplicates(){alert("安全な削除処理の準備中です。画面を再読み込みしてください。") }function oldMovementRows(){const cutoff=Date.now()-RETENTION_DAYS*DAY_MS
 ;return(db.movements||[]).filter(r=>r.createdAt&&new Date(r.createdAt).getTime()<cutoff)}function oldNotificationRows(){
 const cutoff=Date.now()-RETENTION_DAYS*DAY_MS;return(db.notifications||[]).filter(r=>r.sentAt&&new Date(r.sentAt).getTime()<cutoff)}
 function oldWasteRows(){const cutoff=Date.now()-RETENTION_DAYS*DAY_MS
@@ -4440,13 +4428,7 @@ function oldWasteRows(){const cutoff=Date.now()-RETENTION_DAYS*DAY_MS
 function oldHistoryCleanupPage(msg=""){setScreen("oldHistoryCleanupPage",[msg]);if(!canAdmin()){alert("管理者のみ表示できます");return home()}
 const ms=oldMovementRows(),ns=oldNotificationRows(),dates=ms.map(x=>x.createdAt).filter(Boolean).sort()
 ;pageShell("90日超 修正履歴整理","通常在庫の修正履歴だけを整理します。",`${okHtml(msg)}<div class="notice">廃棄履歴とQR操作履歴は、Excel保存確認と3か月保持を行う「月次Excel・履歴管理」へ移しました。この画面では入庫・出庫・調整など通常在庫の修正履歴 movements だけを整理します。</div><div class="card grid"><div class="box"><span class="small">90日超 movements</span><b>${ms.length}件</b></div></div><div class="card"><b>対象期間</b><div class="small">${dates.length?`${dt(dates[0])} 〜 ${dt(dates[dates.length-1])}`:"対象データなし"}</div></div>${ms.length||ns.length?'<button class="btn danger" style="width:100%" data-seika-click-action="deleteOldHistory" data-seika-click-args="%5B%5D">90日超の修正履歴を削除</button>':'<div class="card ok">削除対象はありません。</div>'}`)
-}function deleteOldHistory(){if(!canAdmin())return;const ms=oldMovementRows(),ns=oldNotificationRows()
-;if(!ms.length&&!ns.length)return alert("削除対象はありません");if(!confirm("90日を超えた通常在庫の修正履歴を削除します。\n廃棄・QR履歴は削除しません。\nこの操作は元に戻せません。\n本当に削除しますか？"))return
-;const mIds=new Set(ms.map(x=>x.id)),nIds=new Set(ns.map(x=>x.id));deleteHistoryRows(HISTORY_TABLES.movements,[...mIds]).catch(console.warn)
-;db.movements=db.movements.filter(x=>!mIds.has(x.id));db.notifications=db.notifications.filter(x=>!nIds.has(x.id))
-;db.historyCleanups=db.historyCleanups||[];db.historyCleanups.push({id:newId(),type:"old_inventory_movements_90days",deletedMovements:ms.length,
-deletedNotifications:ns.length,deletedWasteRecords:0,deletedBy:db.user,deletedAt:nowIso()});save()
-;oldHistoryCleanupPage(`90日超の通常在庫修正履歴を削除しました。movements：${ms.length}件`)}function qrCleanupLotDate(lot){
+}function deleteOldHistory(){alert("安全な削除処理の準備中です。画面を再読み込みしてください。") }function qrCleanupLotDate(lot){
 return String(lot.received_date||lot.created_at||"").slice(0,10)}function qrCleanupLotQty(lot){return Number(lot.current_qty??lot.current_quantity??0)
 }async function qrCleanupCandidates(){
 const lots=await v163SelectAll("qr_lots","select=*&order=created_at.asc"),cutoff=Date.now()-RETENTION_DAYS*DAY_MS,inactive=[],oldZero=[]
@@ -4634,14 +4616,7 @@ return st==="deleted"?"削除済み":st==="excel_saved"?"文書管理への保�
 ;const a=monthlyArchive(key),rows=recordsForMonth(key);if(!a.excelSavedAt||key>deletableLatestMonthKey()||a.status==="deleted"){alert("この月は削除できません")
 ;return monthlyArchivePage()}
 pageShell("履歴削除の確認",`${monthLabel(key)} / ${rows.length}件`,`<div class="card err"><h2 style="margin-top:0">${monthLabel(key)}の在庫変更履歴を削除します。</h2><p>この操作は取り消せません。<br>対象月のExcelファイルが保存済みであることを確認してください。</p><p><b>本当に削除しますか？</b></p><div class="row"><button class="btn btn2" data-seika-click-action="monthlyArchivePage" data-seika-click-args="%5B%5D">キャンセル</button><button class="btn danger" ${seikaEventAttrs('click','deleteMonthlyHistory',[key])}>削除する</button></div></div>`)
-}function deleteMonthlyHistory(key){if(!canAdmin())return alert("管理者のみ実行できます");const a=monthlyArchive(key)
-;if(!a.excelSavedAt)return alert("Excel保存確認が済んでいないため削除できません");if(key>deletableLatestMonthKey())return alert("この月はまだ削除できません。3ヶ月分の保持期間が終わってから削除できます。")
-;if(a.status==="deleted")return alert("この月は既に削除済みです")
-;const deleteIds=db.records.filter(r=>r.createdAt&&recordMonthKey(r)===key).map(r=>r.id),beforeRecords=db.records.length
-;deleteHistoryRows(HISTORY_TABLES.records,deleteIds).catch(console.warn);db.records=db.records.filter(r=>!r.createdAt||recordMonthKey(r)!==key)
-;a.status="deleted";a.deletedAt=nowIso();a.deletedBy=db.user;a.deletedCount=beforeRecords-db.records.length;a.deletedMovementsCount=0
-;a.deletedNotificationsCount=0;a.deleteNote="月次Excel保存後削除ではrecordsのみ削除。movementsは90日超整理画面で削除。";save()
-;monthlyArchivePage(`${monthLabel(key)}の在庫入力データを削除しました。削除件数：${a.deletedCount}件`)}async function copyTextFrom(id){
+}function deleteMonthlyHistory(){alert("安全な削除処理の準備中です。画面を再読み込みしてください。") }async function copyTextFrom(id){
 const t=document.getElementById(id).value;try{await navigator.clipboard.writeText(t);alert("コピーしました")}catch(e){prompt("コピーしてください",t)}}
 function shareLineFrom(id){location.href=`https://line.me/R/share?text=${encodeURIComponent(document.getElementById(id).value)}`}
 async function shareLineWorksFrom(id){const t=document.getElementById(id).value;try{await navigator.clipboard.writeText(t)}catch(e){}
@@ -7158,7 +7133,7 @@ function v133UpdateBannerHtml(){if(!v133WaitingWorker)return'';const p=v133Pendi
 function v133RefreshNotices(){if(currentScreen==='home')home();else{document.getElementById('v133UpdateBanner')?.remove();const main=document.querySelector('.wrap');if(main&&v133WaitingWorker)main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())}}
 async function v133LoadReleaseNotes(){try{const r=await fetch('./release-notes.json?ts='+Date.now(),{cache:'no-store'});if(r.ok){const j=await r.json();v133ReleaseNotes=Array.isArray(j.notes)?j.notes.slice(0,8).map(String):[]}}catch(e){v133ReleaseNotes=[]}}function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133WaitingWorker=worker;v133LoadReleaseNotes().finally(v133RefreshNotices)}
 async function v133ApplyUpdate(){if(!v133WaitingWorker)return alert('更新データを確認中です。しばらくしてからもう一度お試しください。');if(!v133CanApplyUpdate()){const p=v133PendingSummary();return alert(`未同期・下書きが ${p.total}件あります。保存・再送を完了してから更新してください。`)}if(!confirm('新しいSEIKA＋へ更新して再起動しますか？'))return;try{await v188IdbFlush?.()}catch(e){return alert('端末内データの保護が完了していません。画面を閉じず、もう一度お試しください。')}v133ReloadForUpdate=true;v133WaitingWorker.postMessage({type:'SKIP_WAITING'})}
-async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.149',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller){v133WaitingWorker=reg.waiting;v133LoadReleaseNotes().finally(v133RefreshNotices)}reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
+async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.150',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller){v133WaitingWorker=reg.waiting;v133LoadReleaseNotes().finally(v133RefreshNotices)}reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
 function v133InstallEvents(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();v133DeferredInstallPrompt=e;v133RefreshNotices()});window.addEventListener('appinstalled',()=>{v133DeferredInstallPrompt=null;v133GuideDismiss();v133Toast('SEIKA＋をホーム画面へ追加しました','ok')});navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(v133ReloadForUpdate)location.reload()});navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='SEIKA_VERSION_READY'&&event.data.version!==String(window.APP_VERSION||'')){v133Toast('新しいアプリ版を取得しました。画面を再読み込みしてください','info',false)}});window.addEventListener('online',()=>{v133Toast('オンラインに戻りました','ok',false);updateSyncDisplay();v133RefreshNotices()});window.addEventListener('offline',()=>{v133Toast('オフラインです。確定操作は行わないでください','err',false);updateSyncDisplay();v133RefreshNotices()});document.addEventListener('pointerdown',()=>{v133UserInteracted=true},{once:true,passive:true});document.addEventListener('keydown',()=>{v133UserInteracted=true},{once:true})}
 const v133PageShellCore=pageShell;pageShell=function(title,sub,body,opts={}){v133PageShellCore(title,sub,body,opts);const sync=document.getElementById('syncInfo');if(sync&&!document.getElementById('v133HeaderMeta'))sync.insertAdjacentHTML('beforebegin',`<div id="v133HeaderMeta">${v133HeaderMetaHtml()}</div>`);const main=document.querySelector('.wrap');if(main&&v133WaitingWorker&&!document.getElementById('v133UpdateBanner'))main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())};
 const v133HomeCore=home;home=function(){v133HomeCore();const main=document.querySelector('.wrap');if(!main)return;const extra=`${v133InstallBannerHtml()}${v133StartupCheckHtml()}`,first=main.firstElementChild;if(first)first.insertAdjacentHTML('beforebegin',extra);else main.innerHTML=extra};
@@ -8359,6 +8334,161 @@ document.title='SEIKA＋ v1.148 管理者お知らせ再送修正版';
 /* ===== v1.145 品質評価写真350KB上限 ===== */
 window.APP_VERSION='v1.149';
 document.title='SEIKA＋ v1.149 PWA更新・管理者お知らせ再送修正版';
+
+
+/* ===== v1.150 第1段階セキュリティ改善完了 ===== */
+const V1150_NOTICE_OPERATION_KEY=STORE+'_admin_notice_operation_v1150';
+let v1150NoticeSaving=false;
+function v1150NoticeOperation(action,payload){
+  const signature=JSON.stringify({action,payload});
+  try{
+    const saved=JSON.parse(localStorage.getItem(V1150_NOTICE_OPERATION_KEY)||'null');
+    if(saved?.signature===signature&&saved?.operationId)return saved.operationId;
+  }catch(e){}
+  const operationId=newId();
+  localStorage.setItem(V1150_NOTICE_OPERATION_KEY,JSON.stringify({signature,operationId,createdAt:nowIso()}));
+  return operationId;
+}
+function v1150ClearNoticeOperation(){try{localStorage.removeItem(V1150_NOTICE_OPERATION_KEY)}catch(e){}}
+function v1150NoticeBusyCheck(){
+  if(v1150NoticeSaving)return false;
+  if(v161PendingCount()||v188HistoryPending()){
+    alert('未同期データがあります。先に「再送」を押して保存を完了してください。');
+    return false;
+  }
+  if(!Number.isFinite(Number(stateVersion))){alert('クラウドの版番号を確認できません。再読み込みしてください。');return false}
+  return true;
+}
+function v1150ApplyNoticeResult(ans,action,noticeId){
+  if(ans?.conflict){setSyncState('競合','管理者お知らせを再読み込みしてください');throw new Error(ans.message||'他の端末で更新されています')}
+  if(!ans?.ok||!Number.isFinite(Number(ans.version)))throw new Error(ans?.message||'管理者お知らせを保存できませんでした');
+  if(action==='delete')db.adminNotices=(db.adminNotices||[]).filter(row=>String(row.id)!==String(noticeId));
+  else if(action==='create')db.adminNotices=[...(db.adminNotices||[]).filter(row=>String(row.id)!==String(ans.notice?.id)),ans.notice];
+  else{
+    const index=(db.adminNotices||[]).findIndex(row=>String(row.id)===String(noticeId));
+    if(index>=0)db.adminNotices[index]=ans.notice;
+  }
+  stateVersion=Number(ans.version);
+  v188PersistDb();
+  const snapshot=v161Snapshot();
+  v188WriteBase(snapshot,stateVersion);
+  v161WriteQueue([]);
+  markSync();
+  setSyncState('保存済み','管理者お知らせをサーバーへ保存');
+  updateSyncDisplay();
+}
+async function v1150RunNoticeOperation(action,payload,call,message){
+  if(!v1150NoticeBusyCheck())return;
+  v1150NoticeSaving=true;
+  const operationId=v1150NoticeOperation(action,payload);
+  v161ShowProcessing('管理者お知らせを安全に保存しています');
+  try{
+    const ans=await call(operationId);
+    v1150ApplyNoticeResult(ans,action,payload.noticeId);
+    v1150ClearNoticeOperation();
+    v200AdminNoticePage(message);
+  }catch(e){
+    setSyncState(v161IsConflictError(e)?'競合':'失敗','管理者お知らせは変更していません');
+    alert(`保存できませんでした。\n${v161ErrorText(e)}\n\n画面の内容は変更していません。通信状況を確認して、もう一度操作してください。`);
+  }finally{v1150NoticeSaving=false;v161HideProcessing();updateSyncDisplay()}
+}
+v200CreateNotice=async function(){
+  if(!canAdmin())return alert('管理者のみ操作できます');
+  const title=document.getElementById('v200NoticeTitle')?.value.trim()||'',body=document.getElementById('v200NoticeBody')?.value.trim()||'',startsAt=v200NoticeDateValue(document.getElementById('v200NoticeStart')?.value),endsAt=v200NoticeDateValue(document.getElementById('v200NoticeEnd')?.value);
+  if(!title)return alert('件名を入力してください');
+  if(!body)return alert('内容を入力してください');
+  if(startsAt&&endsAt&&startsAt>endsAt)return alert('表示開始日と終了日を確認してください');
+  const noticeId=newId(),payload={noticeId,title,body,startsAt:startsAt||null,endsAt:endsAt||null};
+  await v1150RunNoticeOperation('create',payload,operationId=>v186CallRpc('create_admin_notice_v1150',{p_id:STATE_ID,p_expected_version:Number(stateVersion),p_notice_id:noticeId,p_title:title,p_body:body,p_starts_at:startsAt||null,p_ends_at:endsAt||null,p_operation_id:operationId}),'お知らせを追加しました。');
+};
+v200SetNoticeActive=async function(id,active){
+  if(!canAdmin())return alert('管理者のみ操作できます');
+  const notice=(db.adminNotices||[]).find(row=>String(row.id)===String(id));
+  if(!notice)return alert('お知らせが見つかりません');
+  const next=active===true,payload={noticeId:String(id),active:next};
+  await v1150RunNoticeOperation('set_active',payload,operationId=>v186CallRpc('set_admin_notice_active_v1150',{p_id:STATE_ID,p_expected_version:Number(stateVersion),p_notice_id:String(id),p_active:next,p_operation_id:operationId}),next?'お知らせの表示を再開しました。':'お知らせの表示を停止しました。');
+};
+v200DeleteNotice=async function(id){
+  if(!canAdmin())return alert('管理者のみ操作できます');
+  const notice=(db.adminNotices||[]).find(row=>String(row.id)===String(id));
+  if(!notice)return alert('お知らせが見つかりません');
+  if(!confirm(`「${notice.title}」を削除しますか？\n\n削除すると元に戻せません。`))return;
+  const payload={noticeId:String(id)};
+  await v1150RunNoticeOperation('delete',payload,operationId=>v186CallRpc('delete_admin_notice_v1150',{p_id:STATE_ID,p_expected_version:Number(stateVersion),p_notice_id:String(id),p_operation_id:operationId}),'お知らせを削除しました。');
+};
+async function v1150DeleteHistoryTransaction(nextRecords,nextWasteRecords,nextMovements,deleteRecordIds=[],deleteWasteIds=[],deleteMovementIds=[]){
+  if(!historyTablesReady)throw new Error('履歴テーブルを確認できないため削除を中止しました。再読み込みしてください。');
+  const ans=await callRpc('save_history_records_v188',{p_records:nextRecords,p_waste_records:nextWasteRecords,p_movements:nextMovements,p_delete_record_ids:deleteRecordIds,p_delete_waste_ids:deleteWasteIds,p_delete_movement_ids:deleteMovementIds});
+  if(!ans?.ok)throw new Error(ans?.message||'履歴を削除できませんでした');
+}
+deleteWasteRecord=async function(id){
+  if(!canWasteEdit())return alert('削除できません');
+  if(!confirm('この廃棄記録を削除しますか？'))return;
+  ensureWasteRecords();
+  const target=db.wasteRecords.find(row=>String(row.id)===String(id));
+  if(!target)return alert('廃棄記録が見つかりません');
+  if(v161PendingCount()||v188HistoryPending())return alert('未同期データがあります。先に「再送」を押して保存を完了してください。');
+  v161ShowProcessing('廃棄記録をクラウドから削除しています');
+  try{
+    if(db?.role==='clerk'){
+      const meta=operationMeta('clerk_waste_delete_v188',{wasteId:id}),ans=await callRpc('delete_clerk_waste_v188',{p_id:STATE_ID,p_expected_version:stateVersion,p_waste_id:id,p_operation_id:meta.operationId,p_device_meta:{deviceId:meta.deviceId,userAgent:navigator.userAgent||''},p_operation_meta:meta});
+      if(ans?.conflict){setSyncState('競合','最新データを保護しています');throw new Error(ans.message||'他端末の更新があります。再読込後にもう一度削除してください')}
+      if(!ans?.ok)throw new Error(ans?.message||'廃棄記録を削除できませんでした');
+      stateVersion=Number(ans.version);
+    }else{
+      await v1113DeleteWasteHistoryRow(id);
+    }
+    db.wasteRecords=db.wasteRecords.filter(row=>String(row.id)!==String(id));
+    v188PersistDb();
+    if(db?.role==='clerk')v188WriteBase(v161Snapshot(),stateVersion);
+    else{save();clearTimeout(saveTimer);await saveCloudNow({skipHistory:true,requireRpc:true})}
+    markSync();setSyncState('保存済み','廃棄記録を削除しました');wasteListPage('廃棄記録を削除しました');
+  }catch(e){setSyncState(v161IsConflictError(e)?'競合':'失敗','廃棄記録は削除していません');alert(`削除できませんでした。\n${v161ErrorText(e)}\n\n画面の記録は削除していません。`)}
+  finally{v161HideProcessing();updateSyncDisplay()}
+};
+deleteSelectedDuplicates=async function(){
+  if(!canAdmin())return;
+  const ids=[...document.querySelectorAll('.dupCheck:checked')].map(input=>input.value);
+  if(!ids.length)return alert('削除するデータを選択してください');
+  const latest=latestMap();if(ids.some(id=>Object.values(latest).some(row=>row&&row.id===id)))return alert('現在庫に使われている最新データは削除できません');
+  if(!confirm('選択した重複データを削除します。\nこの操作は元に戻せません。\n本当に削除しますか？'))return;
+  const idSet=new Set(ids),movementIds=db.movements.filter(row=>idSet.has(row.recordId)).map(row=>row.id),nextRecords=db.records.filter(row=>!idSet.has(row.id)),nextMovements=db.movements.filter(row=>!idSet.has(row.recordId));
+  v161ShowProcessing('重複データを安全に削除しています');
+  try{
+    await v1150DeleteHistoryTransaction(nextRecords,db.wasteRecords,nextMovements,ids,[],movementIds);
+    const beforeR=db.records.length,beforeM=db.movements.length,beforeN=db.notifications.length;
+    db.records=nextRecords;db.movements=nextMovements;db.notifications=db.notifications.filter(row=>!idSet.has(row.recordId));
+    db.duplicateDeleteLogs=db.duplicateDeleteLogs||[];db.duplicateDeleteLogs.push({id:newId(),deletedRecordCount:beforeR-db.records.length,deletedMovementCount:beforeM-db.movements.length,deletedNotificationCount:beforeN-db.notifications.length,deletedBy:db.user,deletedAt:nowIso()});
+    save();duplicateAdminPage(`重複データを削除しました。削除件数：${beforeR-db.records.length}件`);
+  }catch(e){setSyncState('失敗','重複データは削除していません');alert(`削除できませんでした。\n${v161ErrorText(e)}\n\n画面の記録は削除していません。`)}finally{v161HideProcessing();updateSyncDisplay()}
+};
+deleteOldHistory=async function(){
+  if(!canAdmin())return;const movements=oldMovementRows(),notifications=oldNotificationRows();
+  if(!movements.length&&!notifications.length)return alert('削除対象はありません');
+  if(!confirm('90日を超えた通常在庫の修正履歴を削除します。\n廃棄・QR履歴は削除しません。\nこの操作は元に戻せません。\n本当に削除しますか？'))return;
+  const movementIds=new Set(movements.map(row=>row.id)),notificationIds=new Set(notifications.map(row=>row.id)),nextMovements=db.movements.filter(row=>!movementIds.has(row.id));
+  v161ShowProcessing('90日超の修正履歴を安全に削除しています');
+  try{
+    await v1150DeleteHistoryTransaction(db.records,db.wasteRecords,nextMovements,[],[],[...movementIds]);
+    db.movements=nextMovements;db.notifications=db.notifications.filter(row=>!notificationIds.has(row.id));db.historyCleanups=db.historyCleanups||[];db.historyCleanups.push({id:newId(),type:'old_inventory_movements_90days',deletedMovements:movements.length,deletedNotifications:notifications.length,deletedWasteRecords:0,deletedBy:db.user,deletedAt:nowIso()});
+    save();oldHistoryCleanupPage(`90日超の通常在庫修正履歴を削除しました。movements：${movements.length}件`);
+  }catch(e){setSyncState('失敗','修正履歴は削除していません');alert(`削除できませんでした。\n${v161ErrorText(e)}\n\n画面の履歴は削除していません。`)}finally{v161HideProcessing();updateSyncDisplay()}
+};
+deleteMonthlyHistory=async function(key){
+  if(!canAdmin())return alert('管理者のみ実行できます');const archive=monthlyArchive(key);
+  if(!archive.excelSavedAt)return alert('Excel保存確認が済んでいないため削除できません');
+  if(key>deletableLatestMonthKey())return alert('この月はまだ削除できません。3ヶ月分の保持期間が終わってから削除できます。');
+  if(archive.status==='deleted')return alert('この月は既に削除済みです');
+  const deleteIds=db.records.filter(row=>row.createdAt&&recordMonthKey(row)===key).map(row=>row.id),nextRecords=db.records.filter(row=>!row.createdAt||recordMonthKey(row)!==key),deletedCount=db.records.length-nextRecords.length;
+  v161ShowProcessing('月次履歴を安全に削除しています');
+  try{
+    await v1150DeleteHistoryTransaction(nextRecords,db.wasteRecords,db.movements,deleteIds,[],[]);
+    db.records=nextRecords;archive.status='deleted';archive.deletedAt=nowIso();archive.deletedBy=db.user;archive.deletedCount=deletedCount;archive.deletedMovementsCount=0;archive.deletedNotificationsCount=0;archive.deleteNote='月次Excel保存後削除ではrecordsのみ削除。movementsは90日超整理画面で削除。';
+    save();monthlyArchivePage(`${monthLabel(key)}の在庫入力データを削除しました。削除件数：${deletedCount}件`);
+  }catch(e){setSyncState('失敗','月次履歴は削除していません');alert(`削除できませんでした。\n${v161ErrorText(e)}\n\n画面の履歴は削除していません。`)}finally{v161HideProcessing();updateSyncDisplay()}
+};
+window.APP_VERSION='v1.150';
+document.title='SEIKA＋ v1.150 第1段階セキュリティ改善完了版';
 </script>
   </body>
 </html>
