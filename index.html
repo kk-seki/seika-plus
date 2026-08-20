@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.153 停止品目適正在庫継続・品質評価修正版</title>
+    <title>SEIKA＋ v1.154 在庫表適正在庫判定修正版</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -5132,7 +5132,7 @@ const raw=String(value||"").trim(),explicit=raw.match(/^(?:使用先|用途)\s*[
 if(!values?.length)return"";const groups=new Map;values.map(v177QrMemoDisplay).filter(x=>x.value).forEach(x=>{
 if(!groups.has(x.label))groups.set(x.label,[]);if(!groups.get(x.label).includes(x.value))groups.get(x.label).push(x.value)})
 ;return[...groups].map(([label,items])=>`<br><span class="small qrInventorySpec">${esc(label)}：${items.map(esc).join(" ／ ")}</span>`).join("")}
-weeklyDisplayRows=function(room,qrStandaloneTotals={}){const rows=[];allSortedItems().filter(it=>it.active!==false).forEach(it=>rows.push({
+weeklyDisplayRows=function(room,qrStandaloneTotals={}){const rows=[];allSortedItems().filter(it=>it.active!==false||hasOptimalStockSetting(db.settings[it.id])).forEach(it=>rows.push({
 kind:"normal",group:"optimal",room:coldRoomForNormalItem(it),id:it.id,name:it.name,item:it,sort:Number(it.sort||0)}))
 ;specialItems("exchange").forEach(it=>rows.push({kind:"special",group:"nonoptimal",tableId:"exchange",room:coldRoomForSpecialItem("exchange",it),
 id:it.id,name:it.name,item:it,sort:Number(it.sort||0)}));specialItems("kataoka").forEach(it=>rows.push({kind:"special",group:"kataoka",
@@ -5166,9 +5166,9 @@ const qr=v163QrStandaloneKg(qrStandaloneTotals,row.qrKey,dk),specHtml=v165QrSpec
 const r=normalMap[row.id+"_"+dk],l=r?(r.lines||[]).find(x=>x.detail&&detailLineKey(x)===row.detailKey&&String(x.qty||"").trim()!==""):null
 ;return`<td class="${dk===today?"today ":""}${l?"normal":"unset"}">${l?`<span class="stockVal">${fmt(Number(l.subtotal||detailSubtotal(l)))}kg</span>`:"-"}</td>`
 }if(row.kind==="normal_detail_total"||row.kind==="normal"){
-const r=normalMap[row.id+"_"+dk],base=r?Number(r.total||0):0,qr=v163QrItemKg(qrTotals,row.id,dk),shown=base+qr,st=r?judge(base,db.settings[row.id]):"unset",specHtml=qr?v165QrSpecHtml(v165QrSpecs(qrSpecs,row.id,dk)):""
+const r=normalMap[row.id+"_"+dk],base=r?Number(r.total||0):0,qr=v163QrItemKg(qrTotals,row.id,dk),shown=base+qr,hasSetting=hasOptimalStockSetting(db.settings[row.id]),st=hasSetting?judge(shown,db.settings[row.id]):"unset",specHtml=qr?v165QrSpecHtml(v165QrSpecs(qrSpecs,row.id,dk)):""
 ;if(!r&&!qr)return`<td class="${dk===today?"today ":""}unset">-</td>`
-;return`<td class="${dk===today?"today ":""}${r?st:"normal"}"><span class="stockVal">${fmt(shown)}kg</span>${qr?`<br><span class="small">通常 ${fmt(base)} + QR ${fmt(qr)}kg</span>${specHtml}`:""}${r?`<br><span class="badge ${st}">${label(st)}</span>`:""}</td>`
+;return`<td class="${dk===today?"today ":""}${r?st:"normal"}"><span class="stockVal">${fmt(shown)}kg</span>${qr?`<br><span class="small">通常 ${fmt(base)} + QR ${fmt(qr)}kg</span>${specHtml}`:""}${hasSetting?`<br><span class="badge ${st}">${label(st)}</span>`:""}</td>`
 }const r=specialMap[row.tableId+"_"+row.id+"_"+dk]
 ;return`<td class="${dk===today?"today ":""}${r?"normal":"unset"}">${r?`<span class="stockVal">${fmt(r.qty)}${esc(r.unit||row.item.unit||"")}</span>`:"-"}</td>`
 }).join("");return`<tr><td>${esc(row.name)}</td>${cells}</tr>`}).join("")
@@ -5210,7 +5210,7 @@ if(!["normal","normal_detail_total","qr_only"].includes(row.kind))continue
 ;rowHtml=rowHtml.replace(/<td class="([^"]*)">([\s\S]*?)<\/td>/g,(full,cls,content)=>{const dk=dayKeys[cellIndex++];if(!dk||dk>today)return full
 ;const standalone=row.kind==="qr_only",key=standalone?row.qrKey:row.id,base=standalone?0:Number(normalMap[row.id+"_"+dk]?.total||0),normalQr=v1106QrNormalKg(qrBreakdown,key,dk,standalone),large=v1106QrLarge(qrBreakdown,key,dk,standalone),kataoka=v1107QrKataoka(qrBreakdown,key,dk,standalone),main=v1106StockCellMain(base,normalQr,large,kataoka)
 ;if(!main)return full
-;const specs=standalone?v165QrSpecHtml(v165QrSpecs(qrStandaloneSpecs,key,dk)):v165QrSpecHtml(v165QrSpecs(qrSpecs,key,dk)),r=standalone?null:normalMap[row.id+"_"+dk],st=r?judge(base,db.settings[row.id]):"normal",badge=r?`<span class="badge ${st}">${label(st)}</span>`:""
+;const specs=standalone?v165QrSpecHtml(v165QrSpecs(qrStandaloneSpecs,key,dk)):v165QrSpecHtml(v165QrSpecs(qrSpecs,key,dk)),r=standalone?null:normalMap[row.id+"_"+dk],totalForJudge=yen(base+normalQr+large.kg),hasSetting=hasOptimalStockSetting(db.settings[row.id]),st=hasSetting?judge(totalForJudge,db.settings[row.id]):"unset",badge=hasSetting?`<span class="badge ${st}">${label(st)}</span>`:""
 ;return`<td class="${cls}">${main}${specs}${badge}</td>`});html=html.replace(match[0],rowHtml)}return html};let v125WeeklyVisibleWeeks=2;
 function v125ShowMoreWeeks(){v125WeeklyVisibleWeeks+=4;weeklyData()}
 const v125SetWeeklyRoomBase=setWeeklyRoom;setWeeklyRoom=function(room){v125WeeklyVisibleWeeks=2;return v125SetWeeklyRoomBase(room)};
@@ -7074,7 +7074,7 @@ function v128WeeklyDisplayMatch(row,room){
 /* Final effective override: display-only Kataoka selector deliberately does not alter coldRoomForSpecialItem(). */
 weeklyDisplayRows=function(room,qrStandaloneTotals={}){
   const rows=[];
-  allSortedItems().filter(it=>it.active!==false).forEach(it=>rows.push({
+  allSortedItems().filter(it=>it.active!==false||hasOptimalStockSetting(db.settings[it.id])).forEach(it=>rows.push({
     kind:'normal',group:'optimal',room:coldRoomForNormalItem(it),id:it.id,name:it.name,item:it,sort:Number(it.sort||0)
   }));
   specialItems('exchange').forEach(it=>rows.push({
@@ -7139,7 +7139,7 @@ function v133WorkerVersion(worker){return new Promise(resolve=>{if(!worker)retur
 async function v133AssessWaitingWorker(worker){if(!worker||!navigator.serviceWorker.controller)return;await v133LoadReleaseNotes();const workerVersion=await v133WorkerVersion(worker),candidate=workerVersion||v133ReleaseVersion;if(!v133IsNewerVersion(candidate)){v133WaitingWorker=null;v133WaitingVersion='';if(workerVersion&&v133NormalizeVersion(workerVersion)===v133NormalizeVersion(window.APP_VERSION))worker.postMessage({type:'SKIP_WAITING'});v133RefreshNotices();return}v133WaitingWorker=worker;v133WaitingVersion=candidate;v133RefreshNotices()}
 function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133AssessWaitingWorker(worker)}
 async function v133ApplyUpdate(){if(!v133HasNewVersion())return alert('この端末はすでに最新です。');if(!v133CanApplyUpdate()){const p=v133PendingSummary();return alert(`未同期・下書きが ${p.total}件あります。保存・再送を完了してから更新してください。`)}if(!confirm(`SEIKA＋ ${v133WaitingVersion||v133ReleaseVersion}へ更新して再起動しますか？`))return;try{await v188IdbFlush?.()}catch(e){return alert('端末内データの保護が完了していません。画面を閉じず、もう一度お試しください。')}v133ReloadForUpdate=true;v133WaitingWorker.postMessage({type:'SKIP_WAITING'})}
-async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.153',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
+async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.154',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
 function v133InstallEvents(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();v133DeferredInstallPrompt=e;v133RefreshNotices()});window.addEventListener('appinstalled',()=>{v133DeferredInstallPrompt=null;v133GuideDismiss();v133Toast('SEIKA＋をホーム画面へ追加しました','ok')});navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(v133ReloadForUpdate)location.reload()});navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='SEIKA_VERSION_READY'&&event.data.version!==String(window.APP_VERSION||'')){v133Toast('新しいアプリ版を取得しました。画面を再読み込みしてください','info',false)}});window.addEventListener('online',()=>{v133Toast('オンラインに戻りました','ok',false);updateSyncDisplay();v133RefreshNotices()});window.addEventListener('offline',()=>{v133Toast('オフラインです。確定操作は行わないでください','err',false);updateSyncDisplay();v133RefreshNotices()});document.addEventListener('pointerdown',()=>{v133UserInteracted=true},{once:true,passive:true});document.addEventListener('keydown',()=>{v133UserInteracted=true},{once:true})}
 const v133PageShellCore=pageShell;pageShell=function(title,sub,body,opts={}){v133PageShellCore(title,sub,body,opts);const sync=document.getElementById('syncInfo');if(sync&&!document.getElementById('v133HeaderMeta'))sync.insertAdjacentHTML('beforebegin',`<div id="v133HeaderMeta">${v133HeaderMetaHtml()}</div>`);const main=document.querySelector('.wrap');if(main&&v133HasNewVersion()&&!document.getElementById('v133UpdateBanner'))main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())};
 const v133HomeCore=home;home=function(){v133HomeCore();const main=document.querySelector('.wrap');if(!main)return;const extra=`${v133InstallBannerHtml()}${v133StartupCheckHtml()}`,first=main.firstElementChild;if(first)first.insertAdjacentHTML('beforebegin',extra);else main.innerHTML=extra};
@@ -8670,8 +8670,10 @@ function v1143RetryQualityTask(){
   if(box)box.innerHTML='<div class="small">品質評価情報を再取得しています。</div>';
   v1143LoadQualityTask(generation);
 }
-window.APP_VERSION=V1153_VERSION;
-document.title='SEIKA＋ v1.153 停止品目適正在庫継続・品質評価修正版';
+/* ===== v1.154 在庫表の停止品目表示・適正在庫判定修正 ===== */
+const V1154_VERSION='v1.154';
+window.APP_VERSION=V1154_VERSION;
+document.title='SEIKA＋ v1.154 在庫表適正在庫判定修正版';
 </script>
   </body>
 </html>
