@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.156 QR操作・市場メモ・セキュリティ強化版</title>
+    <title>SEIKA＋ v1.157 QR品目取得・固定保存ボタン修正版</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -7139,7 +7139,7 @@ function v133WorkerVersion(worker){return new Promise(resolve=>{if(!worker)retur
 async function v133AssessWaitingWorker(worker){if(!worker||!navigator.serviceWorker.controller)return;await v133LoadReleaseNotes();const workerVersion=await v133WorkerVersion(worker),candidate=workerVersion||v133ReleaseVersion;if(!v133IsNewerVersion(candidate)){v133WaitingWorker=null;v133WaitingVersion='';if(workerVersion&&v133NormalizeVersion(workerVersion)===v133NormalizeVersion(window.APP_VERSION))worker.postMessage({type:'SKIP_WAITING'});v133RefreshNotices();return}v133WaitingWorker=worker;v133WaitingVersion=candidate;v133RefreshNotices()}
 function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133AssessWaitingWorker(worker)}
 async function v133ApplyUpdate(){if(!v133HasNewVersion())return alert('この端末はすでに最新です。');if(!v133CanApplyUpdate()){const p=v133PendingSummary();return alert(`未同期・下書きが ${p.total}件あります。保存・再送を完了してから更新してください。`)}if(!confirm(`SEIKA＋ ${v133WaitingVersion||v133ReleaseVersion}へ更新して再起動しますか？`))return;try{await v188IdbFlush?.()}catch(e){return alert('端末内データの保護が完了していません。画面を閉じず、もう一度お試しください。')}v133ReloadForUpdate=true;v133WaitingWorker.postMessage({type:'SKIP_WAITING'})}
-async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.156',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
+async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.157',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
 function v133InstallEvents(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();v133DeferredInstallPrompt=e;v133RefreshNotices()});window.addEventListener('appinstalled',()=>{v133DeferredInstallPrompt=null;v133GuideDismiss();v133Toast('SEIKA＋をホーム画面へ追加しました','ok')});navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(v133ReloadForUpdate)location.reload()});navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='SEIKA_VERSION_READY'&&event.data.version!==String(window.APP_VERSION||'')){v133Toast('新しいアプリ版を取得しました。画面を再読み込みしてください','info',false)}});window.addEventListener('online',()=>{v133Toast('オンラインに戻りました','ok',false);updateSyncDisplay();v133RefreshNotices()});window.addEventListener('offline',()=>{v133Toast('オフラインです。確定操作は行わないでください','err',false);updateSyncDisplay();v133RefreshNotices()});document.addEventListener('pointerdown',()=>{v133UserInteracted=true},{once:true,passive:true});document.addEventListener('keydown',()=>{v133UserInteracted=true},{once:true})}
 const v133PageShellCore=pageShell;pageShell=function(title,sub,body,opts={}){v133PageShellCore(title,sub,body,opts);const sync=document.getElementById('syncInfo');if(sync&&!document.getElementById('v133HeaderMeta'))sync.insertAdjacentHTML('beforebegin',`<div id="v133HeaderMeta">${v133HeaderMetaHtml()}</div>`);const main=document.querySelector('.wrap');if(main&&v133HasNewVersion()&&!document.getElementById('v133UpdateBanner'))main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())};
 const v133HomeCore=home;home=function(){v133HomeCore();const main=document.querySelector('.wrap');if(!main)return;const extra=`${v133InstallBannerHtml()}${v133StartupCheckHtml()}`,first=main.firstElementChild;if(first)first.insertAdjacentHTML('beforebegin',extra);else main.innerHTML=extra};
@@ -8685,14 +8685,22 @@ document.title='SEIKA＋ v1.155 第1段階セキュリティ改善完了版';
 const V1156_VERSION='v1.156';
 window.APP_VERSION=V1156_VERSION;
 document.title='SEIKA＋ v1.156 QR操作・市場メモ・セキュリティ強化版';
+
+/* ===== v1.157 QR品目取得・固定保存ボタン修正 ===== */
+const V1157_VERSION='v1.157';
+window.APP_VERSION=V1157_VERSION;
+document.title='SEIKA＋ v1.157 QR品目取得・固定保存ボタン修正版';
+const v1157Style=document.createElement('style');
+v1157Style.textContent=`@media(max-width:620px){.wrap .stickySaveAction{position:fixed!important;left:max(12px,env(safe-area-inset-left))!important;right:max(12px,env(safe-area-inset-right))!important;bottom:max(10px,env(safe-area-inset-bottom))!important;transform:none!important;width:auto!important;max-width:none!important;box-sizing:border-box!important;display:block!important}}`;
+document.head.appendChild(v1157Style);
 let v1156QrSearchState={kind:'detail',itemName:'',returnEnabled:false};
 function v1156QrItemName(lot){return String(lot?.item_name||'').trim()}
 async function v1156LoadQrSearchItems(selectedItem='',autoSearch=false){
   const select=document.getElementById('qrManualItem');
   if(!select)return;
   try{
-    const lots=await qrSelect('qr_lots','select=item_name,current_qty,current_quantity,active&active=eq.true&order=item_name.asc&limit=2000');
-    const names=[...new Set(lots.filter(l=>Number(l.current_qty??l.current_quantity??0)>0).map(v1156QrItemName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
+    const lots=await qrSelect('qr_lots','select=item_name,current_qty,active&active=eq.true&order=item_name.asc&limit=2000');
+    const names=[...new Set(lots.filter(l=>Number(l.current_qty||0)>0).map(v1156QrItemName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
     select.innerHTML=`<option value="">品目を選択してください</option>${names.map(name=>`<option value="${esc(name)}" ${name===selectedItem?'selected':''}>${esc(name)}</option>`).join('')}`;
     select.disabled=false;
     if(selectedItem&&!names.includes(selectedItem))select.insertAdjacentHTML('beforeend',`<option value="${esc(selectedItem)}" selected>${esc(selectedItem)}</option>`);
