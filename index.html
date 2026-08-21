@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.154 在庫表適正在庫判定修正版</title>
+    <title>SEIKA＋ v1.156 QR操作・市場メモ・セキュリティ強化版</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -4451,7 +4451,7 @@ function optimalStockLastText(itemId){const r=latestOptimalStockChange(itemId)
 alert("設定できません");return}const itemsForSettings=allSortedItems().sort((a,b)=>{if(db.role==="buyer"){
 const aa=isMyBuyerItem(a.id)?0:1,bb=isMyBuyerItem(b.id)?0:1;if(aa!==bb)return aa-bb}return(a.sort||0)-(b.sort||0)})
 ;pageShell("適正在庫設定","下限kg〜上限kgの幅を設定できます。仕入れ担当者は自分の担当品目が上に表示されます。",`<div class="settingsList">${itemsForSettings.map(it=>{const s=db.settings[it.id]
-;return`<div class="card row"><div><b>${it.name}</b><div class="small">初期入れ数 ${it.pack}kg / ${it.active===false?"停止中":"有効"}<br>仕入れ担当者：${buyerText(it)}${isMyBuyerItem(it.id)?"<br>あなたの担当品目です":""}<br>${optimalStockLastText(it.id)}</div></div><div><label class="label">下限kg</label><input id="min_${it.id}" class="input" inputmode="decimal" value="${s&&s.min!=null?esc(s.min):""}"></div><div><label class="label">上限kg</label><input id="max_${it.id}" class="input" inputmode="decimal" value="${s&&s.max!=null?esc(s.max):""}"></div></div>`
+;return`<div class="card row"><div><b>${it.name}</b><div class="small">初期入れ数 ${it.pack}kg<br>仕入れ担当者：${buyerText(it)}${isMyBuyerItem(it.id)?"<br>あなたの担当品目です":""}<br>${optimalStockLastText(it.id)}</div></div><div><label class="label">下限kg</label><input id="min_${it.id}" class="input" inputmode="decimal" value="${s&&s.min!=null?esc(s.min):""}"></div><div><label class="label">上限kg</label><input id="max_${it.id}" class="input" inputmode="decimal" value="${s&&s.max!=null?esc(s.max):""}"></div></div>`
 }).join("")}</div><button class="btn green bottom settingsSaveBtn" data-seika-click-action="saveSettings" data-seika-click-args="%5B%5D">設定を保存</button>`)}function saveSettings(){let changed=0
 ;for(const it of allSortedItems()){const minEl=document.getElementById("min_"+it.id),maxEl=document.getElementById("max_"+it.id)
 ;if(!minEl||!maxEl)continue;const minText=String(minEl.value).replace(/,/g,"").trim(),maxText=String(maxEl.value).replace(/,/g,"").trim()
@@ -4891,7 +4891,7 @@ item.attempts=Number(item.attempts||0)+1;item.lastError=ans.message||"他端末�
 ;stateVersion=Number(ans.version);const latestQueue=v161ReadQueue();if(latestQueue.length&&latestQueue[0].id!==item.id){
 latestQueue[0].expectedVersion=stateVersion;v161WriteQueue(latestQueue);setSyncState("未同期","保存中に追加された変更を再送待ち");clearTimeout(saveTimer)
 ;saveTimer=setTimeout(()=>saveCloudNow().catch(e=>console.error("後続データを未同期キューへ保持:",e)),350)}else{v161WriteQueue([]);markSync();setSyncState("保存済み")}
-if(historyTablesReady&&!options.skipHistory)saveHistoryTablesNow().catch(e=>console.warn("履歴テーブルの後送に失敗",e));return true}catch(e){
+if(historyTablesReady&&!options.skipHistory)saveHistoryTablesNow().then(()=>v188SetHistoryPending(false)).catch(e=>{v188SetHistoryPending(true);setSyncState("未同期","履歴テーブルを再送待ち");console.error("履歴テーブルの後送に失敗。端末に再送状態を保持しました",e)});return true}catch(e){
 if(!v161IsConflictError(e)){item.attempts=Number(item.attempts||0)+1;item.lastError=v161ErrorText(e);const latest=v161ReadQueue()
 ;if(latest.length&&latest[0].id!==item.id){latest[0].lastError=item.lastError;latest[0].attempts=Number(latest[0].attempts||0)+1
 ;v161WriteQueue(latest)}else v161WriteQueue([item]);setSyncState("失敗","自動再送待ち")}throw e}finally{v161SyncRunning=false;updateSyncDisplay()}}
@@ -6326,7 +6326,7 @@ const resolved=v1111QrResolveInventoryItemCore(lot);if(resolved.item)return reso
 };const v1111QrFindItemByNameCore=qrFindItemByName;qrFindItemByName=function(name){const exact=v1111QrFindItemByNameCore(name);if(exact)return exact
 ;return v1111RuleNormalItem(qrManagedRuleForName(name))};function v1111RequiredLabel(id,text){const el=document.getElementById(id);if(!el)return
 ;el.required=true;const label=el.closest("div")?.querySelector(":scope > .label")||el.previousElementSibling
-;if(label?.classList?.contains("label")&&!label.querySelector(".v1111RequiredMark"))label.insertAdjacentHTML("beforeend",' <span class="v1111RequiredMark">必須</span>')
+;if(label?.classList?.contains("label")&&!label.querySelector(".v1111RequiredMark")&&!String(label.textContent||"").includes("必須"))label.insertAdjacentHTML("beforeend",' <span class="v1111RequiredMark">必須</span>')
 }function v1111MarkQrEntryRequiredFields(){
 [["qrReceivedDate","入庫日"],["qrItemName","品目"],["qrPurchaseStaff","仕入れ担当者"],["qrContainerType","荷姿"],["qrQty","数量"],["qrSupplier","仕入先"],["qrOrigin","産地"],["qrLoc","保管場所"]].forEach(([id,text])=>v1111RequiredLabel(id,text))
 }const v1111QrCreatePageCore=qrCreatePage;qrCreatePage=async function(){const result=await v1111QrCreatePageCore();v1111MarkQrEntryRequiredFields()
@@ -7139,7 +7139,7 @@ function v133WorkerVersion(worker){return new Promise(resolve=>{if(!worker)retur
 async function v133AssessWaitingWorker(worker){if(!worker||!navigator.serviceWorker.controller)return;await v133LoadReleaseNotes();const workerVersion=await v133WorkerVersion(worker),candidate=workerVersion||v133ReleaseVersion;if(!v133IsNewerVersion(candidate)){v133WaitingWorker=null;v133WaitingVersion='';if(workerVersion&&v133NormalizeVersion(workerVersion)===v133NormalizeVersion(window.APP_VERSION))worker.postMessage({type:'SKIP_WAITING'});v133RefreshNotices();return}v133WaitingWorker=worker;v133WaitingVersion=candidate;v133RefreshNotices()}
 function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133AssessWaitingWorker(worker)}
 async function v133ApplyUpdate(){if(!v133HasNewVersion())return alert('この端末はすでに最新です。');if(!v133CanApplyUpdate()){const p=v133PendingSummary();return alert(`未同期・下書きが ${p.total}件あります。保存・再送を完了してから更新してください。`)}if(!confirm(`SEIKA＋ ${v133WaitingVersion||v133ReleaseVersion}へ更新して再起動しますか？`))return;try{await v188IdbFlush?.()}catch(e){return alert('端末内データの保護が完了していません。画面を閉じず、もう一度お試しください。')}v133ReloadForUpdate=true;v133WaitingWorker.postMessage({type:'SKIP_WAITING'})}
-async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.154',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
+async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.156',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
 function v133InstallEvents(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();v133DeferredInstallPrompt=e;v133RefreshNotices()});window.addEventListener('appinstalled',()=>{v133DeferredInstallPrompt=null;v133GuideDismiss();v133Toast('SEIKA＋をホーム画面へ追加しました','ok')});navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(v133ReloadForUpdate)location.reload()});navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='SEIKA_VERSION_READY'&&event.data.version!==String(window.APP_VERSION||'')){v133Toast('新しいアプリ版を取得しました。画面を再読み込みしてください','info',false)}});window.addEventListener('online',()=>{v133Toast('オンラインに戻りました','ok',false);updateSyncDisplay();v133RefreshNotices()});window.addEventListener('offline',()=>{v133Toast('オフラインです。確定操作は行わないでください','err',false);updateSyncDisplay();v133RefreshNotices()});document.addEventListener('pointerdown',()=>{v133UserInteracted=true},{once:true,passive:true});document.addEventListener('keydown',()=>{v133UserInteracted=true},{once:true})}
 const v133PageShellCore=pageShell;pageShell=function(title,sub,body,opts={}){v133PageShellCore(title,sub,body,opts);const sync=document.getElementById('syncInfo');if(sync&&!document.getElementById('v133HeaderMeta'))sync.insertAdjacentHTML('beforebegin',`<div id="v133HeaderMeta">${v133HeaderMetaHtml()}</div>`);const main=document.querySelector('.wrap');if(main&&v133HasNewVersion()&&!document.getElementById('v133UpdateBanner'))main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())};
 const v133HomeCore=home;home=function(){v133HomeCore();const main=document.querySelector('.wrap');if(!main)return;const extra=`${v133InstallBannerHtml()}${v133StartupCheckHtml()}`,first=main.firstElementChild;if(first)first.insertAdjacentHTML('beforebegin',extra);else main.innerHTML=extra};
@@ -8224,9 +8224,9 @@ const v1146HomeBase=window.home;
 window.home=function(){
   const generation=++v1146HomeGeneration;v1146HomeBase();
   if(db.role==='buyer'){
-    document.querySelectorAll('button[data-seika-click-action="settings"]').forEach(btn=>{if(btn.textContent.includes('適正在庫設定')){btn.setAttribute('onclick','optimalStockReviewPage()');btn.textContent='週次見直しを開く';}});
+    document.querySelectorAll('button[data-seika-click-action="settings"]').forEach(btn=>{if(btn.textContent.includes('適正在庫設定')){btn.removeAttribute('onclick');btn.setAttribute('data-seika-click-action','optimalStockReviewPage');btn.setAttribute('data-seika-click-args','%5B%5D');btn.textContent='週次見直しを開く';}});
   }
-  v1146LoadQrStock().then(()=>{if(generation!==v1146HomeGeneration||currentScreen!=='home')return;v1146HomeBase();if(db.role==='buyer')document.querySelectorAll('button[data-seika-click-action="settings"]').forEach(btn=>{if(btn.textContent.includes('適正在庫設定')){btn.setAttribute('onclick','optimalStockReviewPage()');btn.textContent='週次見直しを開く';}})}).catch(()=>{});
+  v1146LoadQrStock().then(()=>{if(generation!==v1146HomeGeneration||currentScreen!=='home')return;v1146HomeBase();if(db.role==='buyer')document.querySelectorAll('button[data-seika-click-action="settings"]').forEach(btn=>{if(btn.textContent.includes('適正在庫設定')){btn.removeAttribute('onclick');btn.setAttribute('data-seika-click-action','optimalStockReviewPage');btn.setAttribute('data-seika-click-args','%5B%5D');btn.textContent='週次見直しを開く';}})}).catch(()=>{});
 };
 
 const v1146MakeLineCopyTextBase=makeLineCopyText;
@@ -8674,6 +8674,104 @@ function v1143RetryQualityTask(){
 const V1154_VERSION='v1.154';
 window.APP_VERSION=V1154_VERSION;
 document.title='SEIKA＋ v1.154 在庫表適正在庫判定修正版';
+
+/* ===== v1.155 第1段階セキュリティ改善完了 ===== */
+const V1155_VERSION='v1.155';
+window.APP_VERSION=V1155_VERSION;
+document.title='SEIKA＋ v1.155 第1段階セキュリティ改善完了版';
+
+
+/* ===== v1.156 QR操作・市場メモ・セキュリティ強化 ===== */
+const V1156_VERSION='v1.156';
+window.APP_VERSION=V1156_VERSION;
+document.title='SEIKA＋ v1.156 QR操作・市場メモ・セキュリティ強化版';
+let v1156QrSearchState={kind:'detail',itemName:'',returnEnabled:false};
+function v1156QrItemName(lot){return String(lot?.item_name||'').trim()}
+async function v1156LoadQrSearchItems(selectedItem='',autoSearch=false){
+  const select=document.getElementById('qrManualItem');
+  if(!select)return;
+  try{
+    const lots=await qrSelect('qr_lots','select=item_name,current_qty,current_quantity,active&active=eq.true&order=item_name.asc&limit=2000');
+    const names=[...new Set(lots.filter(l=>Number(l.current_qty??l.current_quantity??0)>0).map(v1156QrItemName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
+    select.innerHTML=`<option value="">品目を選択してください</option>${names.map(name=>`<option value="${esc(name)}" ${name===selectedItem?'selected':''}>${esc(name)}</option>`).join('')}`;
+    select.disabled=false;
+    if(selectedItem&&!names.includes(selectedItem))select.insertAdjacentHTML('beforeend',`<option value="${esc(selectedItem)}" selected>${esc(selectedItem)}</option>`);
+    if(autoSearch&&selectedItem)await qrRunManualSearch(v1156QrSearchState.kind);
+  }catch(e){
+    select.innerHTML='<option value="">品目を取得できませんでした</option>';
+    document.getElementById('qrManualResults').innerHTML=`<div class="err">品目一覧を取得できませんでした。${esc(e.message||e)}</div>`;
+  }
+}
+function v1156QrSearchItemChanged(){
+  const itemName=document.getElementById('qrManualItem')?.value||'';
+  v1156QrSearchState.itemName=itemName;
+  if(itemName)qrRunManualSearch(v1156QrSearchState.kind);
+}
+qrManualSearchPage=function(kind='detail',selectedItem='',autoSearch=false,msg='',undoQ=''){
+  if(!canQrOperate())kind='detail';
+  v1156QrSearchState={kind,itemName:String(selectedItem||'').trim(),returnEnabled:!!selectedItem};
+  setScreen('qrManualSearchPage',[kind,selectedItem,autoSearch,msg,undoQ]);
+  const undo='';
+  pageShell(qrOpLabel(kind),'品目を選び、同じ品目のロットから選択してください',`${okHtml(msg)}<div class="card"><label class="label" for="qrManualItem">品目</label><select id="qrManualItem" class="input" disabled ${seikaEventAttrs('change','v1156QrSearchItemChanged',[])}><option value="">品目を読み込み中...</option></select><div class="row" style="margin-top:10px"><div><label class="label">入荷日（任意）</label><input id="qrManualDate" type="date" class="input"></div><div><label class="label">保管場所（任意）</label><select id="qrManualLoc" class="input">${qrFixedLocationOptions()}</select></div></div><details style="margin-top:12px"><summary class="btn btn2" style="display:block;cursor:pointer">QRキー・ロット番号で直接検索</summary><label class="label" style="margin-top:10px">QRキー・ロット番号（任意）</label><input id="qrManualQuery" class="input" placeholder="QRキーを貼付、またはロット番号"><button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','qrRunManualSearch',[kind])}>検索</button></details>${undo}</div><div id="qrManualResults"></div>`);
+  v1156LoadQrSearchItems(v1156QrSearchState.itemName,autoSearch);
+};
+qrRunManualSearch=async function(kind='detail'){
+  if(!canQrOperate())kind='detail';
+  const box=document.getElementById('qrManualResults'),itemName=document.getElementById('qrManualItem')?.value||'',q=String(document.getElementById('qrManualQuery')?.value||'').trim(),d=document.getElementById('qrManualDate')?.value||'',loc=document.getElementById('qrManualLoc')?.value||'';
+  if(q&&/^QR\d|^\{/.test(q)){const key=qrExtractKey(q);return kind==='detail'?qrScannedLotActionPage(key):qrOperationLotPage(kind,key)}
+  if(!itemName&&!q)return box.innerHTML='<div class="notice">品目を選択してください。</div>';
+  box.innerHTML='<div class="notice">検索中...</div>';
+  try{
+    let lots=await qrSelect('qr_lots','select=*&active=eq.true&current_qty=gt.0&order=received_date.asc&limit=500');
+    const low=q.toLowerCase();
+    lots=lots.filter(l=>(!itemName||v1156QrItemName(l)===itemName)&&(!d||l.received_date===d)&&(!loc||l.storage_location===loc)&&(!q||[l.lot_no,l.qr_key].some(v=>String(v||'').toLowerCase().includes(low))));
+    v1156QrSearchState={kind,itemName:itemName||v1156QrSearchState.itemName,returnEnabled:!!itemName};
+    box.innerHTML=lots.length?`<div class="notice"><b>${esc(itemName||'検索結果')} ${lots.length}件</b><div class="small">入荷日が古い順です。ロット・残数・保管場所を確認して選んでください。</div></div>${lots.map(l=>qrSelectableLotHtml(l,kind)).join('')}`:'<div class="notice">該当ロットがありません。</div>';
+  }catch(e){box.innerHTML=`<div class="err">検索に失敗しました。${esc(e.message||e)}</div>`}
+};
+const v1156QrSaveLotMovementCore=qrSaveLotMovement;
+qrSaveLotMovement=async function(kind,q){
+  const returnItem=kind==='out'&&v1156QrSearchState.returnEnabled?v1156QrSearchState.itemName:'';
+  if(!returnItem)return v1156QrSaveLotMovementCore(kind,q);
+  const completeCore=qrOperationCompletePage;
+  qrOperationCompletePage=function(doneKind,doneQ,rpc,wastePriceResult){
+    if(doneKind==='out')return qrManualSearchPage('detail',returnItem,true,`${returnItem}の出庫を保存しました。同じ品目の別ロットを続けて選べます。`,doneQ);
+    return completeCore(doneKind,doneQ,rpc,wastePriceResult);
+  };
+  try{return await v1156QrSaveLotMovementCore(kind,q)}finally{qrOperationCompletePage=completeCore}
+};
+function v1156MarketMemoCanonical(name){return v1144MemoNormalizeName(name)}
+function v1156MarketMemoMasterEligible(name){const label=v1156MarketMemoCanonical(name);return !!label&&Object.prototype.hasOwnProperty.call(ITEM_BUYER_MASTER,label)}
+function v1156MarketMemoNormalEligible(item){
+  if(!item||item.deleted===true||/入替品|入れ替え品/.test(String(item.name||'')))return false;
+  return assignedBuyerIds(item.id).length>0||v1156MarketMemoMasterEligible(item.name);
+}
+v1144MemoItemsFromLots=function(lots){
+  const map=new Map(),latest=latestMap(),eligibleItems=allSortedItems().filter(v1156MarketMemoNormalEligible),byId=new Map(eligibleItems.map(it=>[it.id,it]));
+  const add=(name,item)=>{const label=v1156MarketMemoCanonical(name);if(!label)return;const normalized=label.normalize('NFKC').replace(/[\s　]+/g,'').toLowerCase(),key=item?.id||`memo:${normalized}`,existing=map.get(normalized);if(!existing||item?.id)map.set(normalized,{key,name:label,itemId:item?.id||existing?.itemId||null})};
+  eligibleItems.forEach(it=>{if(Number(latest[it.id]?.total||0)>0)add(it.name,it)});
+  (lots||[]).filter(l=>l&&l.active!==false&&(Number(l.current_qty??l.current_quantity??0)>0||Number(l.current_weight??0)>0)).forEach(l=>{
+    const normal=qrFindItemByName(l.item_name),eligibleNormal=normal&&byId.get(normal.id);
+    if(eligibleNormal)add(eligibleNormal.name,eligibleNormal);
+    else if(v1156MarketMemoMasterEligible(l.item_name))add(l.item_name,null);
+  });
+  return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+};
+marketMemoFullPage=function(key){
+  if(!canViewMemo()){alert('表示できません');return home()}
+  const row=v1144MemoItemsFromLots(db.marketMemoQrLotsCache||[]).find(x=>x.key===key)||(()=>{const item=allSortedItems().find(x=>x.id===key);return item?{key:item.id,name:item.name,itemId:item.id}:null})();
+  if(!row)return marketMemoPage();
+  setScreen('marketMemoFullPage',[key]);
+  const memo=db.purchaseMemos?.[key]||'',buyer=v1144MemoBuyerText(row),mine=row.itemId&&isMyBuyerItem(row.itemId);
+  pageShell('市場動向・産地状況メモ',`${esc(row.name)} / 仕入れ担当者：${esc(buyer)}`,`<div class="card"><div class="itemHead"><div><h2 style="margin:0 0 4px">${esc(row.name)}</h2><div class="small">${mine?'あなたの担当品目です':'長文でも入力・確認しやすい全文表示です。'}</div>${marketMemoMetaHtml(key)}</div><span class="badge ${memo?'normal':'unset'}">${memo?'入力済み':'未入力'}</span></div>${canEditMemo()?`<label class="label" style="font-size:18px;margin-top:12px">市場動向・産地状況メモ（全文）</label><textarea id="marketMemo_${esc(key)}" class="textarea" style="min-height:55vh;font-size:22px;line-height:1.65;padding:18px" placeholder="例：産地切替予定、相場高騰、入荷不安、品質状況など">${esc(memo)}</textarea><button class="btn green" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','saveMarketMemo',[key])}>メモを保存</button>`:`<div class="memo" style="font-size:22px;line-height:1.75;white-space:pre-wrap;min-height:40vh">${memo?esc(memo):'<span class="small">未入力</span>'}</div>`}<button class="btn btn2" style="width:100%;margin-top:10px" data-seika-click-action="marketMemoPage" data-seika-click-args="%5B%5D">一覧へ戻る</button></div>`)
+};
+marketMemoPage=async function(){
+  setScreen('marketMemoPage');if(!canViewMemo()){alert('表示できません');return home()}
+  pageShell('市場動向・産地状況メモ','野菜の正式品目を読み込み中','<div class="card"><div class="notice">仕入担当が設定された野菜品目を確認しています。</div></div>');
+  let lots=[];try{lots=await qrSelect('qr_lots','select=*&active=eq.true&limit=2000');db.marketMemoQrLotsCache=lots}catch(e){lots=Array.isArray(db.marketMemoQrLotsCache)?db.marketMemoQrLotsCache:[]}
+  const rows=v1144MemoItemsFromLots(lots),loadWarn=lots.length?'':`<div class="warn">QR在庫を取得できませんでした。通常在庫で確認できる品目を表示しています。</div>`;
+  pageShell('市場動向・産地状況メモ','野菜の正式品目のみ（じゃが芋は一括）',`${loadWarn}${rows.map(row=>{const memo=db.purchaseMemos?.[row.key]||'',mine=row.itemId&&isMyBuyerItem(row.itemId);return`<section class="card"><div class="itemHead"><div><h2 style="margin:0 0 4px">${esc(row.name)}</h2><div class="small">仕入れ担当者：${esc(v1144MemoBuyerText(row))}${mine?'<br>あなたの担当品目です':''}</div>${marketMemoMetaHtml(row.key)}</div><span class="badge ${memo?'normal':'unset'}">${memo?'入力済み':'未入力'}</span></div><div class="memo" style="font-size:18px;line-height:1.65;max-height:7.2em;overflow:hidden">${marketMemoPreviewText(memo)}</div><button class="btn ${canEditMemo()?'blue':'btn2'}" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','marketMemoFullPage',[row.key])}>${canEditMemo()?'全文表示・編集':'全文表示'}</button></section>`}).join('')||'<div class="card notice">現在在庫がある対象野菜はありません。</div>'}`)
+};
 </script>
   </body>
 </html>
