@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.159 QR訂正再送・入庫担当者連携・DB権限修正版</title>
+    <title>SEIKA＋ v1.160 仕入れ担当者表記統一版</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -7139,7 +7139,7 @@ function v133WorkerVersion(worker){return new Promise(resolve=>{if(!worker)retur
 async function v133AssessWaitingWorker(worker){if(!worker||!navigator.serviceWorker.controller)return;await v133LoadReleaseNotes();const workerVersion=await v133WorkerVersion(worker),candidate=workerVersion||v133ReleaseVersion;if(!v133IsNewerVersion(candidate)){v133WaitingWorker=null;v133WaitingVersion='';if(workerVersion&&v133NormalizeVersion(workerVersion)===v133NormalizeVersion(window.APP_VERSION))worker.postMessage({type:'SKIP_WAITING'});v133RefreshNotices();return}v133WaitingWorker=worker;v133WaitingVersion=candidate;v133RefreshNotices()}
 function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133AssessWaitingWorker(worker)}
 async function v133ApplyUpdate(){if(!v133HasNewVersion())return alert('この端末はすでに最新です。');if(!v133CanApplyUpdate()){const p=v133PendingSummary();return alert(`未同期・下書きが ${p.total}件あります。保存・再送を完了してから更新してください。`)}if(!confirm(`SEIKA＋ ${v133WaitingVersion||v133ReleaseVersion}へ更新して再起動しますか？`))return;try{await v188IdbFlush?.()}catch(e){return alert('端末内データの保護が完了していません。画面を閉じず、もう一度お試しください。')}v133ReloadForUpdate=true;v133WaitingWorker.postMessage({type:'SKIP_WAITING'})}
-async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.159',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
+async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.160',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
 function v133InstallEvents(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();v133DeferredInstallPrompt=e;v133RefreshNotices()});window.addEventListener('appinstalled',()=>{v133DeferredInstallPrompt=null;v133GuideDismiss();v133Toast('SEIKA＋をホーム画面へ追加しました','ok')});navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(v133ReloadForUpdate)location.reload()});navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='SEIKA_VERSION_READY'&&event.data.version!==String(window.APP_VERSION||'')){v133Toast('新しいアプリ版を取得しました。画面を再読み込みしてください','info',false)}});window.addEventListener('online',()=>{v133Toast('オンラインに戻りました','ok',false);updateSyncDisplay();v133RefreshNotices()});window.addEventListener('offline',()=>{v133Toast('オフラインです。確定操作は行わないでください','err',false);updateSyncDisplay();v133RefreshNotices()});document.addEventListener('pointerdown',()=>{v133UserInteracted=true},{once:true,passive:true});document.addEventListener('keydown',()=>{v133UserInteracted=true},{once:true})}
 const v133PageShellCore=pageShell;pageShell=function(title,sub,body,opts={}){v133PageShellCore(title,sub,body,opts);const sync=document.getElementById('syncInfo');if(sync&&!document.getElementById('v133HeaderMeta'))sync.insertAdjacentHTML('beforebegin',`<div id="v133HeaderMeta">${v133HeaderMetaHtml()}</div>`);const main=document.querySelector('.wrap');if(main&&v133HasNewVersion()&&!document.getElementById('v133UpdateBanner'))main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())};
 const v133HomeCore=home;home=function(){v133HomeCore();const main=document.querySelector('.wrap');if(!main)return;const extra=`${v133InstallBannerHtml()}${v133StartupCheckHtml()}`,first=main.firstElementChild;if(first)first.insertAdjacentHTML('beforebegin',extra);else main.innerHTML=extra};
@@ -7687,7 +7687,7 @@ setScreen=function(name,args=[]){return v1144SetScreenCore(name,args);};
 function v1144QualityBuyerLabel(x){
   const names=(x.buyers||[]).map(b=>b.display_name||b.legacy_user_id).filter(Boolean).join('、');
   const source=x.buyer_source||'';
-  return {label:(source==='item_assignment'||source==='item_name_master')?'品目担当':'入庫時仕入担当者',names:names||v138T('担当未設定')};
+  return {label:(source==='item_assignment'||source==='item_name_master')?'品目担当':'仕入れ担当者',names:names||v138T('担当未設定')};
 }
 v1140QualityCard=function(x){
   const buyer=v1144QualityBuyerLabel(x),canAck=!x.acknowledged_at&&['review','bad'].includes(x.grade)&&(db.role==='admin'||db.role==='buyer'&&(x.buyers||[]).some(b=>b.legacy_user_id===db.userId)),color=x.grade==='bad'?'#dc2626':x.grade==='review'?'#f59e0b':'#16a34a',id=String(x.id||''),qrKey=String(x.qr_key||'');
@@ -8914,12 +8914,12 @@ v1103LoadQualityList=async function(append=false,generation=++v1140QualityReques
 
 
 
-/* ===== v1.159 QR訂正再送・入庫担当者連携・DB権限修正 ===== */
-const V1159_VERSION='v1.159';
+/* ===== v1.160 仕入れ担当者表記統一 ===== */
+const V1159_VERSION='v1.160';
 window.APP_VERSION=V1159_VERSION;
-document.title='SEIKA＋ v1.159 QR訂正再送・入庫担当者連携・DB権限修正版';
+document.title='SEIKA＋ v1.160 仕入れ担当者表記統一版';
 Object.assign(V138_ID,{
-  '入庫時仕入担当者':'Penanggung jawab pembelian saat penerimaan',
+  '仕入れ担当者':'Penanggung jawab pembelian saat penerimaan',
   '品目担当（旧データ）':'Penanggung jawab barang (data lama)',
   '訂正履歴再送エラー':'Kesalahan kirim ulang riwayat koreksi'
 });
@@ -8991,7 +8991,7 @@ retryPendingSync=async function(){
 };
 v1140QualityCard=function(x){
   const buyers=(x.buyers||[]).map(b=>b.display_name||b.legacy_user_id).filter(Boolean).join('、')||v138T('担当未設定');
-  const buyerLabel=x.buyer_source==='item_assignment'?v138T('品目担当（旧データ）'):v138T('入庫時仕入担当者');
+  const buyerLabel=x.buyer_source==='item_assignment'?v138T('品目担当（旧データ）'):v138T('仕入れ担当者');
   const canAck=!x.acknowledged_at&&['review','bad'].includes(x.grade)&&(db.role==='admin'||db.role==='buyer'&&(x.buyers||[]).some(b=>b.can_acknowledge===true&&b.legacy_user_id===db.userId));
   const color=x.grade==='bad'?'#dc2626':x.grade==='review'?'#f59e0b':'#16a34a',id=String(x.id||''),qrKey=String(x.qr_key||'');
   return `<div class="box" style="margin:10px 0;border-left:7px solid ${color}"><div class="itemHead"><div><b>${esc(x.item_name||'-')}</b><div class="small">${esc(x.lot_no||'-')} / ${esc(v138T('入荷日：'))}${esc(x.received_date||'-')}<br>${dt(x.evaluated_at)}</div></div><span class="badge ${x.grade==='bad'?'shortage':x.grade==='review'?'excess':'normal'}">${esc(v1140GradeLabel(x.grade))}</span></div><div style="margin-top:8px"><b>${esc(v138T('状態：'))}</b>${(x.issues||[]).map(esc).join('、')||v138T('なし')}</div>${x.memo?`<div class="memo"><b>${esc(v138T('メモ：'))}</b>${esc(x.memo)}</div>`:''}<div class="small" style="margin-top:7px">${esc(v138T('評価者：'))}${esc(x.evaluated_by_name||'-')}<br>${esc(buyerLabel)}：${esc(buyers)} / ${esc(v138T('写真：'))}${(x.photos||[]).length}${esc(v138T('枚'))}</div><div style="margin-top:8px">${v1140QualityStatus(x)}</div><div class="grid" style="margin-top:9px"><button type="button" class="btn blue" data-v1140-quality-action="lot" data-qr-key="${esc(qrKey)}">${esc(v138T('QRロット詳細'))}</button>${(x.photos||[]).length?`<button type="button" class="btn btn2" data-v1140-quality-action="photos" data-evaluation-id="${esc(id)}">${esc(v138T('写真を見る'))}</button>`:''}${canAck?`<button type="button" class="btn green" data-v1140-quality-action="ack" data-evaluation-id="${esc(id)}">${esc(v138T('確認済みにする'))}</button>`:''}</div><div id="v1103Photos_${esc(id)}_list"></div></div>`;
