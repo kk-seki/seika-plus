@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/seika-192.png" />
     <link rel="icon" type="image/png" href="./icons/seika-192.png" />
-    <title>SEIKA＋ v1.162 トリミング・廃棄単価修正版</title>
+    <title>SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版</title>
     <style>
 :root{
   --bg:#f8fafc; --ink:#0f172a; --line:#e2e8f0;
@@ -5810,7 +5810,7 @@ p_module:module,p_target_month:v1101MonthDate(key)})
 alert(`保存確認を記録できませんでした。\n${e.message||e}`)}}function v1101Deletable(key){
 const[y,m]=monthInputValue(new Date).split("-").map(Number),d=new Date(y,m-5,1),limit=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`
 ;return String(key).slice(0,7)<=limit}async function v1101Purge(module,key){if(!canAdmin())return alert("履歴削除は管理者のみです")
-;if(!v1102QualityDeletable(key))return alert("品質評価は直近2か月を保持します。保持期間が終わっていません")
+;if(!v1102QualityDeletable(key))return alert("品質評価は直近3か月を保持します。保持期間が終わっていません")
 ;if(!confirm(`${monthLabel(v1101MonthDate(key))}の${v1101ModuleName(module)}をデータベースから削除します。\nExcelファイルが保存済みであることを再確認してください。\nこの操作は取り消せません。`))return
 ;try{const ans=await callRpc("purge_monthly_archive_v1101",{p_module:module,p_target_month:v1101MonthDate(key)});if(module==="waste"){
 const start=v1101MonthDate(key),end=monthRangeFromMonthValue(String(key).slice(0,7)).end
@@ -5876,7 +5876,7 @@ p_target_month:v1101MonthDate(key)});await v1101ArchivePage(`${monthLabel(v1101M
 alert("保存確認を記録できませんでした。\n"+(e.message||e))}}async function v1102StorageDelete(path){if(!await authEnsure())throw new Error("再ログインしてください")
 ;const encoded=path.split("/").map(encodeURIComponent).join("/"),res=await fetch(`${SUPABASE_URL}/storage/v1/object/qr-quality-photos/${encoded}`,{
 method:"DELETE",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+authToken()}});if(!res.ok&&res.status!==404)throw new Error(await res.text())}
-function v1102QualityDeletable(key){const[y,m]=monthInputValue(new Date).split('-').map(Number),limitDate=new Date(y,m-3,1),limit=`${limitDate.getFullYear()}-${String(limitDate.getMonth()+1).padStart(2,'0')}`;return String(key).slice(0,7)<limit}
+function v1102QualityDeletable(key){const[y,m]=monthInputValue(new Date).split('-').map(Number),limitDate=new Date(y,m-4,1),limit=`${limitDate.getFullYear()}-${String(limitDate.getMonth()+1).padStart(2,'0')}`;return String(key).slice(0,7)<limit}
 async function v1102PurgeQuality(key){if(!canAdmin())return alert("履歴削除は管理者のみです");if(!confirm(`${monthLabel(v1101MonthDate(key))}の品質評価と写真を削除します。\nExcelがデスクネッツへ保管済みであることを確認してください。\nQRロット本体・QR操作履歴・在庫数量は削除しません。`))return
 ;v161ShowProcessing("品質写真と評価履歴を安全に整理しています");try{const prep=await callRpc("prepare_monthly_quality_purge_v1166",{p_target_month:v1101MonthDate(key)})
 ;if(prep?.already_deleted)return v1101ArchivePage(`${monthLabel(v1101MonthDate(key))}はすでに品質評価整理済みです。`);for(const path of prep?.storage_paths||[])await v1102StorageDelete(path);const ans=await callRpc("finalize_monthly_quality_purge_v1166",{
@@ -5885,10 +5885,10 @@ p_target_month:v1101MonthDate(key)})
 }catch(e){alert("品質評価履歴を整理できませんでした。\n"+(e.message||e)+"\n\n途中で止まった場合は同じ削除ボタンを再度押してください。")}finally{v161HideProcessing()}}
 function v1102QualityArchiveCard(a){
 const key=String(a.target_month||"").slice(0,7),saved=a.status==="excel_saved",deleted=a.status==="deleted",created=!!a.excel_created_at,deleting=a.status==="deleting"
-;return`<div class="box" style="margin:10px 0;${deleted?"opacity:.72":""}"><div class="itemHead"><div><b>${monthLabel(v1101MonthDate(key))}</b><div class="small">評価：${Number(a.row_count||0)}件 / 写真：${Number(a.photo_count||0)}枚${a.excel_created_at?`<br>作成：${dt(a.excel_created_at)}`:""}${a.excel_saved_at?`<br>保存確認：${dt(a.excel_saved_at)} / ${esc(a.excel_saved_by_name||"")}`:""}</div></div><span class="badge ${deleted||saved?"normal":created?"excess":"unset"}">${deleting?"削除処理中":v1101ArchiveStatusLabel(a.status)}</span></div>${!deleted?`<button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1102DownloadQualityExcel',[key])}>写真付きExcelを作成してダウンロード</button>${created&&!saved&&canAdmin()?`<label class="switch" style="margin-top:10px"><input id="v1102QualitySaved_${key}" type="checkbox"> Excelをデスクネッツの「QR在庫履歴」へ保管しました</label><button class="btn green" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1102ConfirmQualitySaved',[key])}>Excel保存済みとして記録</button>`:created&&!saved?'<div class="notice">管理者の保存確認待ちです。</div>':""}${a.purge_eligible&&canAdmin()?`<button class="btn danger" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1102PurgeQuality',[key])}>2か月経過データと写真を削除</button>`:""}`:""}</div>`
+;return`<div class="box" style="margin:10px 0;${deleted?"opacity:.72":""}"><div class="itemHead"><div><b>${monthLabel(v1101MonthDate(key))}</b><div class="small">評価：${Number(a.row_count||0)}件 / 写真：${Number(a.photo_count||0)}枚${a.excel_created_at?`<br>作成：${dt(a.excel_created_at)}`:""}${a.excel_saved_at?`<br>保存確認：${dt(a.excel_saved_at)} / ${esc(a.excel_saved_by_name||"")}`:""}</div></div><span class="badge ${deleted||saved?"normal":created?"excess":"unset"}">${deleting?"削除処理中":v1101ArchiveStatusLabel(a.status)}</span></div>${!deleted?`<button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1102DownloadQualityExcel',[key])}>写真付きExcelを作成してダウンロード</button>${created&&!saved&&canAdmin()?`<label class="switch" style="margin-top:10px"><input id="v1102QualitySaved_${key}" type="checkbox"> Excelをデスクネッツの「QR在庫履歴」へ保管しました</label><button class="btn green" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1102ConfirmQualitySaved',[key])}>Excel保存済みとして記録</button>`:created&&!saved?'<div class="notice">管理者の保存確認待ちです。</div>':""}${a.purge_eligible&&canAdmin()?`<button class="btn danger" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1102PurgeQuality',[key])}>3か月経過データと写真を削除</button>`:""}`:""}</div>`
 }function v1102QualityArchiveSection(){if(!["admin","worker","clerk"].includes(db.role))return""
 ;const rows=v1102QualityArchives.filter(x=>String(x.target_month||"").slice(0,7)<monthInputValue(new Date)).slice(0,36)
-;return`<section class="card"><h2 style="margin-top:0">QR品質評価履歴</h2><div class="small">品質評価と写真を月ごとに1つのExcelへ出力します。写真は各評価の行へ最大3枚埋め込みます。品質評価と写真のみ、Excel保存確認後に2か月保持で整理します。QRロット・QR操作履歴・在庫数量は残ります。</div>${v1101DesknetPath("QR在庫履歴")}<div class="box" style="margin-top:12px"><b>月を選んで写真付きExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="v1102QualityMonth" class="input" type="month" max="${previousMonthKey()}" value="${previousMonthKey()}"></div><div><button class="btn blue" ${seikaEventAttrs('click','seikaSelectedQualityMonth',[])}>選択月をExcel出力</button></div></div></div>${rows.length?rows.map(v1102QualityArchiveCard).join(""):'<div class="notice" style="margin-top:12px">対象履歴はありません。</div>'}</section>`
+;return`<section class="card"><h2 style="margin-top:0">QR品質評価履歴</h2><div class="small">品質評価と写真を月ごとに1つのExcelへ出力します。写真は各評価の行へ最大3枚埋め込みます。品質評価と写真のみ、Excel保存確認後に3か月保持で整理します。QRロット・QR操作履歴・在庫数量は残ります。</div>${v1101DesknetPath("QR在庫履歴")}<div class="box" style="margin-top:12px"><b>月を選んで写真付きExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="v1102QualityMonth" class="input" type="month" max="${previousMonthKey()}" value="${previousMonthKey()}"></div><div><button class="btn blue" ${seikaEventAttrs('click','seikaSelectedQualityMonth',[])}>選択月をExcel出力</button></div></div></div>${rows.length?rows.map(v1102QualityArchiveCard).join(""):'<div class="notice" style="margin-top:12px">対象履歴はありません。</div>'}</section>`
 }async function v1101ArchivePage(msg=""){setScreen("v1101ArchivePage",[msg])
 ;const modules=["qr","waste","trimming"].filter(v1101CanModule),qualityAllowed=["admin","worker","clerk"].includes(db.role);try{
 await Promise.all([...modules.map(v1101LoadArchives),...qualityAllowed?[v1102LoadQualityArchives()]:[]])}catch(e){
@@ -5897,7 +5897,7 @@ const names={qr:"QR在庫履歴",waste:"廃棄履歴",trimming:"歩留まり・�
 const rows=v1101ArchiveRows(module),prev=monthInputValue(new Date),visible=rows.filter(x=>String(x.target_month||"").slice(0,7)<prev).slice(0,36)
 ;return`<section class="card"><h2 style="margin-top:0">${names[module]}</h2><div class="small">前月以前の月ごとにExcel出力・文書管理への保管確認・3か月経過後のDB整理を管理します。${module==="qr"?"QRロット本体は削除せず、操作履歴だけを整理します。":""}</div>${v1101DesknetPath(folders[module])}<div class="box" style="margin-top:12px"><b>月を選んでExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="v1101Month_${module}" class="input" type="month" max="${previousMonthKey()}" value="${previousMonthKey()}"></div><div><button class="btn blue" ${seikaEventAttrs('click','v1101DownloadSelected',[module])}>選択月をExcel出力</button></div></div></div>${visible.length?visible.map(a=>v1101ArchiveCard(module,a)).join(""):'<div class="notice" style="margin-top:12px">対象履歴はありません。</div>'}</section>`
 }).join("")
-;pageShell("月次Excel・履歴管理","在庫表・QR・廃棄・品質評価・歩留まりを同じ画面で出力・保管・整理",`${okHtml(msg)}<div class="notice"><b>月次処理の順番</b><div class="small">Excel出力 → デスクネッツ文書管理の履歴別フォルダへ保管 → 管理者が保存済み記録 → 対象月から保持期間後に管理者がDB整理します（品質評価・写真は2か月、その他は3か月）。削除条件はSupabase側でも再確認します。</div></div>${v1101InventoryArchiveSection()}${sections}${v1102QualityArchiveSection()}`)
+;pageShell("月次Excel・履歴管理","在庫表・QR・廃棄・品質評価・歩留まりを同じ画面で出力・保管・整理",`${okHtml(msg)}<div class="notice"><b>月次処理の順番</b><div class="small">Excel出力 → デスクネッツ文書管理の履歴別フォルダへ保管 → 管理者が保存済み記録 → 対象月から保持期間後に管理者がDB整理します（品質評価・写真を含め、すべて3か月）。削除条件はSupabase側でも再確認します。</div></div>${v1101InventoryArchiveSection()}${sections}${v1102QualityArchiveSection()}`)
 }const v1101LegacyMonthlyArchivePage=monthlyArchivePage,v1101AccountMenuCore=accountMenu;monthlyArchivePage=function(msg=""){
 return v1101ArchivePage(msg)};accountMenu=function(){v1101AccountMenuCore();const menu=document.querySelector(".menu");if(!menu)return
 ;menu.querySelectorAll("button").forEach(b=>{if((b.getAttribute("onclick")||"").includes("monthlyArchivePage"))b.remove()})
@@ -6357,9 +6357,9 @@ const requiredKey=localStorage.getItem(V1111_REQUIRED_QUALITY_KEY)||"";await v11
 
 
 /* ===== v1.119.1 本番安全化: 棚卸し台帳・QR誤登録訂正 ===== */
-const V119_APP_VERSION="v1.119";
+const V119_APP_VERSION='v1.176';
 window.APP_VERSION=V119_APP_VERSION;
-document.title="SEIKA＋ v1.119 棚卸し・QR訂正版";
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 function v119CanPriceInput(){return ["admin","sales","clerk"].includes(db.role)}
 function v119CanCountView(){return ["admin","worker","sales","clerk"].includes(db.role)}
@@ -6546,7 +6546,7 @@ qrSecondaryActions=function(lot,includeDelete=false){if(!canQrOperate())return""
 async function v119SoftDeleteMistakenQrLot(q){if(!canAdmin())return alert("誤登録ロットを削除できるのは管理者のみです。");const reason=prompt("誤登録ロットを論理削除する理由を入力してください（必須）");if(!reason||!reason.trim())return alert("削除理由を入力してください。");if(!confirm("入庫時の数量・重量から変動がなく、出庫・廃棄・調整・棚卸し・トリミングがないロットだけ削除できます。品質評価・写真は無効化して監査記録を残します。実行しますか？"))return;v161ShowProcessing("誤登録ロットの安全確認と論理削除をしています");try{const result=await callRpc("soft_delete_mistaken_qr_lot_v1119",{p_qr_key:q,p_reason:reason.trim()}),messages=(result?.blockers||[]).map(row=>row?.message||String(row)).filter(Boolean);if(!result?.ok)throw new Error(messages.join("\n")||result?.message||"後続業務があるため削除できません。");qrLotListPage("","newest","inStock",100);alert("誤登録ロットを論理削除しました。品質評価・写真は無効化され、監査記録を残しています。")}catch(error){alert(`誤登録ロットを削除できませんでした。\n${error.message||error}`)}finally{v161HideProcessing()}}
 
 /* ===== v1.120 棚卸しテストモード（在庫反映なし） ===== */
-const V120_APP_VERSION="v1.121";window.APP_VERSION=V120_APP_VERSION;
+const V120_APP_VERSION='v1.176';window.APP_VERSION=V120_APP_VERSION;
 function v120IsTest(s){return Boolean(s&&s.isTest===true&&s.mode==="test")}
 function v120TestBadge(){return '<div class="card" style="border:2px solid #dc2626;background:#fff1f2;color:#991b1b"><b>【テスト・在庫反映なし】</b><div class="small">この棚卸しは操作確認専用です。通常在庫・QR在庫・移動履歴は一切更新しません。</div></div>'}
 const v120CountEditableCore=countEditable;countEditable=function(s){return Boolean(canInventoryCountInput()&&s&&(s.status==="counting"||v120IsTest(s)&&s.status==="test_counting"))};
@@ -6574,7 +6574,7 @@ function v119ShowBootError(error){console.error("SEIKA＋の起動に失敗し�
 let v119BootStarted=false;
 function v119StartBoot(){if(v119BootStarted)return;v119BootStarted=true;Promise.resolve().then(()=>boot()).catch(v119ShowBootError)}
 /* ===== v1.121 棚卸しテスト同期救出（未同期入力を保持） ===== */
-const V121_APP_VERSION="v1.121";window.APP_VERSION=V121_APP_VERSION;
+const V121_APP_VERSION='v1.176';window.APP_VERSION=V121_APP_VERSION;
 function v121Clone(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v))}
 function v121Equal(a,b){return JSON.stringify(a)===JSON.stringify(b)}
 function v121TestSession(s){return Boolean(s&&s.isTest===true&&s.mode==="test")}
@@ -6657,7 +6657,7 @@ v178ResolvePendingInventoryConflict=async function(){
 };
 /* v1.122の画面表示と起動は、この後に一度だけ行う */
 /* ===== v1.122 テスト棚卸し同期救出（意味的正規化） ===== */
-const V122_APP_VERSION="v1.122"; APP_VERSION=V122_APP_VERSION; window.APP_VERSION=V122_APP_VERSION; document.title="SEIKA＋ v1.122 棚卸し同期救出修正版";
+const V122_APP_VERSION='v1.176'; APP_VERSION=V122_APP_VERSION; window.APP_VERSION=V122_APP_VERSION; document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 function v122Own(o,k){return Object.prototype.hasOwnProperty.call(o||{},k)}
 function v122Blank(v){return v===undefined||v===null||(typeof v==="string"&&v.trim()==="")}
 function v122Number(v){if(v122Blank(v))return 0;const n=Number(v);return Number.isFinite(n)?n:v}
@@ -6741,9 +6741,9 @@ v121MergeTestRow=v122MergeTestRow;
 v121MergeTestSession=v122MergeTestSession;
 
 /* ===== v1.124 棚卸し片岡分離・統合Excel ===== */
-const V123_APP_VERSION="v1.123";
+const V123_APP_VERSION='v1.176';
 window.APP_VERSION=V123_APP_VERSION;
-document.title="SEIKA＋ v1.123 棚卸し分担・一括保存";
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 const V123_DRAFT_PREFIX="seika_inventory_count_draft_v123";
 const v123Clone=x=>x===undefined?undefined:JSON.parse(JSON.stringify(x));
 const v123Now=()=>nowIso();
@@ -6882,7 +6882,7 @@ v119SaveInventoryCountPrices=async function(id){
 let v123AllowInventoryCountGenericWrite=false;
 const v123RolePayloadSafetyCore=v188RolePayload;v188RolePayload=function(payload,role=db?.role){const out=v123RolePayloadSafetyCore(payload,role);if(!v123AllowInventoryCountGenericWrite&&out&&Object.prototype.hasOwnProperty.call(out,"inventoryCounts"))delete out.inventoryCounts;return out};
 function v123NewSession(room,isTest=false){const at=nowIso(),sessionId=qrInventoryUuid();return qrCountSnapshot(room).then(qrLines=>({id:sessionId,qrOperationId:sessionId,qrCancelOperationId:qrInventoryStableUuid(sessionId,"cancel"),countNo:isTest?`TEST-${String(Date.now())}-${room==="room2"?"R2":"R3"}`:countNumber(room),room,roomLabel:roomLabel(room),status:isTest?"test_counting":"counting",isTest:isTest||undefined,mode:isTest?"test":undefined,inventoryApplied:false,qrApplied:false,startedAt:at,startedBy:db.user,startedById:db.userId,updatedAt:at,updatedBy:db.user,lines:[...countNormalLines(room),...countSpecialLines(room)],qrLines,qrStatus:isTest?"test_counting":"counting",qrSnapshotAt:at,qrNote:`QRロットも対象です。${qrCountLocations(room).join("・")}の開始時在庫 ${qrLines.length}ロットを固定しました。全ロットの確認が必要です。`,createdAt:at,revision:1}))}
-async function v123StartSession(room,isTest=false){if(!canInventoryCountInput())return alert(`${isTest?"テスト棚卸し":"棚卸し"}開始は管理者・青果社員のみです。`);if(!validColdRoom(room))return alert("冷蔵庫を選択してください。");await loadCloud();v123AllSessions();const active=isTest?v120TestActiveForRoom(room):countActiveForRoom(room);if(active){if(confirm(`${roomLabel(room)}の${isTest?"テスト":""}棚卸しが進行中です。続きを開きますか？`))return v123NormalPage(active.id);return}try{const session=await v123NewSession(room,isTest);v123NormalizeSession(session);v161ShowProcessing("開始時点の在庫を固定しています");const ans=await callRpc("v123_create_inventory_count_session",{p_id:STATE_ID,p_session:session,p_operation_id:crypto?.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`});if(!ans?.ok)throw new Error(ans?.message||"棚卸しを開始できませんでした。");await loadCloud();v123NormalPage(session.id,`${isTest?"テスト":""}棚卸しを開始しました。通常在庫とQR在庫は別々に入力・保存できます。`)}catch(error){alert(`${isTest?"テスト":""}棚卸しを開始できませんでした。\n${v161ErrorText(error)}`)}finally{v161HideProcessing()}}
+async function v123StartSession(room,isTest=false){if(!canInventoryCountInput())return alert(`${isTest?"テスト棚卸し":"棚卸し"}開始は管理者・青果社員のみです。`);if(!validColdRoom(room))return alert("冷蔵庫を選択してください。");await loadCloud();v123AllSessions();const active=isTest?v120TestActiveForRoom(room):countActiveForRoom(room);if(active){if(confirm(`${roomLabel(room)}の${isTest?"テスト":""}棚卸しが進行中です。続きを開きますか？`))return v123NormalPage(active.id);return}try{const session=await v123NewSession(room,isTest);v123NormalizeSession(session);v161ShowProcessing("開始時点の在庫を固定しています");const ans=await callRpc("v171_create_simple_inventory_count_session",{p_id:STATE_ID,p_session:session,p_operation_id:crypto?.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`});if(!ans?.ok)throw new Error(ans?.message||"棚卸しを開始できませんでした。");await loadCloud();v123NormalPage(session.id,`${isTest?"テスト":""}棚卸しを開始しました。通常在庫とQR在庫は別々に入力・保存できます。`)}catch(error){alert(`${isTest?"テスト":""}棚卸しを開始できませんでした。\n${v161ErrorText(error)}`)}finally{v161HideProcessing()}}
 startInventoryCount=function(room){return v123StartSession(room,false)};startInventoryTestCount=function(room){return v123StartSession(room,true)};
 function v123WeightBreakdown(line){if(!Array.isArray(line?.weightEntries))return"";const parts=line.weightEntries.filter(e=>String(e?.packKg??"").trim()!==""||String(e?.caseCount??"").trim()!=="").map(e=>`${e.packKg}kg×${e.caseCount}ケース`);if(String(line.remainderKg??"").trim()!=="")parts.push(`端数${line.remainderKg}kg`);return parts.join(" + ")}
 v119InventoryCountExcelRows=function(session){return v119AllPriceRows(session).map(({line,isQr})=>({group:isQr?"QR":line.type==="special"?"その他":"通常",item:line.itemName||"",lot:isQr?(line.lotNo||line.qrKey||""):"",supplier:line.supplier||line.supplier_name||"",container:isQr?(line.containerType||line.unit||""):(line.unit||"kg"),weightBreakdown:isQr?"":v123WeightBreakdown(line),packKg:isQr?(line.packWeight||""):(line.packKg??""),cases:line.caseCount??"",remainderKg:line.remainderKg??"",actualKg:v123LineKg(line,isQr),systemQty:line.systemQty??"",actualQty:line.actualQty??"",diff:line.actualQty===null||line.actualQty===undefined?"":yen(Number(line.actualQty)-Number(line.systemQty||0)),unitPrice:v119StrictDecimal(line.unitPriceYenPerKg),amount:v119LinePriceAmount(line,isQr),memo:line.memo||""}))};
@@ -6897,9 +6897,9 @@ if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",
 /* ===== v1.124 棚卸し片岡分離・統合Excel =====
  * Dedicated RPC path. v1.122 rescue entries stay readable; new inventory counts never use generic sync.
  */
-const V124_APP_VERSION='v1.124';
+const V124_APP_VERSION='v1.176';
 window.APP_VERSION=V124_APP_VERSION;
-document.title='SEIKA＋ v1.124 棚卸し片岡分離・統合Excel';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 const V124_DRAFT_PREFIX='seika_inventory_count_draft_v124';
 const v124Clone=x=>x===undefined?undefined:JSON.parse(JSON.stringify(x));
 const v124Sections=s=>s?.room==='room2'?['normal','qr','kataoka']:['normal','qr'];
@@ -6942,7 +6942,7 @@ function v124SectionHeader(s,section){const x=v124SectionStats(s,section),state=
 function v124SectionPage(id,section,msg='',filter=false){const s=countSession(id);if(!s)return inventoryCountHome('棚卸しが見つかりません。');v124NormalizeSession(s);if(section==='kataoka'&&(s.room!=='room2'||!['submitted','confirmed'].includes(s.normalStatus)))return inventoryCountHome('片岡在庫は第2冷蔵庫の通常在庫を提出後に入力できます。');setScreen('v124SectionPage',[id,section,msg,filter]);const editable=v124Editable(s,section),missing=v124Missing(s,section),entries=v124EntryMap(s,section),all=v124SectionRows(s,section),lines=filter?all.filter(l=>missing.some(x=>v124LineId(x,section)===v124LineId(l,section))):all;const content=section==='qr'?lines.map(l=>v124QrLineHtml(s,l,editable,entries.get(v124LineId(l,'qr'))||{id:v124LineId(l,'qr')})).join(''):lines.map(l=>v124NormalLineHtml(s,l,section,editable,entries.get(v124LineId(l,section))||{id:v124LineId(l,section),weightEntries:[{id:'w-1',packKg:'',caseCount:''}]})).join('');pageShell(`${v124SectionLabel(section)} 棚卸し入力`,`${esc(s.countNo)} / ${esc(s.roomLabel)}`,`${v123Test(s)?v120TestBadge():''}${okHtml(msg)}${v124SectionHeader(s,section)}${section==='normal'&&v123CanPrintSheet(s)?`<div class="card notice"><b>入力前・途中用</b><button class="btn btn2" style="width:100%;margin-top:7px" ${seikaEventAttrs('click','v124PrintSheet',[id])}>通常在庫の記入票を印刷</button></div>`:''}<div class="card"><div class="grid"><button class="btn btn2" ${seikaEventAttrs('click','v124SectionPage',[id,section,'',!filter])}>${filter?'全件を表示':'未入力だけ表示'}</button><button class="btn btn2" ${seikaEventAttrs('click','v124ShowMissing',[id,section])}>未入力一覧（${missing.length}件）</button></div></div><div class="card"><b>${v124SectionLabel(section)}</b><div class="small">空欄は未入力、0は確認済みの在庫なしです。画面下でまとめて確認・保存します。</div>${content||'<div class="small">対象品目はありません。</div>'}</div>${editable?`<div class="card"><button class="btn green" style="width:100%" ${seikaEventAttrs('click','v124ReviewEntries',[id,section])}>入力内容をまとめて確認</button></div>`:''}`)}
 function v124ShowMissing(id,section){const s=countSession(id),rows=v124Missing(s,section);if(!rows.length)return alert('未入力はありません。');if(confirm(`${v124SectionLabel(section)}の未入力 ${rows.length}件\n\n${rows.map(x=>x.itemName||'品名').join('\n')}\n\nOKで未入力だけを表示します。`))v124SectionPage(id,section,'未入力項目を赤枠で表示しています。',true)}
 function v124ReviewEntries(id,section){v124PersistDom(id,section);const s=countSession(id),missing=v124Missing(s,section),entries=v124DraftEntries(s,section);v124ApplyEntries(s,section,entries);const sum=v124SectionRows(s,section).map(x=>`<li>${esc(x.itemName||'品名')}：${v123Entered(x)?esc(fmt(x.actualQty)+(x.unit||'')):'<b style="color:#b91c1c">未入力</b>'}</li>`).join('');pageShell(`${v124SectionLabel(section)} 入力内容の確認`,`${esc(s.countNo)} / 未入力 ${missing.length}件`,`${missing.length?`<div class="card notice"><b>未入力が${missing.length}件あります。</b><div class="small">入力済みの値は消えません。下書き保存はできますが提出はできません。</div></div>`:'<div class="card ok"><b>全件入力済みです。入力完了として提出できます。</b></div>'}<div class="card"><ul>${sum}</ul></div><div class="grid"><button class="btn blue" ${seikaEventAttrs('click','v124SaveSection',[id,section,'draft'])}>${missing.length?'未入力のまま下書き保存':'下書き保存'}</button>${!missing.length?`<button class="btn green" ${seikaEventAttrs('click','v124SaveSection',[id,section,'submit'])}>入力完了として提出</button>`:''}<button class="btn btn2" ${seikaEventAttrs('click','v124SectionPage',[id,section])}>入力画面へ戻る</button></div>`)}
-async function v124SaveSection(id,section,action){const s=countSession(id);v124PersistDom(id,section);const missing=v124Missing(s,section),entries=v124DraftEntries(s,section);if(action==='submit'&&missing.length)return v124ReviewEntries(id,section);const op=crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;v161ShowProcessing(`${v124SectionLabel(section)}を保存しています`);try{const ans=await callRpc('v124_save_inventory_count_section',{p_id:STATE_ID,p_session_id:id,p_section:section,p_expected_section_revision:Number(s[v124RevisionKey(section)])||0,p_entries:entries,p_action:action,p_operation_id:op});if(ans?.conflict)throw new Error(ans.message||'別端末で更新されています。');if(!ans?.ok)throw new Error(ans?.message||'保存できませんでした。');v124ClearDraft(id,section);await loadCloud();inventoryCountHome(`${v124SectionLabel(section)}を${action==='submit'?'入力完了として提出':'下書き保存'}しました。`)}catch(e){alert(`${v124SectionLabel(section)}を保存できませんでした。\n${v161ErrorText(e)}\n\n入力内容はこの端末に保持しています。`);v124SectionPage(id,section)}finally{v161HideProcessing()}}
+async function v124SaveSection(id,section,action){const s=countSession(id);v124PersistDom(id,section);const missing=v124Missing(s,section),entries=v124DraftEntries(s,section);if(action==='submit'&&missing.length)return v124ReviewEntries(id,section);const op=crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;v161ShowProcessing(`${v124SectionLabel(section)}を保存しています`);try{const ans=await callRpc('v171_save_simple_inventory_count_section',{p_id:STATE_ID,p_session_id:id,p_section:section,p_expected_section_revision:Number(s[v124RevisionKey(section)])||0,p_entries:entries,p_action:action,p_operation_id:op});if(ans?.conflict)throw new Error(ans.message||'別端末で更新されています。');if(!ans?.ok)throw new Error(ans?.message||'保存できませんでした。');v124ClearDraft(id,section);await loadCloud();inventoryCountHome(`${v124SectionLabel(section)}を${action==='submit'?'入力完了として提出':'下書き保存'}しました。`)}catch(e){alert(`${v124SectionLabel(section)}を保存できませんでした。\n${v161ErrorText(e)}\n\n入力内容はこの端末に保持しています。`);v124SectionPage(id,section)}finally{v161HideProcessing()}}
 async function v124ReturnSection(id,section){const s=countSession(id);if(!canAdmin())return alert('差戻しできるのは管理者のみです。');if(!confirm(`${v124SectionLabel(section)}を入力へ差戻しますか？`))return;try{const ans=await callRpc('v124_return_inventory_count_section',{p_id:STATE_ID,p_session_id:id,p_section:section,p_expected_section_revision:Number(s[v124RevisionKey(section)])||0,p_operation_id:crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`});if(!ans?.ok)throw new Error(ans?.message||'差戻しできませんでした。');await loadCloud();inventoryCountHome(`${v124SectionLabel(section)}を差戻しました。`)}catch(e){alert(v161ErrorText(e))}}
 async function v124ConfirmSection(id,section){let s=countSession(id);if(!canAdmin()||!s||v124SectionStatus(s,section)!=='submitted')return alert('管理者が提出済み工程だけ確定できます。');if(!confirm(`${v124SectionLabel(section)}を確定します。${v123Test(s)?'テストのため在庫には反映しません。':'確定済み工程だけを反映します。'} よろしいですか？`))return;v161ShowProcessing(`${v124SectionLabel(section)}を確定しています`);try{await loadCloud();s=countSession(id);if(!s||v124SectionStatus(s,section)!=='submitted')throw new Error('工程の状態が更新されています。');if(section==='qr'&&!v123Test(s)){const qr=await callRpc('confirm_qr_inventory_session',{p_session_id:s.id,p_operation_id:`v124-qr-${s.id}`,p_room:s.room,p_entries:(s.qrLines||[]).map(qrCountEntry),p_user_id:db.userId||null,p_user_name:db.user||null,p_device_meta:{deviceId:deviceId(),userAgent:navigator.userAgent||''},p_operation_meta:operationMeta('v124_qr_inventory_count',{sessionId:s.id,countNo:s.countNo})});if(!qr?.ok)throw new Error(qr?.message||'QR在庫確定に失敗しました。')}const ans=await callRpc('v124_confirm_inventory_count_section',{p_id:STATE_ID,p_session_id:id,p_section:section,p_expected_section_revision:Number(s[v124RevisionKey(section)])||0,p_operation_id:crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`});if(ans?.conflict)throw new Error(ans.message||'別端末で更新されています。');if(!ans?.ok)throw new Error(ans?.message||'確定できませんでした。');await loadCloud();inventoryCountHome(`${v124SectionLabel(section)}を確定しました。`)}catch(e){alert(`${v124SectionLabel(section)}を確定できませんでした。\n${v161ErrorText(e)}`)}finally{v161HideProcessing()}}
 function v124PriceRows(s){return ['normal','qr','kataoka'].flatMap(section=>v124Sections(s).includes(section)&&v124SectionStatus(s,section)==='confirmed'?v124SectionRows(s,section).map(line=>({line,isQr:section==='qr',section})):[])}
@@ -6977,10 +6977,10 @@ function v124NormalizeSession(s){
  s.countSchemaVersion=124;return v124DeriveStatus(s)
 }
 function v124AddWeightEntry(id,lineId,section){
- const s=countSession(id);if(!s||!v124Editable(s,section))return;v124PersistDom(id,section);const map=v124EntryMap(s,section),e=map.get(String(lineId));if(!e)return;if((e.weightEntries||[]).length>=20)return alert('量目明細は20行までです。');e.weightEntries=e.weightEntries||[];e.weightEntries.push({id:`w-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,packKg:'',caseCount:''});map.set(String(lineId),e);v124WriteDraft(id,section,[...map.values()]);v124SectionPage(id,section)
+ const s=countSession(id);if(!s||!v171SectionEditable(s,section))return;v124PersistDom(id,section);const map=v124EntryMap(s,section),e=map.get(String(lineId));if(!e)return;if((e.weightEntries||[]).length>=20)return alert('量目明細は20行までです。');e.weightEntries=e.weightEntries||[];e.weightEntries.push({id:`w-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,packKg:'',caseCount:''});map.set(String(lineId),e);v124WriteDraft(id,section,[...map.values()]);v124SectionPage(id,section)
 }
 function v124RemoveWeightEntry(id,lineId,section,entryId){
- const s=countSession(id);if(!s||!v124Editable(s,section))return;v124PersistDom(id,section);const map=v124EntryMap(s,section),e=map.get(String(lineId));if(!e)return;e.weightEntries=(e.weightEntries||[]).filter(x=>String(x.id)!==String(entryId));if(!e.weightEntries.length)e.weightEntries=[{id:'w-1',packKg:'',caseCount:''}];map.set(String(lineId),e);v124WriteDraft(id,section,[...map.values()]);v124SectionPage(id,section)
+ const s=countSession(id);if(!s||!v171SectionEditable(s,section))return;v124PersistDom(id,section);const map=v124EntryMap(s,section),e=map.get(String(lineId));if(!e)return;e.weightEntries=(e.weightEntries||[]).filter(x=>String(x.id)!==String(entryId));if(!e.weightEntries.length)e.weightEntries=[{id:'w-1',packKg:'',caseCount:''}];map.set(String(lineId),e);v124WriteDraft(id,section,[...map.values()]);v124SectionPage(id,section)
 }
 function v124NormalLineHtml(s,line,section,editable,entry){
  const id=v124LineId(line,section),kg=v119IsKgLine(line),actual=kg?v124WeightTotal(entry.weightEntries,entry.remainderKg):v119StrictDecimal(entry.actualQty),missing=actual===null,diff=missing?null:Math.round((actual-Number(line.systemQty||0))*1000)/1000;
@@ -7011,7 +7011,7 @@ function v124Home(msg=''){
  const card=s=>{const test=v123Test(s),partial=s.normalStatus==='confirmed'&&s.qrCountStatus==='confirmed'&&s.room==='room2'&&s.kataokaStatus!=='confirmed';const doc=!test&&v124CanDocument(s)?`<button class="btn green" ${seikaEventAttrs('click','v119ConfirmInventoryCountDocument',[s.id])}>${s.documentSavedAt?'文書管理保存済み':'文書管理の保存確認'}</button>`:'';const purge=!test&&v124CanPurge(s)?`<button class="btn red" ${seikaEventAttrs('click','v124DeleteInventoryCountDetails',[s.id])}>3か月経過後の明細削除</button>`:'';return `<div class="card" ${test?'style="border:2px solid #dc2626"':''}><div class="itemHead"><div><b>${test?'【テスト・在庫反映なし】 ':''}${esc(s.countNo)}</b><div class="small">${esc(s.roomLabel)} / 開始：${esc(s.startedAt?dt(s.startedAt):'－')} ${partial?'<br>通常/QR確定済み・片岡未確認':''}</div></div><span class="badge ${s.status==='confirmed'||s.status==='test_confirmed'?'normal':'unset'}">${s.status==='confirmed'||s.status==='test_confirmed'?'数量確定':partial?'片岡未確認':'分担入力中'}</span></div>${v124Sections(s).map(x=>sec(s,x)).join('')}<div class="mini" style="margin-top:8px">${v124ExcelButtons(s)}${v124PriceRows(s).length&&v119CanPriceInput()?`<button class="btn blue" ${seikaEventAttrs('click','v124PricePage',[s.id])}>単価入力</button>`:''}${doc}${purge}${!['confirmed','test_confirmed'].includes(s.status)&&canAdmin()?`<button class="btn red" ${seikaEventAttrs('click','v120DeleteUnconfirmedInventoryCount',[s.id])}>この棚卸しを削除</button>`:''}</div></div>`};
  const start=canInventoryCountInput()?`<div class="card"><b>通常の棚卸しを開始（管理者・青果社員）</b><div class="grid" style="margin-top:9px"><button class="btn orange" data-seika-click-action="startInventoryCount" data-seika-click-args="%5B%22room2%22%5D">第2冷蔵庫を開始</button><button class="btn orange" data-seika-click-action="startInventoryCount" data-seika-click-args="%5B%22room3%22%5D">第3冷蔵庫を開始</button></div></div><div class="card" style="border:2px solid #dc2626"><b>【テスト・在庫反映なし】</b><div class="grid" style="margin-top:9px"><button class="btn red" data-seika-click-action="startInventoryTestCount" data-seika-click-args="%5B%22room2%22%5D">第2冷蔵庫をテスト開始</button><button class="btn red" data-seika-click-action="startInventoryTestCount" data-seika-click-args="%5B%22room3%22%5D">第3冷蔵庫をテスト開始</button></div></div>`:'';pageShell('棚卸しモード',`${esc(v119RoleLabel())} / ${V124_APP_VERSION}`,`${okHtml(msg)}<div class="card notice"><b>棚卸しの流れ</b><div class="small">青果社員・管理者が開始・入力・提出できます。管理者が工程ごとに確定します。第2冷蔵庫の片岡在庫は通常提出後に別工程で表示され、片岡未確認でも通常・QRは先に確定・Excel出力できます。</div></div>${start}<div class="card"><b>進行中・確認待ち</b>${active.map(card).join('')||'<div class="small">進行中の棚卸しはありません。</div>'}</div><div class="card"><b>履歴</b>${history.map(card).join('')||'<div class="small">履歴はまだありません。</div>'}</div>`)
 }
-inventoryCountHome=v124Home;inventoryCountPage=(id,msg='')=>v124SectionPage(id,'normal',msg);downloadInventoryCountExcel=v124DownloadExcel;v119InventoryCountPricePage=v124PricePage;v119SaveInventoryCountPrices=v124SavePrices;window.APP_VERSION='v1.126';document.title='SEIKA＋ v1.126 市場価格持ち越し・片岡在庫明確化版';
+inventoryCountHome=v124Home;inventoryCountPage=(id,msg='')=>v124SectionPage(id,'normal',msg);downloadInventoryCountExcel=v124DownloadExcel;v119InventoryCountPricePage=v124PricePage;v119SaveInventoryCountPrices=v124SavePrices;window.APP_VERSION='v1.176';document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 
 /* ===== v1.126 市場価格持ち越し・片岡在庫明確化 ===== */
@@ -7038,7 +7038,7 @@ async function v1126CarryForwardMarketPrices(targetWeek,rows){
 }
 /* UI labels only; identifiers such as kataoka/tableId/RPC names are intentionally unchanged. */
 function v124SectionLabel(section){return section==='normal'?'通常・その他在庫':section==='qr'?'QR在庫':'片岡在庫'}
-window.APP_VERSION='v1.126';document.title='SEIKA＋ v1.126 市場価格持ち越し・片岡在庫明確化版';
+window.APP_VERSION='v1.176';document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 /* ===== v1.127 仕入価格編集・市場産地統一 ===== */
 function v1127Key(r){return [String(r?.week_start||''),String(r?.item_name||'').trim(),String(r?.origin||'').trim(),String(r?.supplier||'').trim()].join('\u0001')}
@@ -7052,7 +7052,7 @@ async function v1127SavePrice(week){try{const type=document.getElementById('pric
 function v1127PriceEditPage(data){if(!v1115CanPriceEdit())return alert('価格を編集する権限がありません。');let o;try{o=JSON.parse(data)}catch{return alert('編集対象を読み込めませんでした。')}const market=o.price_type==='market',week=v1115Monday(o.week_start),item=String(o.item_name||''),origin=market?'':String(o.origin||''),supplier=market?'市場':String(o.supplier||'');setScreen('v1127PriceEdit',[data]);pageShell('仕入価格を編集',market?'市場価格：産地は不要（空欄で保存）':'契約価格：産地・仕入先を編集できます',`<div class="card notice"><b>編集元</b><div class="small">${esc(String(o.week_start||'').replaceAll('-','/'))} / ${esc(item)} / 産地：${esc(String(o.origin||'')||'－')} / 仕入先：${esc(String(o.supplier||'')||'－')}</div></div><div class="card"><input id="v1127Original" type="hidden" value="${esc(encodeURIComponent(JSON.stringify(o)))}"><label class="label">価格区分</label><div class="input" style="background:#f8fafc">${market?'市場価格':'契約価格'}</div><div class="row" style="margin-top:9px"><div><label class="label">対象週</label><input id="v1127Week" type="date" class="input" value="${esc(week)}"></div><div><label class="label">品目</label><input id="v1127Item" class="input" list="v1115PriceItems" value="${esc(item)}"></div></div><datalist id="v1115PriceItems">${activeItems().map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist><div class="row"><div><label class="label">産地</label>${market?'<div class="input" style="background:#f8fafc">不要（空欄で保存）</div>':`<input id="v1127Origin" class="input" value="${esc(origin)}">`}</div><div><label class="label">仕入先</label>${market?'<div class="input" style="background:#f8fafc">市場</div>':`<input id="v1127Supplier" class="input" value="${esc(supplier)}">`}</div></div><label class="label" style="margin-top:9px">単価（税抜円/kg）</label><input id="v1127Value" class="input" inputmode="decimal" value="${esc(o.price_yen_per_kg??'')}"><button id="v1127EditSave" class="btn green" style="width:100%;margin-top:12px" data-seika-click-action="v1127SavePriceEdit" data-seika-click-args="%5B%5D">変更を保存</button><button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','purchasePricesPage',[week])}>戻る</button></div>`)}
 async function v1127SavePriceEdit(){try{const o=JSON.parse(decodeURIComponent(document.getElementById('v1127Original')?.value||'')),type=o.price_type==='market'?'market':'contract',week=document.getElementById('v1127Week')?.value,item=document.getElementById('v1127Item')?.value.trim(),origin=type==='market'?'':(document.getElementById('v1127Origin')?.value.trim()||''),supplier=type==='market'?'市場':(document.getElementById('v1127Supplier')?.value.trim()||''),price=parseDecimalInput(document.getElementById('v1127Value')?.value);if(!week||!item||!(price>=0))throw new Error('対象週、品目、0以上の税抜単価を入力してください');if(type==='contract'&&(!origin||!supplier))throw new Error('契約価格は産地と仕入先を入力してください');if(!confirm(`${type==='market'?'市場':'契約'}価格を変更します。${type==='market'?'産地は空欄として保存されます。':''}\nよろしいですか？`))return;const btn=document.getElementById('v1127EditSave');if(btn){btn.disabled=true;btn.textContent='保存しています…'}v161ShowProcessing('仕入価格を保存しています');const r=await callRpc('update_purchase_price_v1127',{p_original_week_start:o.week_start,p_original_item_name:o.item_name,p_original_origin:o.origin||'',p_original_supplier:o.supplier||'',p_week_start:week,p_item_name:item,p_origin:origin,p_supplier:supplier,p_price_yen_per_kg:price,p_price_type:type});if(r?.conflict)throw new Error('同じ価格が既にあります。どちらも変更していません。再読み込みして確認してください。');if(r?.not_found)throw new Error('編集元の価格が見つかりません。再読み込みして確認してください。');if(!r?.ok)throw new Error(r?.message||'価格を変更できませんでした');purchasePricesPage(v1115Monday(week),type==='market'?'市場価格を変更しました（産地は空欄です）。':'契約価格を変更しました。')}catch(e){alert(e.message||'価格を変更できませんでした')}finally{v161HideProcessing();const b=document.getElementById('v1127EditSave');if(b){b.disabled=false;b.textContent='変更を保存'}}}
 async function v1126CarryForwardMarketPrices(targetWeek,rows){const target=v1115Monday(targetWeek),source=ymdKey(new Date(new Date(`${target}T00:00:00`).getTime()-604800000)),all=(Array.isArray(rows)?rows:[]).filter(r=>v1117PriceType(r)==='market'&&String(r.week_start||'')===source&&Number(r.price_yen_per_kg)>=0),m=new Map();all.sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||''))).forEach(r=>{const k=String(r.item_name||'').trim();if(!m.has(k))m.set(k,r)});const src=[...m.values()];if(!src.length)return alert(`前週 ${source.replaceAll('-','/')} の市場価格は未登録のため、持ち越せません。`);const keys=new Set((Array.isArray(rows)?rows:[]).filter(r=>v1117PriceType(r)==='market'&&String(r.week_start||'')===target).map(v1127MarketKey)),already=src.filter(r=>keys.has(v1127MarketKey(r))).length;if(!confirm(`市場価格を持ち越します。\n\n前週：${source.replaceAll('-','/')}（${src.length}件）\n対象週：${target.replaceAll('-','/')}\nこの週に既入力：${already}件（0円を含め上書きしません）\n新規候補：${src.length-already}件\n\n市場価格は産地空欄として保存します。契約価格は変更しません。実行しますか？`))return;const b=document.getElementById('v1126CarryMarketBtn');if(b){b.disabled=true;b.textContent='市場価格を持ち越しています…'}v161ShowProcessing('市場価格を安全に持ち越しています');try{const r=await callRpc('carry_forward_market_prices_v1126',{p_source_week:source,p_target_week:target});if(!r?.ok)throw new Error(r?.message||'市場価格を持ち越せませんでした。');await purchasePricesPage(target,`市場価格を持ち越しました。対象 ${Number(r.source_count||0)}件 / 新規 ${Number(r.inserted_count||0)}件 / 既入力のためスキップ ${Number(r.skipped_count||0)}件（0円も保護）`)}catch(e){alert(`市場価格を持ち越せませんでした。\n${v161ErrorText(e)}`);if(b){b.disabled=false;b.textContent='前週の市場価格をこの週へ持ち越す'}}finally{v161HideProcessing()}}
-v1117RenderPrices=v1127RenderPrices;v1117TogglePriceType=v1127TogglePriceType;v1117SavePrice=v1127SavePrice;window.APP_VERSION='v1.127';document.title='SEIKA＋ v1.127 仕入価格編集・市場産地統一版';
+v1117RenderPrices=v1127RenderPrices;v1117TogglePriceType=v1127TogglePriceType;v1117SavePrice=v1127SavePrice;window.APP_VERSION='v1.176';document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 
 /* ===== v1.128 片岡冷蔵庫表示分離 =====
@@ -7104,8 +7104,8 @@ weeklyTableHtml=function(k,recs,spRecs,open=false,room=weeklyRoom,qrTotals={},qr
   }
   return html;
 };
-window.APP_VERSION='v1.134';
-document.title='SEIKA＋ v1.134 点検表示最適化版';
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 /* ===== v1.133 PWA・起動点検・データ鮮度・安全な更新 ===== */
 const V133_PWA_GUIDE_KEY=STORE+'_pwa_guide_dismissed_v133';
@@ -7133,7 +7133,7 @@ function v133WorkerVersion(worker){return new Promise(resolve=>{if(!worker)retur
 async function v133AssessWaitingWorker(worker){if(!worker||!navigator.serviceWorker.controller)return;await v133LoadReleaseNotes();const workerVersion=await v133WorkerVersion(worker),candidate=workerVersion||v133ReleaseVersion;if(!v133IsNewerVersion(candidate)){v133WaitingWorker=null;v133WaitingVersion='';if(workerVersion&&v133NormalizeVersion(workerVersion)===v133NormalizeVersion(window.APP_VERSION))worker.postMessage({type:'SKIP_WAITING'});v133RefreshNotices();return}v133WaitingWorker=worker;v133WaitingVersion=candidate;v133RefreshNotices()}
 function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133AssessWaitingWorker(worker)}
 async function v133ApplyUpdate(){if(!v133HasNewVersion())return alert('この端末はすでに最新です。');if(!v133CanApplyUpdate()){const p=v133PendingSummary();return alert(`未同期・下書きが ${p.total}件あります。保存・再送を完了してから更新してください。`)}if(!confirm(`SEIKA＋ ${v133WaitingVersion||v133ReleaseVersion}へ更新して再起動しますか？`))return;try{await v188IdbFlush?.()}catch(e){return alert('端末内データの保護が完了していません。画面を閉じず、もう一度お試しください。')}v133ReloadForUpdate=true;v133WaitingWorker.postMessage({type:'SKIP_WAITING'})}
-async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.166',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
+async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.176',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
 function v133InstallEvents(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();v133DeferredInstallPrompt=e;v133RefreshNotices()});window.addEventListener('appinstalled',()=>{v133DeferredInstallPrompt=null;v133GuideDismiss();v133Toast('SEIKA＋をホーム画面へ追加しました','ok')});navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(v133ReloadForUpdate)location.reload()});navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='SEIKA_VERSION_READY'&&event.data.version!==String(window.APP_VERSION||'')){v133Toast('新しいアプリ版を取得しました。画面を再読み込みしてください','info',false)}});window.addEventListener('online',()=>{v133Toast('オンラインに戻りました','ok',false);updateSyncDisplay();v133RefreshNotices()});window.addEventListener('offline',()=>{v133Toast('オフラインです。確定操作は行わないでください','err',false);updateSyncDisplay();v133RefreshNotices()});document.addEventListener('pointerdown',()=>{v133UserInteracted=true},{once:true,passive:true});document.addEventListener('keydown',()=>{v133UserInteracted=true},{once:true})}
 const v133PageShellCore=pageShell;pageShell=function(title,sub,body,opts={}){v133PageShellCore(title,sub,body,opts);const sync=document.getElementById('syncInfo');if(sync&&!document.getElementById('v133HeaderMeta'))sync.insertAdjacentHTML('beforebegin',`<div id="v133HeaderMeta">${v133HeaderMetaHtml()}</div>`);const main=document.querySelector('.wrap');if(main&&v133HasNewVersion()&&!document.getElementById('v133UpdateBanner'))main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())};
 const v133HomeCore=home;home=function(){v133HomeCore();const main=document.querySelector('.wrap');if(!main)return;const extra=`${v133InstallBannerHtml()}${v133StartupCheckHtml()}`,first=main.firstElementChild;if(first)first.insertAdjacentHTML('beforebegin',extra);else main.innerHTML=extra};
@@ -7241,11 +7241,11 @@ const v135QrHomeCore=qrHome;qrHome=async function(msg=''){await v135QrHomeCore(m
 const v135PendingSummaryCore=v133PendingSummary;v133PendingSummary=function(){const p=v135PendingSummaryCore(),batches=v135CurrentPendingBatchCount();return{...p,batches,total:Number(p.total||0)+batches}};
 const v135DiagnosticTextCore=v200DiagnosticText;v200DiagnosticText=function(sourceScreen=''){const base=v135DiagnosticTextCore(sourceScreen);return `${base}\n本人用保留：${v135CurrentPendingBatchCount()}件（QR連続処理）`};
 const v135SetScreenCore=setScreen;setScreen=function(name,args=[]){if(currentScreen==='v135BatchScanPage'&&name!=='v135BatchScanPage')v135BatchStopCamera().catch(()=>{});return v135SetScreenCore(name,args)};
-window.APP_VERSION='v1.139';document.title='SEIKA＋ v1.139 フレンキ専用インドネシア語対応';
+window.APP_VERSION='v1.176';document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 /* ===== v1.136 第3段階：スマートFIFO・ロス分析・品質傾向・判断支援 ===== */
-window.APP_VERSION='v1.139';
-document.title='SEIKA＋ v1.139 フレンキ専用インドネシア語対応';
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 const V136_DB_NOT_APPLIED='第3段階DB未適用';
 const V136_FIFO_REASONS=['規格が異なる','量目が異なる','荷姿が異なる','出庫先から指定された','品質確認中','出庫停止中','現物が見つからない','先に開封済みのロットがある','その他'];
 let v136SettingsCache=null;
@@ -7559,8 +7559,8 @@ v138RestoreLanguage();
 
 
 /* ===== v1.140 QR品質評価一覧 ===== */
-window.APP_VERSION='v1.142';
-document.title='SEIKA＋ v1.142 品質評価一覧直接表示修正';
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 Object.assign(V138_ID,{
   "品質評価一覧":"Daftar Penilaian Kualitas","評価済みロット・写真を確認":"Periksa lot yang sudah dinilai dan foto","QRロットごとの最新評価を検索・確認":"Cari dan periksa penilaian terbaru setiap lot QR","評価月":"Bulan penilaian","すべて":"Semua","品名の一部":"Sebagian nama barang","未確認の評価だけ表示":"Tampilkan hanya penilaian yang belum dikonfirmasi","検索":"Cari","条件をクリア":"Hapus kondisi","評価を読み込んでいます...":"Sedang memuat penilaian...","表示中":"Ditampilkan","全":"Total","件":"data","不良を先頭に、要確認・良好の順で表示します。訂正前の評価は除外し、最新評価だけを表示しています。":"Urutan tampilan: Buruk, Perlu diperiksa, lalu Baik. Hanya penilaian terbaru yang ditampilkan.","条件に一致する品質評価はありません。":"Tidak ada penilaian kualitas yang sesuai.","さらに50件読み込む":"Muat 50 data lagi","状態：":"Kondisi:","メモ：":"Catatan:","評価者：":"Penilai:","写真：":"Foto:","確認不要":"Tidak perlu konfirmasi","確認済み":"Sudah dikonfirmasi","未確認":"Belum dikonfirmasi","QRロット詳細":"Detail lot QR","写真を見る":"Lihat foto","確認済みにする":"Tandai sudah dikonfirmasi","担当未設定":"Belum ada penanggung jawab","読み込みに失敗しました。通信状況を確認して再度検索してください。":"Gagal memuat. Periksa koneksi lalu cari kembali."
 });
@@ -7579,8 +7579,8 @@ function v1140OpenLotDetail(q){v1140QualityDetailReturn=currentScreen==="v1103Qu
 const v1140GoBackCore=goBack;goBack=function(){if(currentScreen==="qrLotDetail"&&v1140QualityDetailReturn){v1140QualityDetailReturn=false;return v1103QualityListPage("",true)}return v1140GoBackCore()};
 const v1142QrHomeCore=qrHome;qrHome=async function(msg=""){await v1142QrHomeCore(msg);const old=document.getElementById("v1104QrQualityArea");if(old){const entry=[...old.querySelectorAll("button")].find(x=>x.textContent.includes("品質評価一覧"));entry?.remove();if(!["buyer","admin"].includes(db.role))old.remove();else{const title=old.querySelector("h2");if(title)title.textContent="未確認の低評価";const small=old.querySelector(".small");if(small)small.textContent="担当品目の低評価を確認します。"}}};
 
-window.APP_VERSION='v1.143';
-document.title='SEIKA＋ v1.143 今日のタスク・品質確認修正版';
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 if(typeof v138Dict!=='undefined')Object.assign(v138Dict,{
  "今日やること":"Tugas hari ini","現在、対応が必要な項目はありません":"Saat ini tidak ada hal yang perlu ditangani","本日未入力":"Belum diisi hari ini","棚卸しの確認待ち":"Menunggu konfirmasi stok opname","棚卸しの入力・下書き":"Input/draf stok opname","単価未入力":"Harga satuan belum diisi","月次Excel作成待ち":"Menunggu pembuatan Excel bulanan","この端末の保留・下書き":"Pekerjaan tertunda/draf di perangkat ini","未確認の低評価":"Penilaian kualitas rendah belum dikonfirmasi","QR入庫後の品質評価":"Penilaian kualitas setelah penerimaan QR","発注候補":"Usulan pemesanan","過多品目":"Item berlebih","品質評価一覧を開く":"Buka daftar penilaian kualitas","確認中":"Sedang memeriksa","棚卸しを開く":"Buka stok opname","保留作業を開く":"Buka pekerjaan tertunda","発注候補を開く":"Buka usulan pemesanan","過多品目を開く":"Buka item berlebih","月次Excelを開く":"Buka Excel bulanan","在庫入力を開く":"Buka input stok","品質評価件数を取得できません":"Jumlah penilaian kualitas tidak dapat diambil","品質評価の対象ロットが見つかりません。":"Lot target penilaian kualitas tidak ditemukan.","現在、対応が必要な項目はありません":"Saat ini tidak ada hal yang perlu ditangani","件":"data"
 });
@@ -7612,8 +7612,8 @@ v1103Acknowledge=async function(id,source){id=String(id||'');if(!id)return alert
 
 
 /* ===== v1.144 入庫担当者の正式連携・スマートFIFO撤去 ===== */
-window.APP_VERSION='v1.144';
-document.title='SEIKA＋ v1.144 入庫担当者連携・FIFO撤去版';
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 /* QR入庫では氏名を手入力せず、ログイン利用者の仕入担当候補を選択します。
    保存値は legacy_user_id、表示値は氏名です。SQLトリガーで profile UUID も確定します。 */
 function v1144PurchaseStaffCandidates(){
@@ -8087,7 +8087,7 @@ qrSaveLot=async function(){
 
 
 /* ===== v1.144 追加統合: QR廃棄一覧・出庫履歴（通知コード非変更） ===== */
-window.APP_VERSION='v1.144';document.title='SEIKA＋ v1.144 入庫担当者連携・QR廃棄・出庫履歴版';
+window.APP_VERSION='v1.176';document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 if(!QR_OUT_DESTINATIONS.includes('現場作業'))QR_OUT_DESTINATIONS.splice(Math.max(0,QR_OUT_DESTINATIONS.indexOf('その他')),0,'現場作業');
 let v1144QrWasteCache={key:'',rows:[],error:'',loading:false,token:0};
 let v1144OutboundRequestToken=0,v1144OutboundState={destinations:[],rows:[],total:0,offset:0,destination:'深谷',date:'',includeCancelled:false},v1144OutboundDetailReturn=false;
@@ -8241,7 +8241,7 @@ makeLineCopyText=async function(){
   return `【在庫報告】\n※通常在庫とQR在庫の合計\n\n■ 過多品目\n${excess.length?excess.join('\n'):'なし'}\n\n■ 不足品目\n${shortage.length?shortage.join('\n'):'なし'}`;
 };
 window.APP_VERSION=V1146_VERSION;
-document.title='SEIKA＋ v1.146 適正在庫週次見直し対応版';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 
 /* ===== v1.147 管理者お知らせクラウド保存修正 ===== */
@@ -8274,8 +8274,8 @@ const v1147DiagnosticTextBase=v200DiagnosticText;
 v200DiagnosticText=function(sourceScreen=''){
   return `${v1147DiagnosticTextBase(sourceScreen)}\n未同期エラー：${v1147PendingErrorText()}`;
 };
-window.APP_VERSION='v1.147';
-document.title='SEIKA＋ v1.147 管理者お知らせ保存修正版';
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 
 /* ===== v1.148 管理者お知らせ競合再送修正 ===== */
@@ -8336,12 +8336,12 @@ v178ResolvePendingInventoryConflict=async function(){
     stateVersion=Number(ans.version);const auth={user:db.user,userId:db.userId,role:db.role};db=normalize({...candidate.localPayload,...auth});v188PersistDb();v188WriteBase(candidate.localPayload,stateVersion);v161WriteQueue([]);markSync();setSyncState('保存済み','管理者お知らせを安全に統合して保存');await v188IdbFlush();return{ok:true,merged:1};
   }catch(e){original.lastError=v161ErrorText(e);v161WriteQueue([original]);await v188IdbFlush();throw e}
 };
-window.APP_VERSION='v1.148';
-document.title='SEIKA＋ v1.148 管理者お知らせ再送修正版';
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 /* ===== v1.145 品質評価写真350KB上限 ===== */
-window.APP_VERSION='v1.149';
-document.title='SEIKA＋ v1.149 PWA更新・管理者お知らせ再送修正版';
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 
 /* ===== v1.150 第1段階セキュリティ改善完了 ===== */
@@ -8495,8 +8495,8 @@ deleteMonthlyHistory=async function(key){
     save();monthlyArchivePage(`${monthLabel(key)}の在庫入力データを削除しました。削除件数：${deletedCount}件`);
   }catch(e){setSyncState('失敗','月次履歴は削除していません');alert(`削除できませんでした。\n${v161ErrorText(e)}\n\n画面の履歴は削除していません。`)}finally{v161HideProcessing();updateSyncDisplay()}
 };
-window.APP_VERSION='v1.150';
-document.title='SEIKA＋ v1.150 第1段階セキュリティ改善完了版';
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 
 /* ===== v1.151 QR葉物適正在庫・仕入担当ホーム修正 ===== */
@@ -8606,13 +8606,13 @@ v1143LoadQualityTask=async function(generation){
   }
 };
 window.APP_VERSION=V1151_VERSION;
-document.title='SEIKA＋ v1.151 QR葉物適正在庫・仕入担当ホーム修正版';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 
 /* ===== v1.152 PWA更新判定・更新案内修正 ===== */
 const V1152_VERSION='v1.152';
 window.APP_VERSION=V1152_VERSION;
-document.title='SEIKA＋ v1.152 PWA更新判定・案内更新修正版';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 
 /* ===== v1.153 停止品目の適正在庫継続・品質評価取得修正 ===== */
@@ -8675,23 +8675,23 @@ function v1143RetryQualityTask(){
 /* ===== v1.154 在庫表の停止品目表示・適正在庫判定修正 ===== */
 const V1154_VERSION='v1.154';
 window.APP_VERSION=V1154_VERSION;
-document.title='SEIKA＋ v1.154 在庫表適正在庫判定修正版';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 /* ===== v1.155 第1段階セキュリティ改善完了 ===== */
 const V1155_VERSION='v1.155';
 window.APP_VERSION=V1155_VERSION;
-document.title='SEIKA＋ v1.155 第1段階セキュリティ改善完了版';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 
 /* ===== v1.156 QR操作・市場メモ・セキュリティ強化 ===== */
 const V1156_VERSION='v1.156';
 window.APP_VERSION=V1156_VERSION;
-document.title='SEIKA＋ v1.156 QR操作・市場メモ・セキュリティ強化版';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 /* ===== v1.157 QR品目取得・固定保存ボタン修正 ===== */
 const V1157_VERSION='v1.157';
 window.APP_VERSION=V1157_VERSION;
-document.title='SEIKA＋ v1.157 QR品目取得・固定保存ボタン修正版';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 const v1157Style=document.createElement('style');
 v1157Style.textContent=`@media(max-width:620px){.wrap .stickySaveAction{position:fixed!important;left:max(12px,env(safe-area-inset-left))!important;right:max(12px,env(safe-area-inset-right))!important;bottom:max(10px,env(safe-area-inset-bottom))!important;transform:none!important;width:auto!important;max-width:none!important;box-sizing:border-box!important;display:block!important}}`;
 document.head.appendChild(v1157Style);
@@ -8787,7 +8787,7 @@ marketMemoPage=async function(){
 /* ===== v1.158 QR訂正履歴再送・品質評価並び替え修正 ===== */
 const V1158_VERSION='v1.158';
 window.APP_VERSION=V1158_VERSION;
-document.title='SEIKA＋ v1.158 QR訂正履歴再送・品質評価並び替え修正版';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 Object.assign(V138_ID,{
   '表示順':'Urutan tampilan',
   '評価順（不良・要確認・良好）':'Urutan penilaian (Buruk, Perlu diperiksa, Baik)',
@@ -8919,7 +8919,7 @@ v1103LoadQualityList=async function(append=false,generation=++v1140QualityReques
 /* ===== v1.161 仕入れ担当者フルネーム統一 ===== */
 const V1159_VERSION='v1.161';
 window.APP_VERSION=V1159_VERSION;
-document.title='SEIKA＋ v1.161 仕入れ担当者フルネーム統一版';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 Object.assign(V138_ID,{
   '仕入れ担当者':'Penanggung jawab pembelian saat penerimaan',
   '品目担当（旧データ）':'Penanggung jawab barang (data lama)',
@@ -9086,8 +9086,304 @@ retryPendingSync=async function(){
   v161ShowProcessing('端末に保持した廃棄単価をクラウドへ再送しています');
   try{const priceCount=await v1163RetryWastePrices();alert(`廃棄単価 ${priceCount}件の再送が完了しました。`);}catch(error){alert(`廃棄単価を再送できませんでした。\n${v161ErrorText(error)}\n\nデータはこの端末に保持されています。`);}finally{v161HideProcessing();v1163UpdateSyncDisplay();}
 };
-const V1162_VERSION='v1.166';window.APP_VERSION=V1162_VERSION;document.title='SEIKA＋ v1.166 QR履歴詳細・在庫表印刷・品質評価2か月整理版';
+const V1162_VERSION='v1.166';window.APP_VERSION=V1162_VERSION;document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
+
+
+
+
+const V171_INVENTORY_VERSION='v1.176';
+const v171CompleteStatus=status=>['submitted','confirmed'].includes(String(status||''));
+const v171SectionDone=(session,section)=>v171CompleteStatus(v124SectionStatus(session,section));
+let v171SessionComplete=session=>Boolean(session?.v171CompletedAt)&&v124Sections(session).every(section=>v171SectionDone(session,section));
+const v171DeriveStatusCore=v124DeriveStatus;v124DeriveStatus=function(session){const result=v171DeriveStatusCore(session);if(v171SessionComplete(result))result.status='completed';return result};
+let v171SectionEditable=(session,section)=>canInventoryCountInput()&&['counting','incomplete','submitted','confirmed'].includes(v124SectionStatus(session,section));
+function v171Missing(session,section){return v171SectionRows(session,section).filter(line=>{const entry=v124EntryMap(session,section).get(v124LineId(line,section));if(!entry)return true;if(section==='qr'){const quantity=v119StrictDecimal(entry.actualQty),manual=qrIsLargeContainer(line.containerType)&&qrCountLargeWeightMode(line)==='manual';return quantity===null||(manual&&v119StrictDecimal(entry.actualWeightKg)===null)}return(v119IsKgLine(line)?v124WeightTotal(entry.weightEntries,entry.remainderKg):v119StrictDecimal(entry.actualQty))===null})}
+const v171QrItemState=new Map();
+function v171SectionRows(session,section){return v124SectionRows(session,section)}
+function v171Value(id){return document.getElementById(id)?.value??''}
+function v171PersistDom(id,section){
+ const session=countSession(id);if(!session)return;const entries=v124EntryMap(session,section),lines=v171SectionRows(session,section);
+ for(const line of lines){const key=v124LineId(line,section),hasQuantity=document.getElementById(`v124_qty_${key}`),hasWeight=document.querySelector(`[data-v124-weight="${CSS.escape(key)}"]`);if(!hasQuantity&&!hasWeight)continue;const entry={...(entries.get(key)||{id:key})};if(section==='qr'){entry.actualQty=v171Value(`v124_qty_${key}`);entry.memo=v171Value(`v124_memo_${key}`);const manualWeight=qrIsLargeContainer(line.containerType)&&qrCountLargeWeightMode(line)==='manual';entry.actualWeightKg=manualWeight?v171Value(`v124_weight_${key}`):entry.actualWeightKg??line.actualWeightKg??null;entry.outQty=entry.outQty??line.outQty??0;entry.destination=entry.destination??line.destination??'';entry.shipTiming=entry.shipTiming??line.shipTiming??''}else if(v119IsKgLine(line)){entry.weightEntries=[...document.querySelectorAll(`[data-v124-weight="${CSS.escape(key)}"]`)].map(node=>({id:node.dataset.entryId,packKg:v171Value(`v124_pack_${key}_${node.dataset.entryId}`),caseCount:v171Value(`v124_case_${key}_${node.dataset.entryId}`)}));entry.remainderKg=v171Value(`v124_rem_${key}`);entry.actualQty=v124WeightTotal(entry.weightEntries,entry.remainderKg)}else{entry.actualQty=v171Value(`v124_qty_${key}`);entry.kgPerUnit=v171Value(`v124_kgper_${key}`)}if(section!=='qr'){entry.supplier=v171Value(`v124_supplier_${key}`);entry.supplierRequired=Boolean(document.getElementById(`v124_required_${key}`)?.checked);entry.memo=v171Value(`v124_memo_${key}`)}entries.set(key,entry)}v124WriteDraft(id,section,[...entries.values()])
+}
+function v171UpdateWeightTotal(id,lineId,section){v171PersistDom(id,section);const entry=v124EntryMap(countSession(id),section).get(String(lineId)),box=document.getElementById(`v124_total_${lineId}`),total=v124WeightTotal(entry?.weightEntries,entry?.remainderKg);if(box)box.textContent=total===null?'未入力':`${fmt(total)} kg`}
+function v171NormalLineHtml(session,line,section,editable,entry){
+ const id=v124LineId(line,section),kg=v119IsKgLine(line),actual=kg?v124WeightTotal(entry.weightEntries,entry.remainderKg):v119StrictDecimal(entry.actualQty),missing=actual===null,diff=missing?null:Math.round((actual-Number(line.systemQty||0))*1000)/1000;
+ const weights=(entry.weightEntries||[{id:'w-1',packKg:'',caseCount:''}]).map((weight,n)=>`<div class="row" data-v124-weight="${esc(id)}" data-entry-id="${esc(weight.id)}" style="margin-top:6px"><div><label class="label">量目kg ${n+1}</label><input id="v124_pack_${esc(id)}_${esc(weight.id)}" class="input v171Enter" inputmode="decimal" value="${esc(weight.packKg??'')}" ${seikaEventAttrs('input','v171UpdateWeightTotal',[session.id,id,section])} ${editable?'':'disabled'}></div><div><label class="label">ケース数</label><input id="v124_case_${esc(id)}_${esc(weight.id)}" class="input v171Enter" inputmode="decimal" value="${esc(weight.caseCount??'')}" ${seikaEventAttrs('input','v171UpdateWeightTotal',[session.id,id,section])} ${editable?'':'disabled'}></div>${editable&&n>0?`<div style="align-self:end"><button class="btn btn2" type="button" ${seikaEventAttrs('click','v124RemoveWeightEntry',[session.id,id,section,weight.id])}>削除</button></div>`:''}</div>`).join('');
+ const quantity=kg?`${weights}${editable?`<button class="btn btn2" type="button" style="margin-top:8px" ${seikaEventAttrs('click','v124AddWeightEntry',[session.id,id,section])}>＋ 量目を追加</button>`:''}<div class="row" style="margin-top:7px"><div><label class="label">端数kg</label><input id="v124_rem_${esc(id)}" class="input v171Enter" inputmode="decimal" value="${esc(entry.remainderKg??'')}" ${seikaEventAttrs('input','v171UpdateWeightTotal',[session.id,id,section])} ${editable?'':'disabled'}></div><div><label class="label">合計実数</label><div class="input" id="v124_total_${esc(id)}" style="background:#f8fafc">${missing?'未入力':fmt(actual)+' kg'}</div></div></div>`:`<div class="row" style="margin-top:7px"><div><label class="label">実数（${esc(line.unit||'単位')}）</label><input id="v124_qty_${esc(id)}" class="input v171Enter" inputmode="decimal" value="${esc(entry.actualQty??'')}" placeholder="空欄=未入力 / 0=在庫なし" ${seikaEventAttrs('input','v171PersistDom',[session.id,section])} ${editable?'':'disabled'}></div><div><label class="label">1単位あたりkg</label><input id="v124_kgper_${esc(id)}" class="input v171Enter" inputmode="decimal" value="${esc(entry.kgPerUnit??'')}" ${seikaEventAttrs('input','v171PersistDom',[session.id,section])} ${editable?'':'disabled'}></div></div>`;
+ return `<section class="card countLine ${missing?'v123Missing':''}"><div class="countMeta"><div><b>${esc(line.itemName||'')}</b><div class="small">${esc(line.group||'')} / 開始時帳簿：${fmt(line.systemQty)} ${esc(kg?'kg':line.unit||'単位')}</div></div><span class="badge ${missing?'unset':diff===0?'normal':diff<0?'shortage':'excess'}">${missing?'未入力':`${diff>0?'+':''}${fmt(diff)} ${esc(kg?'kg':line.unit||'')}`}</span></div>${quantity}<div class="row" style="margin-top:7px"><div><label class="label">仕入先</label><input id="v124_supplier_${esc(id)}" class="input v171Enter" value="${esc(entry.supplier||'')}" ${seikaEventAttrs('input','v171PersistDom',[session.id,section])} ${editable?'':'disabled'}></div><div><label class="label">備考</label><input id="v124_memo_${esc(id)}" class="input v171Enter" value="${esc(entry.memo||'')}" ${seikaEventAttrs('input','v171PersistDom',[session.id,section])} ${editable?'':'disabled'}></div></div><input id="v124_required_${esc(id)}" type="checkbox" style="display:none" ${entry.supplierRequired?'checked':''}></section>`;
+}
+function v171QrLineHtml(session,line,editable,entry){
+ const id=v124LineId(line,'qr'),large=qrIsLargeContainer(line.containerType),manual=large&&qrCountLargeWeightMode(line)==='manual',actual=v119StrictDecimal(entry.actualQty),weight=v119StrictDecimal(entry.actualWeightKg),missing=actual===null||(manual&&weight===null),diff=actual===null?null:actual-Number(line.systemQty||0),autoWeight=large&&!manual&&actual!==null?qrCountActualWeight({...line,actualQty:actual}):null;
+ const weightField=large?`<div><label class="label">棚卸し重量kg${manual?'（必須 / 0可）':'（自動計算）'}</label><input id="v124_weight_${esc(id)}" class="input v171Enter" inputmode="decimal" value="${esc(manual?entry.actualWeightKg??'':autoWeight??'')}" placeholder="${manual?'必須 / 0可':'自動計算'}" ${seikaEventAttrs('input','v171PersistDom',[session.id,'qr'])} ${editable&&manual?'':'readonly'} ${editable?'':'disabled'}><div class="small">${manual?'入荷時重量が未確定のため、実測重量を入力してください。':'入荷総重量と基数から自動計算します。'}</div></div>`:'';
+ return `<section class="card countLine ${missing?'v123Missing':''}"><div class="countMeta"><div><b>${esc(line.itemName||'QRロット')}</b><div class="small">ロット：${esc(line.lotNo||line.qrKey||id)} / ${esc(line.containerType||line.unit||'')} / 開始時：${fmt(line.systemQty)} ${esc(line.unit||'')}</div></div><span class="badge ${missing?'unset':diff===0?'normal':diff<0?'shortage':'excess'}">${missing?'未入力':`${diff>0?'+':''}${fmt(diff)} ${esc(line.unit||'')}`}</span></div><div class="row" style="margin-top:7px"><div><label class="label">実数（${esc(line.unit||'単位')}）</label><input id="v124_qty_${esc(id)}" class="input v171Enter" inputmode="decimal" value="${esc(entry.actualQty??'')}" placeholder="空欄=未入力 / 0=在庫なし" ${seikaEventAttrs('input','v171PersistDom',[session.id,'qr'])} ${editable?'':'disabled'}></div>${weightField}<div><label class="label">備考</label><input id="v124_memo_${esc(id)}" class="input v171Enter" value="${esc(entry.memo||'')}" ${seikaEventAttrs('input','v171PersistDom',[session.id,'qr'])} ${editable?'':'disabled'}></div></div></section>`;
+}
+function v171AfterRender(){
+ document.querySelectorAll('.v171Enter').forEach((input,index,list)=>input.addEventListener('keydown',event=>{if(event.key!=='Enter'||event.isComposing||event.keyCode===229)return;event.preventDefault();const step=event.shiftKey?-1:1,next=list[index+step];if(next){next.focus();next.select?.()}else if(step>0)document.querySelector('[data-v171-save-submit]')?.focus()}));
+}
+function v171QrItems(session){return [...new Set(v171SectionRows(session,'qr').map(line=>String(line.itemName||'品名未設定')))].sort((a,b)=>a.localeCompare(b,'ja'))}
+function v171SetQrItem(sessionId,item){v171QrItemState.set(String(sessionId),String(item||''));v171SectionPage(sessionId,'qr')}
+function v171SectionHeader(session,section){const rows=v171SectionRows(session,section),missing=v171Missing(session,section).length,status=v124SectionStatus(session,section),prefix=v124SavedPrefix(section),done=v171CompleteStatus(status);return `<div class="card"><div class="countStatGrid"><div class="countStat"><span class="small">対象</span><b>${rows.length}</b></div><div class="countStat"><span class="small">未入力</span><b>${missing}</b></div><div class="countStat"><span class="small">状態</span><b>${done?'入力完了':status==='incomplete'?'下書き保存済み':'入力中'}</b></div></div><div class="small" style="margin-top:7px">保存：${esc(session[`${prefix}SavedAt`] ? dt(session[`${prefix}SavedAt`]):'－')} / 入力者：${esc(session[`${prefix}SavedBy`]||'－')}${done?' / 入力完了後も「修正して保存」から安全に修正できます。':''}</div></div>`}
+function v171SectionPage(id,section,msg='',requestedItem=''){
+ const session=countSession(id);if(!session)return inventoryCountHome('棚卸しが見つかりません。');v124NormalizeSession(session);if(section==='kataoka'&&session.room!=='room2')return inventoryCountHome();
+ const editable=v171SectionEditable(session,section),entries=v124EntryMap(session,section),all=v171SectionRows(session,section);let item='';let lines=all;
+ if(section==='qr'){const items=v171QrItems(session);item=requestedItem||v171QrItemState.get(String(id))||items[0]||'';v171QrItemState.set(String(id),item);lines=all.filter(line=>String(line.itemName||'品名未設定')===item)}
+ setScreen('v171SectionPage',[id,section,msg,item]);
+ const selector=section==='qr'?`<div class="card"><label class="label">QR品目を選択</label><select class="input" ${seikaEventAttrs('change','v171SetQrItem',[id,{__seikaValue:true}])}>${v171QrItems(session).map(name=>`<option value="${esc(name)}" ${name===item?'selected':''}>${esc(name)}</option>`).join('')}</select><div class="small" style="margin-top:7px">選んだ品目のロットだけを表示します。棚卸し画面では出庫処理を行いません。</div></div>`:'';
+ const content=section==='qr'?lines.map(line=>v171QrLineHtml(session,line,editable,entries.get(v124LineId(line,'qr'))||{id:v124LineId(line,'qr')})).join(''):lines.map(line=>v171NormalLineHtml(session,line,section,editable,entries.get(v124LineId(line,section))||{id:v124LineId(line,section),weightEntries:[{id:'w-1',packKg:'',caseCount:''}]})).join('');
+ const print=section==='qr'?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintQrItem',[id,item])}>このQR品目の記入表を印刷</button>`:`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintNormalSheet',[id,section])}>${section==='kataoka'?'片岡在庫':'通常在庫'}の記入表を印刷</button>`;
+ pageShell(`${section==='qr'?'QR在庫':v124SectionLabel(section)} 棚卸し入力`,`${esc(session.countNo)} / ${esc(session.roomLabel)}`,`${okHtml(msg)}${v171SectionHeader(session,section)}${selector}<div class="card notice"><b>${v171CompleteStatus(v124SectionStatus(session,section))?'入力完了済み':'入力途中'}</b><div class="small">0は確認済みの在庫なし、空欄は未入力です。保存・入力完了は棚卸し記録だけに保存し、通常在庫・QR在庫数量は変更しません。</div><div class="mini" style="margin-top:8px">${print}</div></div><div class="card"><div class="small">${section==='qr'?`${esc(item)}：${lines.length}ロット`:'仕入先と備考は横に並べて入力できます。'}</div>${content||'<div class="small">対象品目はありません。</div>'}</div>${editable?`<div class="card"><div class="grid"><button class="btn blue" ${seikaEventAttrs('click','v171SaveSection',[id,section,'draft',item])}>下書き保存</button><button class="btn green" data-v171-save-submit="1" ${seikaEventAttrs('click','v171SaveSection',[id,section,'submit',item])}>${v171CompleteStatus(v124SectionStatus(session,section))?'修正して保存':'入力完了として保存'}</button></div></div>`:''}`);
+ v171AfterRender();
+}
+async function v171SaveSection(id,section,action,item=''){
+ const session=countSession(id);if(!session)return;v171PersistDom(id,section);const missing=v171Missing(session,section);if(action==='submit'&&missing.length){return alert(`未入力が${missing.length}件あります。空欄を入力するか、下書き保存してください。`)}
+ const operationId=crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;v161ShowProcessing(`${v124SectionLabel(section)}を保存しています`);
+ try{const answer=await callRpc('v171_save_simple_inventory_count_section',{p_id:STATE_ID,p_session_id:id,p_section:section,p_expected_section_revision:Number(session[v124RevisionKey(section)])||0,p_entries:v124DraftEntries(session,section),p_action:action,p_operation_id:operationId});if(answer?.conflict)throw new Error(answer.message||'別端末で更新されています。');if(!answer?.ok)throw new Error(answer?.message||'保存できませんでした。');v124ClearDraft(id,section);await loadCloud();let completed=false;if(action==='submit'){const latest=countSession(id),completion=await callRpc('v171_complete_simple_inventory_count_session',{p_id:STATE_ID,p_session_id:id,p_expected_session_revision:Number(latest?.revision)||0,p_operation_id:crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`});if(completion?.conflict)throw new Error(completion.message||'別端末で更新されています。');if(!completion?.ok)throw new Error(completion?.message||'棚卸しの完了処理に失敗しました。');completed=completion.completed===true;if(completed)await loadCloud()}v171SectionPage(id,section,action==='submit'?(completed?'棚卸しを完了しました。通常在庫・QR在庫数量は変更していません。':'入力完了として保存しました。通常在庫・QR在庫数量は変更していません。'):'下書き保存しました。',item)}catch(error){alert(`${v124SectionLabel(section)}を保存できませんでした。\n${v161ErrorText(error)}\n\n入力内容はこの端末に保持しています。`);v171SectionPage(id,section,'',item)}finally{v161HideProcessing()}
+}
+function v171DoneSections(session){return v124Sections(session).filter(section=>v171SectionDone(session,section))}
+function v171ExcelRows(session,section){const entries=v124EntryMap(session,section);return v171SectionRows(session,section).map(line=>{const entry=entries.get(v124LineId(line,section))||{},large=section==='qr'&&qrIsLargeContainer(line.containerType),manual=large&&qrCountLargeWeightMode(line)==='manual',quantity=v119StrictDecimal(entry.actualQty);const weight=section!=='qr'?v124LineKg(line,false):manual?v119StrictDecimal(entry.actualWeightKg)??'':large?(quantity===null?'':qrCountActualWeight({...line,actualQty:quantity})??''):(line.actualWeightKg??v119LineActualKg({...line,actualQty:quantity},true)??'');return{section,item:line.itemName||'',lot:section==='qr'?(line.lotNo||line.qrKey||''):'',received:line.receivedDate||'',origin:line.origin||'',supplier:entry.supplier??line.supplier??line.supplier_name??'',spec:section==='qr'?(line.containerType||line.unit||''):(line.unit||''),qty:quantity??'',unit:line.unit||'',weight,memo:entry.memo??line.memo??''}})}
+function v171SortQrExcelRows(rows){return rows.map((row,index)=>({row,index})).sort((a,b)=>String(a.row.item||'').localeCompare(String(b.row.item||''),'ja')||String(a.row.received||'').localeCompare(String(b.row.received||''),'ja')||String(a.row.lot||'').localeCompare(String(b.row.lot||''),'ja')||a.index-b.index).map(entry=>entry.row)}
+function v171AddExcelSheet(workbook,name,title,session,section,rows){
+ const heads=['品名','ロット','仕入日','産地','仕入先','荷姿・規格','数量','単位','重量kg','単価','配送費','金額','備考'];const meta=[['棚卸し番号',session.countNo],['冷蔵庫',session.roomLabel],['区分',section==='qr'?'QR在庫':section==='kataoka'?'片岡在庫':'通常在庫'],['入力完了',dt(nowIso())],['単価・配送費・金額','Excelで直接入力してください']];const values=rows.map(row=>[row.item,row.lot,row.received,row.origin,row.supplier,row.spec,row.qty,row.unit,row.weight,'','','',row.memo].map(inventoryCountExcelSafeText));const ws=XLSX.utils.aoa_to_sheet([[title],[],...meta,[],heads,...values]);const headerRow=meta.length+3,last=headerRow+values.length;ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:heads.length-1}}];ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:headerRow,c:0},e:{r:Math.max(headerRow,last),c:heads.length-1}})};ws['!freeze']={xSplit:0,ySplit:headerRow+1};ws['!cols']=[22,20,12,14,18,17,11,9,12,12,12,13,30].map(wch=>({wch}));inventoryCountExcelStyle(ws,'A1',{font:{name:'Yu Gothic',sz:15,bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'1D4ED8'}},alignment:{horizontal:'center'}});for(let col=0;col<heads.length;col++){inventoryCountExcelStyle(ws,XLSX.utils.encode_cell({r:headerRow,c:col}),{font:{name:'Yu Gothic',sz:11,bold:true},fill:{patternType:'solid',fgColor:{rgb:'D9EAF7'}},alignment:{horizontal:'center',vertical:'center',wrapText:true}})}for(let row=headerRow+1;row<=last;row++)for(let col=0;col<heads.length;col++)inventoryCountExcelStyle(ws,XLSX.utils.encode_cell({r:row,c:col}),{font:{name:'Yu Gothic',sz:10},alignment:{vertical:'center',wrapText:true}});XLSX.utils.book_append_sheet(workbook,ws,safeSheetName(name));
+}
+function v171DownloadExcel(id){
+ const session=countSession(id);if(!session)return;if(!ensureXlsxReady())return;v124NormalizeSession(session);const sections=v171DoneSections(session);if(!sections.length)return alert('入力完了として保存した工程をExcel出力できます。');const workbook=XLSX.utils.book_new();for(const section of ['normal','kataoka'])if(sections.includes(section)){const label=section==='kataoka'?'片岡在庫':`${session.roomLabel} 通常在庫`;v171AddExcelSheet(workbook,label,`${label} 棚卸し結果`,session,section,v171ExcelRows(session,section))}if(sections.includes('qr')){const rows=v171SortQrExcelRows(v171ExcelRows(session,'qr'));v171AddExcelSheet(workbook,`${session.roomLabel} QR在庫`,`${session.roomLabel} QR在庫`,session,'qr',rows)}const file=`棚卸し結果_単価入力用_${String(session.roomLabel||'冷蔵庫').replace(/[\\/:*?"<>|]/g,'_')}_${String(session.countNo||'棚卸し').replace(/[\\/:*?"<>|]/g,'_')}.xlsx`;downloadWorkbookXlsx(workbook,file);inventoryCountHome('単価・配送費・金額が空欄のExcelを出力しました。Excel上で直接入力できます。')
+}
+function v171PrintHtml(title,meta,heads,rows){
+ const usableRows=16,scale=Math.max(.28,Math.min(1,usableRows/Math.max(1,rows.length))).toFixed(3),back=esc(location.origin+location.pathname);return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>@page{size:A4 landscape;margin:2mm 3mm}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.page{width:291mm;height:206mm;overflow:hidden}.content{width:calc(100% / var(--fit));transform:scale(var(--fit));transform-origin:top left}h1{margin:0 0 2mm;font-size:14pt}.meta{margin-bottom:2mm;font-size:8pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:.22mm solid #111;padding:1.1mm;font-size:9pt;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word}th{background:#d9eaf7;text-align:center}.write{height:8mm}.actions{margin:3mm 0;font-size:10pt}.back{display:inline-block;border:1px solid #334155;border-radius:2mm;padding:1.3mm 3mm;color:#111;text-decoration:none}@media print{.actions{display:none}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}body{overflow:hidden}}</style></head><body><div class="page" style="--fit:${scale}"><div class="content"><h1>${esc(title)}</h1><div class="meta">${esc(meta)}　印刷：${esc(dt(nowIso()))}</div><div class="actions"><a class="back" href="${back}" target="_self">← アプリに戻る</a>　A4横で印刷してください。</div><table><thead><tr>${heads.map(head=>`<th>${esc(head)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div></div></body></html>`}
+function v171OpenPrint(title,html){const printWindow=window.open('','_blank');if(!printWindow)return alert('印刷画面を開けませんでした。ポップアップ許可を確認してください。');printWindow.document.open();printWindow.document.write(html);printWindow.document.close();printWindow.focus()}
+function v171PrintNormalSheet(id,section='normal'){const session=countSession(id);if(!session)return;const rows=v171SectionRows(session,section).map(line=>`<tr><td>${esc(line.group||'')}</td><td>${esc(line.itemName||'')}</td><td>${esc(line.unit||'')}</td><td class="write"></td><td class="write"></td><td class="write"></td></tr>`);const label=section==='kataoka'?'片岡在庫':`${session.roomLabel} 通常在庫`;v171OpenPrint(`${label} 棚卸し記入表`,v171PrintHtml(`${label} 棚卸し記入表`,`${session.countNo} / ${session.roomLabel}`,['区分','品名','単位','実数','仕入先','備考'],rows))}
+function v171PrintQrItem(id,item=''){const session=countSession(id);if(!session)return;const selected=item||v171QrItemState.get(String(id))||v171QrItems(session)[0]||'';const rows=v171SectionRows(session,'qr').filter(line=>String(line.itemName||'品名未設定')===selected).map(line=>`<tr><td>${esc(line.lotNo||line.qrKey||'')}</td><td>${esc(line.containerType||'')}</td><td>${esc(line.unit||'')}</td><td>${fmt(line.systemQty)} ${esc(line.unit||'')}</td><td class="write"></td><td class="write"></td></tr>`);v171OpenPrint(`QR在庫 ${selected} 棚卸し記入表`,v171PrintHtml(`QR在庫 ${selected} 棚卸し記入表`,`${session.countNo} / ${session.roomLabel} / 品目別1ページ`,['ロット','荷姿','単位','開始時帳簿','実数','備考'],rows))}
+function v171Home(msg=''){
+ setScreen('inventoryCountHome',[msg]);if(!v119CanCountView())return home();v124AllSessions();const sessions=countSessions().slice().sort((a,b)=>new Date(b.updatedAt||0)-new Date(a.updatedAt||0));const active=sessions.filter(session=>!v171SessionComplete(session)),history=sessions.filter(session=>v171SessionComplete(session));const card=session=>{const done=v171DoneSections(session),completed=v171SessionComplete(session);return `<div class="card"><div class="itemHead"><div><b>${esc(session.countNo||'')}</b><div class="small">${esc(session.roomLabel||'')} / 開始：${esc(session.startedAt?dt(session.startedAt):'－')}${completed?` / 完了：${esc(dt(session.v171CompletedAt))}`:''}</div></div><span class="badge ${completed?'normal':done.length?'excess':'unset'}">${completed?'完了':done.length?`入力完了 ${done.length}/${v124Sections(session).length}`:'入力中'}</span></div>${v124Sections(session).map(section=>{const status=v124SectionStatus(session,section),doneSection=v171CompleteStatus(status);return `<div class="card" style="margin-top:8px"><b>${v124SectionLabel(section)}</b><div class="small">${doneSection?'入力完了（修正可）':status==='incomplete'?'下書き保存済み':'入力中'}</div><div class="mini" style="margin-top:8px"><button class="btn ${section==='qr'?'blue':'green'}" ${seikaEventAttrs('click','v171SectionPage',[session.id,section])}>${doneSection?'修正して保存':'入力する'}</button>${section==='qr'?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintQrItem',[session.id])}>QR記入表</button>`:`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintNormalSheet',[session.id,section])}>記入表</button>`}</div></div>`}).join('')}<div class="mini" style="margin-top:8px">${done.length?`<button class="btn orange" ${seikaEventAttrs('click','v171DownloadExcel',[session.id])}>単価欄空欄のExcelを出力</button>`:''}</div></div>`};const start=canInventoryCountInput()?`<div class="card"><b>棚卸しを開始（管理者・青果社員）</b><div class="small" style="margin-top:7px">入力完了を保存しても通常在庫・QR在庫数量は変更しません。管理者確認はありません。</div><div class="grid" style="margin-top:9px"><button class="btn orange" ${seikaEventAttrs('click','startInventoryCount',['room2'])}>第2冷蔵庫を開始</button><button class="btn orange" ${seikaEventAttrs('click','startInventoryCount',['room3'])}>第3冷蔵庫を開始</button></div></div>`:'';pageShell('簡易棚卸しモード',`${esc(v119RoleLabel())} / ${V171_INVENTORY_VERSION}`,`${okHtml(msg)}<div class="card notice"><b>簡易棚卸しの流れ</b><div class="small">冷蔵庫ごとに通常在庫を入力し、QRは品目を選んでロット一覧を入力します。各工程の「入力完了として保存」後にExcel・記入表を使えます。提出済みも再入力・再保存できます。棚卸し記録は在庫を変更しません。</div></div>${start}<div class="card"><b>入力中・入力完了</b>${active.map(card).join('')||'<div class="small">入力中の棚卸しはありません。</div>'}</div><div class="card"><b>完了履歴</b>${history.map(card).join('')||'<div class="small">完了した棚卸しはありません。</div>'}</div>`)}
+const v171CountActiveForRoomCore=countActiveForRoom;
+countActiveForRoom=function(room){return countSessions().find(session=>session.room===room&&!v171SessionComplete(session)&&['counting','submitted','qr_confirmed_pending_normal','normal_reversed_pending_qr'].includes(session.status))};
+const v171StartInventoryCountCore=startInventoryCount;
+startInventoryCount=async function(room){const result=await v171StartInventoryCountCore(room);v124AllSessions();const session=countActiveForRoom(room);if(session)v171SectionPage(session.id,'normal');return result};
+function v171StartSession(room){return startInventoryCount(room)}
+inventoryCountHome=v171Home;inventoryCountPage=(id,msg='')=>v171SectionPage(id,'normal',msg);downloadInventoryCountExcel=v171DownloadExcel;printInventoryCount=(id,mode)=>mode==='sheet'?v171PrintNormalSheet(id,'normal'):v171DownloadExcel(id);window.APP_VERSION=V171_INVENTORY_VERSION;document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
+
+
+/* v1.176 棚卸しExcel・PWA整合最終版・簡易棚卸し単一統合ブロック（画面・保存・完了・閲覧・Excel・印刷） */
+const v171LegacyStatuses=new Set(['confirmed','test_confirmed','reversed','cancelled']);
+function v171LegacyComplete(session){return Boolean(session&&v171LegacyStatuses.has(String(session.status||'')))}
+function v171NewSessionComplete(session){return Boolean(session?.v171CompletedAt)&&v124Sections(session).every(section=>v171CompleteStatus(session?.[v124StatusKey(section)]))}
+v171SessionComplete=function(session){return v171LegacyComplete(session)||v171NewSessionComplete(session)};
+v124DeriveStatus=function(session){
+ if(!session)return session;
+ if(v171LegacyComplete(session))return session;
+ const result=v171DeriveStatusCore(session);
+ if(v171NewSessionComplete(result))result.status='completed';
+ return result;
+};
+v171SectionEditable=function(session,section){return Boolean(canInventoryCountInput()&&!v171SessionComplete(session)&&['counting','incomplete','submitted'].includes(v124SectionStatus(session,section)))};
+function v171ExportableSections(session){
+ if(v171LegacyComplete(session))return v124Sections(session).filter(section=>v171SectionRows(session,section).length);
+ return v171DoneSections(session);
+}
+function v171LegacyLabel(session){
+ return {confirmed:'旧仕様・確定済み（閲覧専用）',test_confirmed:'旧仕様・テスト確定済み（閲覧専用）',reversed:'旧仕様・取消済み（閲覧専用）',cancelled:'旧仕様・破棄済み（閲覧専用）'}[String(session?.status||'')]||'旧仕様・閲覧専用';
+}
+function v171LegacyView(id){
+ const session=countSession(id);if(!session||!v171LegacyComplete(session))return inventoryCountHome();
+ v124NormalizeSession(session);const sections=v171ExportableSections(session);
+ const summary=sections.map(section=>{const rows=v171SectionRows(session,section),entered=rows.filter(v123Entered).length;return `<tr><td>${esc(v124SectionLabel(section))}</td><td>${rows.length}</td><td>${entered}</td></tr>`}).join('');
+ pageShell('旧棚卸し結果（閲覧専用）',`${esc(session.countNo||'')} / ${esc(session.roomLabel||'')}`,`<div class="card notice"><b>${esc(v171LegacyLabel(session))}</b><div class="small">この棚卸しは旧仕様で完了した記録です。簡易棚卸しへ変換せず、入力・保存・在庫反映は行いません。Excelと記入表だけを閲覧・出力できます。</div></div><div class="card"><table class="table"><thead><tr><th>工程</th><th>対象件数</th><th>入力済み</th></tr></thead><tbody>${summary||'<tr><td colspan="3">明細はありません。</td></tr>'}</tbody></table></div><div class="grid"><button class="btn orange" ${seikaEventAttrs('click','v171DownloadExcel',[id])}>Excelを出力</button>${sections.includes('normal')?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintNormalSheet',[id,'normal'])}>通常在庫の記入表</button>`:''}${sections.includes('kataoka')?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintNormalSheet',[id,'kataoka'])}>片岡在庫の記入表</button>`:''}${sections.includes('qr')?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintQrItem',[id])}>QR品目別記入表</button>`:''}<button class="btn btn2" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しへ戻る</button></div>`);
+}
+v171SectionPage=function(id,section,msg='',item=''){
+ const session=countSession(id);if(!session)return inventoryCountHome('棚卸しが見つかりません。');
+ if(v171LegacyComplete(session))return v171LegacyView(id);
+ v124NormalizeSession(session);if(v171SessionComplete(session))return inventoryCountHome('完了済みの簡易棚卸しは履歴からExcelを出力できます。');
+ if(section==='kataoka'&&session.room!=='room2')return inventoryCountHome();
+ setScreen('v171SectionPage',[id,section,msg,item]);
+ const editable=v171SectionEditable(session,section),all=v171SectionRows(session,section),selected=section==='qr'?(item||v171QrItemState.get(String(id))||v171QrItems(session)[0]||''):'';
+ if(section==='qr')v171QrItemState.set(String(id),selected);
+ const lines=section==='qr'?all.filter(line=>String(line.itemName||'品名未設定')===selected):all,entries=v124EntryMap(session,section);
+ const selector=section==='qr'?`<div class="card"><label class="label">QR品目を選択</label><select class="input" ${seikaEventAttrs('change','v171SetQrItem',[id,{__seikaValue:true}])}>${v171QrItems(session).map(name=>`<option value="${esc(name)}" ${name===selected?'selected':''}>${esc(name)}</option>`).join('')}</select><div class="small" style="margin-top:7px">選んだ品目のロットだけを表示します。棚卸し画面では出庫処理を行いません。</div></div>`:'';
+ const content=section==='qr'?lines.map(line=>v171QrLineHtml(session,line,editable,entries.get(v124LineId(line,'qr'))||{id:v124LineId(line,'qr')})).join(''):lines.map(line=>v171NormalLineHtml(session,line,section,editable,entries.get(v124LineId(line,section))||{id:v124LineId(line,section),weightEntries:[{id:'w-1',packKg:'',caseCount:''}]})).join('');
+ const print=section==='qr'?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintQrItem',[id,selected])}>このQR品目の記入表を印刷</button>`:`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintNormalSheet',[id,section])}>${section==='kataoka'?'片岡在庫':'通常在庫'}の記入表を印刷</button>`;
+ pageShell(`${section==='qr'?'QR在庫':v124SectionLabel(section)} 棚卸し入力`,`${esc(session.countNo)} / ${esc(session.roomLabel)}`,`${okHtml(msg)}${v171SectionHeader(session,section)}${selector}<div class="card notice"><b>${v171CompleteStatus(v124SectionStatus(session,section))?'入力完了済み':'入力途中'}</b><div class="small">0は確認済みの在庫なし、空欄は未入力です。保存・入力完了は棚卸し記録だけに保存し、通常在庫・QR在庫数量は変更しません。</div><div class="mini" style="margin-top:8px">${print}</div></div><div class="card"><div class="small">${section==='qr'?`${esc(selected)}：${lines.length}ロット`:'仕入先と備考は横に並べて入力できます。'}</div>${content||'<div class="small">対象品目はありません。</div>'}</div>${editable?`<div class="card"><div class="grid"><button class="btn blue" ${seikaEventAttrs('click','v171SaveSection',[id,section,'draft',selected])}>下書き保存</button><button class="btn green" data-v171-save-submit="1" ${seikaEventAttrs('click','v171SaveSection',[id,section,'submit',selected])}>${v171CompleteStatus(v124SectionStatus(session,section))?'修正して保存':'入力完了として保存'}</button></div></div>`:''}`);
+ v171AfterRender();
+};
+v171DownloadExcel=function(id){
+ const session=countSession(id);if(!session)return;if(!ensureXlsxReady())return;v124NormalizeSession(session);
+ const sections=v171ExportableSections(session);if(!sections.length)return alert('出力できる棚卸し明細がありません。');
+ const legacy=v171LegacyComplete(session),workbook=XLSX.utils.book_new();
+ for(const section of ['normal','kataoka'])if(sections.includes(section)){const label=section==='kataoka'?'片岡在庫':`${session.roomLabel} 通常在庫`;v171AddExcelSheet(workbook,label,`${label} 棚卸し結果${legacy?'（旧仕様・閲覧専用）':''}`,session,section,v171ExcelRows(session,section));}
+ if(sections.includes('qr')){const rows=v171SortQrExcelRows(v171ExcelRows(session,'qr'));v171AddExcelSheet(workbook,`${session.roomLabel} QR在庫`,`${session.roomLabel} QR在庫${legacy?'（旧仕様・閲覧専用）':''}`,session,'qr',rows);}
+ const prefix=legacy?'旧棚卸し結果_閲覧用':'棚卸し結果_単価入力用',file=`${prefix}_${String(session.roomLabel||'冷蔵庫').replace(/[\\/:*?"<>|]/g,'_')}_${String(session.countNo||'棚卸し').replace(/[\\/:*?"<>|]/g,'_')}.xlsx`;downloadWorkbookXlsx(workbook,file);inventoryCountHome(legacy?'旧仕様の棚卸し結果を閲覧用Excelとして出力しました。':'単価・配送費・金額が空欄のExcelを出力しました。Excel上で直接入力できます。');
+};
+function v171FitPrintWindow(printWindow){
+ const apply=()=>{const page=printWindow.document.querySelector('.v171PrintPage'),content=printWindow.document.querySelector('.v171PrintContent');if(!page||!content)return;
+  content.style.transform='none';content.classList.remove('v171PrintCompact');
+  const fit=()=>Math.min(1,page.clientWidth/Math.max(1,content.scrollWidth),page.clientHeight/Math.max(1,content.scrollHeight));
+  let scale=fit();if(scale<.72){content.classList.add('v171PrintCompact');scale=fit();}
+  content.style.setProperty('--v171-print-scale',String(Math.max(0,Math.min(1,scale))));content.style.transform='scale(var(--v171-print-scale))';
+  const rect=content.getBoundingClientRect(),verified=Math.min(1,page.clientWidth/Math.max(1,rect.width),page.clientHeight/Math.max(1,rect.height));
+  if(verified<.999){const corrected=Math.max(0,scale*verified);content.style.setProperty('--v171-print-scale',String(corrected));}
+ };
+ const ready=printWindow.document.fonts?.ready||Promise.resolve();ready.then(()=>printWindow.requestAnimationFrame(()=>printWindow.requestAnimationFrame(apply))).catch(()=>printWindow.requestAnimationFrame(apply));
+}
+v171PrintHtml=function(title,meta,heads,rows){
+ const back=esc(location.origin+location.pathname);return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>@page{size:A4 landscape;margin:2mm 3mm}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.v171PrintPage{width:291mm;height:206mm;overflow:visible}.v171PrintContent{width:100%;transform-origin:top left}h1{margin:0 0 2mm;font-size:14pt}.meta{margin-bottom:2mm;font-size:8pt}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:.22mm solid #111;padding:1.1mm;font-size:9pt;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word}th{background:#d9eaf7;text-align:center}.write{height:8mm}.v171PrintCompact h1{font-size:10pt;margin-bottom:1mm}.v171PrintCompact .meta{font-size:6pt;margin-bottom:1mm}.v171PrintCompact th,.v171PrintCompact td{font-size:6pt;padding:.35mm}.v171PrintCompact .write{height:3mm}.actions{margin:3mm 0;font-size:10pt}.back{display:inline-block;border:1px solid #334155;border-radius:2mm;padding:1.3mm 3mm;color:#111;text-decoration:none}@media print{.actions{display:none}.v171PrintPage{overflow:visible}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}body{overflow:visible}}</style></head><body><div class="v171PrintPage"><div class="v171PrintContent"><h1>${esc(title)}</h1><div class="meta">${esc(meta)}　印刷：${esc(dt(nowIso()))}</div><div class="actions"><a class="back" href="${back}" target="_self">← アプリに戻る</a>　A4横で印刷してください。</div><table><thead><tr>${heads.map(head=>`<th>${esc(head)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div></div></body></html>`;
+};
+v171OpenPrint=function(title,html){const printWindow=window.open('','_blank');if(!printWindow)return alert('印刷画面を開けませんでした。ポップアップ許可を確認してください。');printWindow.document.open();printWindow.document.write(html);printWindow.document.close();printWindow.focus();v171FitPrintWindow(printWindow);};
+function v171InventoryGuide(){setScreen('inventoryCountGuidePage');if(!v119CanCountView())return home();const back=`<button class="btn btn2" style="width:100%" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しへ戻る</button>`,step=(number,title,body)=>`<section class="card"><div class="itemHead"><b>STEP ${number}　${title}</b><span class="badge normal">${number}</span></div><div class="small" style="margin-top:8px">${body}</div></section>`;pageShell('簡易棚卸しの使い方','棚卸し記録は通常在庫・QR在庫数量を変更しません。',`${back}<div style="margin-top:12px">${step('1','冷蔵庫を選んで開始','第2冷蔵庫または第3冷蔵庫を開始します。開始時点の通常在庫・片岡在庫・QRロットが棚卸し記録用に固定されます。')}${step('2','通常在庫を入力','kg品目は量目kg×ケース数と端数kg、その他は実数を入力します。仕入先と備考も必要に応じて記入します。')}${step('3','QRを品目別に入力','品目を選ぶと、その品目のロット一覧だけが表示されます。大型容器で重量の自動計算ができない場合だけ、棚卸し重量を入力します。')}${step('4','保存・修正・完了','空欄を残す場合は下書き保存できます。全件入力後は入力完了として保存します。入力完了後も同じ棚卸し内で修正・再保存できます。')}${step('5','Excel・記入表を使う','通常在庫は冷蔵庫別、QR在庫は品目別、片岡在庫は独立して出力します。Excelの単価・配送費・金額は空欄のまま出力されます。')}</div><div class="card notice" style="margin-top:12px"><b>監査記録</b><div class="small">完了時は誰がいつ完了したかを操作ログへ記録します。通常在庫・QR在庫・移動履歴は変更しません。</div></div><div style="margin-top:12px">${back}</div>`);}
+inventoryCountGuidePage=v171InventoryGuide;
+v1143SubmittedCount=function(){return 0;};
+v1143PricePendingCount=function(){return 0;};
+v1143TodayTaskHtml=function(){if(['viewer','office_viewer'].includes(db.role))return '';const role=db.role,rows=[],add=(label,count,action,labelGo)=>{if(Number(count)>0)rows.push(v1143TaskRow(label,count,action,labelGo));},personal=v1143PersonalPendingCount();if(role==='admin'){add('本日未入力',todayMissingItems().length,'inventory','在庫入力を開く');add('月次Excel作成待ち',monthlyExportTasks().length,'monthlyArchive','月次Excelを開く');add('この端末の保留・下書き',personal,'personalWork','保留作業を開く');}else if(role==='worker'){add('本日未入力',todayMissingItems().length,'inventory','在庫入力を開く');add('棚卸しの入力・下書き',v1143ActiveCount(),'inventoryCount','棚卸しを開く');add('この端末の保留・下書き',personal,'personalWork','保留作業を開く');v1143RequiredQualityKey=String(localStorage.getItem(V1111_REQUIRED_QUALITY_KEY)||'');if(v1143RequiredQualityKey)rows.push(v1143TaskRow('QR入庫後の品質評価',1,'requiredQuality','品質評価一覧を開く'));}else if(role==='buyer'){add('発注候補',orderCandidatesForBuyer(db.userId).length,'orderCandidates','発注候補を開く');add('過多品目',excessCandidatesForBuyer(db.userId).length,'excessCandidates','過多品目を開く');}else if(role==='clerk'){add('月次Excel作成待ち',monthlyExportTasks().length,'monthlyArchive','月次Excelを開く');add('この端末の保留・下書き',personal,'personalWork','保留作業を開く');}return rows.length?`<section id="v1143TodayTasks" class="card"><b>${esc(v1143TaskText('今日の作業'))}</b><div class="v1143TaskList">${rows.join('')}</div></section>`:'';};
+for(const role of ['admin','worker']){const guide=V195_ROLE_GUIDES[role];if(!guide?.sections)continue;const index=guide.sections.findIndex(section=>String(section.title||'').includes('棚卸し'));if(index>=0)guide.sections[index]={title:role==='admin'?'簡易棚卸しを確認する':'簡易棚卸しを入力する',where:'ホーム → 棚卸しモード',steps:role==='admin'?['冷蔵庫を選んで開始します。','通常在庫、片岡在庫、QR在庫を工程ごとに入力します。','入力完了後も必要に応じて開き、修正して再保存します。','通常在庫は冷蔵庫別、QR在庫は品目別のExcel・記入表を出力します。']:['冷蔵庫を選んで開始します。','通常在庫を入力し、必要に応じて仕入先・備考を記入します。','QRは品目を選び、ロット一覧を入力します。','全件入力後に入力完了として保存し、必要なら修正して再保存します。'],check:'棚卸し記録が保存済みになり、通常在庫・QR在庫数量が変わっていないことを確認します。',caution:'管理者確認・在庫反映はありません。完了時の操作ログだけが監査記録として残ります。'};}
+v171Home=function(msg=''){
+ setScreen('inventoryCountHome',[msg]);if(!v119CanCountView())return home();v124AllSessions();const sessions=countSessions().slice().sort((a,b)=>new Date(b.updatedAt||0)-new Date(a.updatedAt||0)),active=sessions.filter(session=>!v171SessionComplete(session)),history=sessions.filter(session=>v171SessionComplete(session));
+ const card=session=>{const legacy=v171LegacyComplete(session),done=v171ExportableSections(session),completed=v171NewSessionComplete(session);if(legacy)return `<div class="card"><div class="itemHead"><div><b>${esc(session.countNo||'')}</b><div class="small">${esc(session.roomLabel||'')} / ${esc(v171LegacyLabel(session))} / 開始：${esc(session.startedAt?dt(session.startedAt):'－')}</div></div><span class="badge normal">閲覧専用</span></div><div class="small" style="margin-top:8px">旧仕様の結果を保持しています。簡易棚卸しへ変換せず、入力・保存はできません。</div><div class="mini" style="margin-top:8px"><button class="btn btn2" ${seikaEventAttrs('click','v171LegacyView',[session.id])}>結果を閲覧</button>${done.length?`<button class="btn orange" ${seikaEventAttrs('click','v171DownloadExcel',[session.id])}>Excelを出力</button>`:''}</div></div>`;return `<div class="card"><div class="itemHead"><div><b>${esc(session.countNo||'')}</b><div class="small">${esc(session.roomLabel||'')} / 開始：${esc(session.startedAt?dt(session.startedAt):'－')}${completed?` / 完了：${esc(dt(session.v171CompletedAt))}`:''}</div></div><span class="badge ${completed?'normal':done.length?'excess':'unset'}">${completed?'完了':done.length?`入力完了 ${done.length}/${v124Sections(session).length}`:'入力中'}</span></div>${v124Sections(session).map(section=>{const status=v124SectionStatus(session,section),doneSection=v171CompleteStatus(status);return `<div class="card" style="margin-top:8px"><b>${v124SectionLabel(section)}</b><div class="small">${doneSection?'入力完了（修正可）':status==='incomplete'?'下書き保存済み':'入力中'}</div><div class="mini" style="margin-top:8px"><button class="btn ${section==='qr'?'blue':'green'}" ${seikaEventAttrs('click','v171SectionPage',[session.id,section])}>${doneSection?'修正して保存':'入力する'}</button>${section==='qr'?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintQrItem',[session.id])}>QR記入表</button>`:`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintNormalSheet',[session.id,section])}>記入表</button>`}</div></div>`}).join('')}<div class="mini" style="margin-top:8px">${done.length?`<button class="btn orange" ${seikaEventAttrs('click','v171DownloadExcel',[session.id])}>単価欄空欄のExcelを出力</button>`:''}</div></div>`};
+ const start=canInventoryCountInput()?`<div class="card"><b>棚卸しを開始（管理者・青果社員）</b><div class="small" style="margin-top:7px">入力完了を保存しても通常在庫・QR在庫数量は変更しません。管理者確認はありません。</div><div class="grid" style="margin-top:9px"><button class="btn orange" ${seikaEventAttrs('click','startInventoryCount',['room2'])}>第2冷蔵庫を開始</button><button class="btn orange" ${seikaEventAttrs('click','startInventoryCount',['room3'])}>第3冷蔵庫を開始</button></div></div>`:'';
+ pageShell('簡易棚卸しモード',`${esc(v119RoleLabel())} / ${V171_INVENTORY_VERSION}`,`${okHtml(msg)}<div class="card notice"><b>簡易棚卸しの流れ</b><div class="small">冷蔵庫ごとに通常在庫を入力し、QRは品目を選んでロット一覧を入力します。各工程の「入力完了として保存」後にExcel・記入表を使えます。提出済みも再入力・再保存できます。棚卸し記録は在庫を変更しません。完了時は監査用の操作ログだけを追加します。</div></div>${start}<div class="card"><b>入力中・入力完了</b>${active.map(card).join('')||'<div class="small">入力中の棚卸しはありません。</div>'}</div><div class="card"><b>完了履歴</b>${history.map(card).join('')||'<div class="small">完了した棚卸しはありません。</div>'}</div>`);
+};
+inventoryCountHome=v171Home;inventoryCountPage=(id,msg='')=>v171SectionPage(id,'normal',msg);downloadInventoryCountExcel=v171DownloadExcel;printInventoryCount=(id,mode)=>mode==='sheet'?v171PrintNormalSheet(id,'normal'):v171DownloadExcel(id);
+
+
+
+const V171_APP_VERSION='v1.176',V171_SIMPLE_MODE='simple_v171',V171_COMPLETE_OPERATION_PREFIX='seika_v171_complete_operation';
+window.APP_VERSION=V171_APP_VERSION;document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
+function v171Simple(s){return s?.inventoryCountMode===V171_SIMPLE_MODE}
+function v171Completed(s){return v171Simple(s)&&Boolean(s?.v171CompletedAt)&&v124Sections(s).every(x=>v124SectionStatus(s,x)==='submitted')}
+const v171NewSessionCore=v123NewSession;
+v123NewSession=function(room){return v171NewSessionCore(room,false).then(s=>{s.inventoryCountMode=V171_SIMPLE_MODE;delete s.isTest;delete s.mode;return v124NormalizeSession(s)})};
+countActiveForRoom=function(room){return countSessions().find(s=>s.room===room&&v171Simple(s)&&!v171Completed(s))};
+const v171ConfirmSectionCore=v124ConfirmSection;v124ConfirmSection=function(id,section){if(v171Simple(countSession(id)))return alert('簡易棚卸しは管理者確認・在庫反映を行いません。');return v171ConfirmSectionCore(id,section)};
+const v171ReturnSectionCore=v124ReturnSection;v124ReturnSection=function(id,section){if(v171Simple(countSession(id)))return alert('簡易棚卸しは差戻しを行いません。');return v171ReturnSectionCore(id,section)};
+const v171ConfirmInventoryCore=confirmInventoryCount;confirmInventoryCount=function(id){if(v171Simple(countSession(id)))return alert('簡易棚卸しは在庫反映を行いません。');return v171ConfirmInventoryCore(id)};
+const v171ReverseInventoryCore=reverseInventoryCount;reverseInventoryCount=function(id){if(v171Simple(countSession(id)))return alert('簡易棚卸しは取消・在庫反映を行いません。');return v171ReverseInventoryCore(id)};
+function v171CompleteKey(id){return `${V171_COMPLETE_OPERATION_PREFIX}:${db?.userId||'anonymous'}:${id}`}
+function v171GetCompletion(id){try{return localStorage.getItem(v171CompleteKey(id))||''}catch{return''}}
+function v171SetCompletion(id,op){try{localStorage.setItem(v171CompleteKey(id),op)}catch{}}
+function v171ClearCompletion(id){try{localStorage.removeItem(v171CompleteKey(id))}catch{}}
+async function v171Complete(id){const s=countSession(id),op=v171GetCompletion(id)||crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;v171SetCompletion(id,op);const a=await callRpc('v171_complete_simple_inventory_count_session',{p_id:STATE_ID,p_session_id:id,p_expected_session_revision:Number(s.revision)||0,p_operation_id:op});if(a?.conflict)throw new Error(a.message||'別端末で更新されています。');if(!a?.ok)throw new Error(a?.message||'棚卸しの完了処理に失敗しました。');if(a.completed)v171ClearCompletion(id);return a}
+v171SectionEditable=(s,section)=>canInventoryCountInput()&&v171Simple(s)&&!v171Completed(s)&&['counting','incomplete','submitted'].includes(v124SectionStatus(s,section));
+const v171SaveSectionCore=v171SaveSection;
+v171SaveSection=async function(id,section,action,item=''){const s=countSession(id);if(!v171Simple(s))return v171SaveSectionCore(id,section,action,item);if(v171Completed(s))return v171ReadOnlyView(id);v171PersistDom(id,section);const missing=v171Missing(s,section);if(action==='submit'&&missing.length)return alert(`未入力が${missing.length}件あります。空欄を入力するか、下書き保存してください。`);const op=crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;v161ShowProcessing(`${v124SectionLabel(section)}を保存しています`);try{const a=await callRpc('v171_save_simple_inventory_count_section',{p_id:STATE_ID,p_session_id:id,p_section:section,p_expected_section_revision:Number(s[v124RevisionKey(section)])||0,p_entries:v124DraftEntries(s,section),p_action:action,p_operation_id:op});if(a?.conflict)throw new Error(a.message||'別端末で更新されています。');if(!a?.ok)throw new Error(a?.message||'保存できませんでした。');v124ClearDraft(id,section);await loadCloud();let done=null;if(action==='submit')done=await v171Complete(id);if(done?.completed)await loadCloud();if(v171Completed(countSession(id)))return v171ReadOnlyView(id,'棚卸しを完了しました。通常在庫・QR在庫・移動履歴は変更していません。');return v171SectionPageCore(id,section,action==='draft'?'下書き保存しました。':'入力完了として保存しました。残りの工程を入力してください。',item)}catch(e){alert(`${v124SectionLabel(section)}を保存できませんでした。\n${v161ErrorText(e)}\n\n入力内容はこの端末に保持しています。`);return v171SectionPageCore(id,section,'',item)}finally{v161HideProcessing()}};
+function v171PrintHtml(title,meta,heads,rows){const body=`<h1>${esc(title)}</h1><div class="meta">${esc(meta)}　印刷：${esc(dt(nowIso()))}</div><table><thead><tr>${heads.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;const host=document.createElement('div');host.style.cssText='position:fixed;left:-100000px;top:0;width:1100px;visibility:hidden;background:#fff';host.innerHTML=`<div style="width:1100px;font:14px sans-serif"><style>h1{margin:0 0 8px;font-size:20px}.meta{margin-bottom:8px;font-size:12px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #111;padding:5px;font-size:13px;overflow-wrap:anywhere}th{background:#d9eaf7}.write{height:42px}</style>${body}</div>`;document.body.appendChild(host);const probe=host.firstElementChild,w=Math.max(probe.scrollWidth,probe.getBoundingClientRect().width),h=Math.max(probe.scrollHeight,probe.getBoundingClientRect().height);host.remove();const scale=Math.min(1,1100/Math.max(1,w),779/Math.max(1,h)).toFixed(5);return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title><style>@page{size:A4 landscape;margin:2mm 3mm}*{box-sizing:border-box}html,body{margin:0;padding:0;width:291mm;height:206mm;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.page{width:291mm;height:206mm;overflow:hidden}.content{width:1100px;transform:scale(${scale});transform-origin:top left}h1{margin:0 0 8px;font-size:20px}.meta{margin-bottom:8px;font-size:12px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #111;padding:5px;font-size:13px;overflow-wrap:anywhere}th{background:#d9eaf7}.write{height:42px}@media print{html,body,.page{overflow:hidden}thead,tbody,tr{break-inside:avoid;page-break-inside:avoid}}</style></head><body><div class="page"><div class="content">${body}</div></div></body></html>`}
+v171PrintHtml=v171PrintHtml;
+const v171SectionPageCore=v171SectionPage;
+function v171ReadOnlyView(id,msg=''){const s=countSession(id);if(!s)return inventoryCountHome();v124NormalizeSession(s);const completed=v171Completed(s),sections=v124Sections(s).filter(x=>v171SectionRows(s,x).length),summary=sections.map(x=>`<tr><td>${esc(v124SectionLabel(x))}</td><td>${v171SectionRows(s,x).length}</td><td>${v171SectionRows(s,x).filter(v123Entered).length}</td></tr>`).join('');pageShell('棚卸し結果（閲覧専用）',`${esc(s.countNo||'')} / ${esc(s.roomLabel||'')}`,`${okHtml(msg)}<div class="card notice"><b>${completed?'完了済み（閲覧専用）':'旧仕様（閲覧専用）'}</b><div class="small">${completed?'完了後は修正できません。':'旧セッションは進行中を含めて閲覧専用です。'} 管理者確認・在庫反映は行いません。</div></div><div class="card"><table class="table"><thead><tr><th>工程</th><th>対象件数</th><th>入力済み</th></tr></thead><tbody>${summary||'<tr><td colspan="3">明細はありません。</td></tr>'}</tbody></table></div><div class="grid"><button class="btn orange" ${seikaEventAttrs('click','v171DownloadExcel',[id])}>Excelを出力</button>${sections.includes('normal')?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintNormalSheet',[id,'normal'])}>通常在庫の記入表</button>`:''}${sections.includes('kataoka')?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintNormalSheet',[id,'kataoka'])}>片岡在庫の記入表</button>`:''}${sections.includes('qr')?`<button class="btn btn2" ${seikaEventAttrs('click','v171PrintQrItem',[id])}>QR品目別記入表</button>`:''}<button class="btn btn2" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しへ戻る</button></div>`)}
+v171SectionPage=function(id,section,msg='',item=''){const s=countSession(id);if(!s)return inventoryCountHome('棚卸しが見つかりません。');if(!v171Simple(s)||v171Completed(s))return v171ReadOnlyView(id,msg);return v171SectionPageCore(id,section,msg,item)};
+const v171Pre175ExcelDownload=v171DownloadExcel;v171DownloadExcel=function(id){const s=countSession(id);if(!s)return;if(v171Simple(s)&&!v171Completed(s))return alert('Excelは棚卸し完了後に出力できます。');return v171Pre175ExcelDownload(id)};
+function v171Home(msg=''){setScreen('inventoryCountHome',[msg]);if(!v119CanCountView())return home();v124AllSessions();const sessions=countSessions().slice().sort((a,b)=>new Date(b.updatedAt||0)-new Date(a.updatedAt||0)),active=sessions.filter(s=>v171Simple(s)&&!v171Completed(s)),history=sessions.filter(s=>!active.includes(s));const card=s=>{if(!v171Simple(s)||v171Completed(s))return `<div class="card"><div class="itemHead"><div><b>${esc(s.countNo||'')}</b><div class="small">${esc(s.roomLabel||'')} / ${v171Completed(s)?'完了済み':'旧仕様（閲覧専用）'}</div></div><span class="badge normal">閲覧専用</span></div><div class="mini" style="margin-top:8px"><button class="btn btn2" ${seikaEventAttrs('click','v171ReadOnlyView',[s.id])}>結果を閲覧</button><button class="btn orange" ${seikaEventAttrs('click','v171DownloadExcel',[s.id])}>Excelを出力</button></div></div>`;const done=v124Sections(s).filter(x=>v124SectionStatus(s,x)==='submitted');return `<div class="card"><div class="itemHead"><div><b>${esc(s.countNo||'')}</b><div class="small">${esc(s.roomLabel||'')} / 開始：${esc(s.startedAt?dt(s.startedAt):'－')}</div></div><span class="badge ${done.length?'excess':'unset'}">${done.length?`入力完了 ${done.length}/${v124Sections(s).length}`:'入力中'}</span></div>${v124Sections(s).map(x=>`<div class="mini" style="margin-top:8px"><b>${v124SectionLabel(x)}</b>　${v124SectionStatus(s,x)==='submitted'?'入力完了':'入力中'}　<button class="btn ${x==='qr'?'blue':'green'}" ${seikaEventAttrs('click','v171SectionPage',[s.id,x])}>開く</button>${x==='qr'?` <button class="btn btn2" ${seikaEventAttrs('click','v171PrintQrItem',[s.id])}>QR記入表</button>`:` <button class="btn btn2" ${seikaEventAttrs('click','v171PrintNormalSheet',[s.id,x])}>記入表</button>`}</div>`).join('')}</div>`};const start=canInventoryCountInput()?`<div class="card"><b>棚卸しを開始（管理者・青果社員）</b><div class="small" style="margin-top:7px">管理者確認・在庫反映はありません。全工程の提出で完了し、完了後は修正できません。</div><div class="grid" style="margin-top:9px"><button class="btn orange" ${seikaEventAttrs('click','startInventoryCount',['room2'])}>第2冷蔵庫を開始</button><button class="btn orange" ${seikaEventAttrs('click','startInventoryCount',['room3'])}>第3冷蔵庫を開始</button></div></div>`:'';pageShell('簡易棚卸しモード',`${esc(v119RoleLabel())} / ${V171_APP_VERSION}`,`${okHtml(msg)}<div class="card notice"><b>簡易棚卸しの流れ</b><div class="small">通常在庫は冷蔵庫別、片岡在庫は独立工程、QRは品目別に入力します。下書きは未入力可、入力完了は全件必須です。完了後は閲覧・Excel・印刷のみで、在庫数量は変更しません。</div></div>${start}<div class="card"><b>入力中</b>${active.map(card).join('')||'<div class="small">入力中の棚卸しはありません。</div>'}</div><div class="card"><b>完了・旧履歴</b>${history.map(card).join('')||'<div class="small">履歴はまだありません。</div>'}</div>`)}
+inventoryCountHome=v171Home;inventoryCountPage=(id,msg='')=>v171SectionPage(id,'normal',msg);
+function v171Guide(){setScreen('inventoryCountGuidePage');if(!v119CanCountView())return home();pageShell('簡易棚卸しの使い方','管理者確認なし・在庫反映なし・完了後修正不可',`<div class="card notice"><b>開始と入力</b><div class="small">管理者・青果社員が開始します。下書きは未入力可、入力完了は全件必須です。QR大型容器で自動計算できない重量は実測重量を必ず入力します。</div></div><div class="card"><b>完了と出力</b><div class="small">全工程提出で完了します。管理者確認・在庫反映はありません。完了後は閲覧・Excel・印刷のみで修正できません。通常は冷蔵庫別、片岡は独立、QRは品目別に出力します。</div></div><div class="card"><b>在庫への影響</b><div class="small">records、specialRecords、QRロット、QR移動、在庫数量は変更しません。</div></div>`)}
+inventoryCountGuidePage=v171Guide;
+
+
+
+for(const role of ['admin','worker']){const g=V195_ROLE_GUIDES[role];if(!g?.sections)continue;const i=g.sections.findIndex(x=>String(x.title||'').includes('棚卸し'));if(i>=0)g.sections[i]={title:'簡易棚卸し',where:'ホーム → 棚卸しモード',steps:['冷蔵庫を選んで開始します。','通常・片岡・QRを工程ごとに入力します。','下書きは未入力可、提出は全件必須です。','完了後は閲覧・Excel・印刷のみです。'],check:'在庫数量が変わっていないことを確認します。',caution:'管理者確認・在庫反映はありません。完了後は修正できません。'};}
+
+
+function v171WorkbookSections(session){return v124Sections(session).filter(section=>v171SectionRows(session,section).length)}
+function v171WorkbookCandidates(session){return countSessions().filter(other=>other.id!==session.id&&v171Simple(other)&&Boolean(other?.v171CompletedAt)&&other.room!==session.room&&v124SessionDate(other)===v124SessionDate(session)).sort((a,b)=>new Date(b.startedAt||0)-new Date(a.startedAt||0))}
+function v171AppendWorkbookSheets(workbook,session){for(const section of ['normal','kataoka'])if(v171WorkbookSections(session).includes(section)){const label=section==='kataoka'?'片岡在庫':`${session.roomLabel} 通常在庫`;v171AddExcelSheet(workbook,label,`${label} 棚卸し結果`,session,section,v171ExcelRows(session,section))}if(v171WorkbookSections(session).includes('qr')){const rows=v171SortQrExcelRows(v171ExcelRows(session,'qr'));v171AddExcelSheet(workbook,`${session.roomLabel} QR在庫`,`${session.roomLabel} QR在庫`,session,'qr',rows)}}
+function v171DownloadExcel(id,otherId=''){const session=countSession(id),other=otherId?countSession(otherId):null;if(!session||!v171Completed(session))return alert('Excelは棚卸し完了後に出力できます。');if(other&&(!v171Simple(other)||!v171Completed(other)||other.room===session.room))return alert('統合対象の棚卸しを確認してください。');if(!ensureXlsxReady())return;const workbook=XLSX.utils.book_new(),sessions=[session,...(other?[other]:[])];for(const item of sessions)v171AppendWorkbookSheets(workbook,item);const rooms=sessions.map(item=>item.roomLabel).join('・'),file=`棚卸し結果_単価入力用_${rooms}_${String(session.countNo||'棚卸し').replace(/[\\/:*?"<>|]/g,'_')}.xlsx`.replace(/[\\/:*?"<>|]/g,'_');downloadWorkbookXlsx(workbook,file);inventoryCountHome(other?'第2・第3冷蔵庫を統合した単価入力用Excelを出力しました。':'単価・配送費・金額が空欄のExcelを出力しました。')}
+function v171ChooseWorkbook(id){const session=countSession(id),candidates=session?v171WorkbookCandidates(session):[];if(!candidates.length)return v171DownloadExcel(id);const choices=candidates.map((item,index)=>`${index+1}. ${item.roomLabel} / ${item.countNo} / 開始 ${dt(item.startedAt)}`).join('\n'),number=Number(prompt(`同日のもう一方の冷蔵庫を選択してください。\n${choices}`,'1')),target=candidates[number-1];if(!target)return alert('選択が不正です。');v171DownloadExcel(id,target.id)}
+const v171HomeCore=v171Home;v171Home=function(msg=''){v171HomeCore(msg);const root=document.querySelector('.wrap');if(!root)return;for(const button of root.querySelectorAll('[data-seika-click-action="v171DownloadExcel"]')){const id=JSON.parse(decodeURIComponent(button.dataset.seikaClickArgs||'%5B%5D'))?.[0];const session=countSession(id);if(session&&v171WorkbookCandidates(session).length){const combined=document.createElement('button');combined.className='btn blue';combined.type='button';combined.textContent='第2・第3を統合してExcel';combined.addEventListener('click',()=>v171ChooseWorkbook(id));button.insertAdjacentElement('afterend',combined)}}}
+inventoryCountHome=v171Home;downloadInventoryCountExcel=v171DownloadExcel;
+window.APP_VERSION='v1.176';document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
+
+
+/* ===== v1.176: simple inventory count dedicated RPC only ===== */
+const V171_CREATE_RPC='v171_create_simple_inventory_count_session';
+async function v171StartSession(room){
+ if(!canInventoryCountInput())return alert('棚卸し開始は管理者・青果社員のみです。');
+ if(!validColdRoom(room))return alert('冷蔵庫を選択してください。');
+ await loadCloud();
+ const active=countSessions().find(s=>s?.room===room&&!v171Completed(s)&&!['cancelled','reversed','confirmed','test_confirmed'].includes(String(s?.status||'')));
+ if(active){if(confirm(`${roomLabel(room)}の進行中棚卸しを開きますか？`))return v171SectionPage(active.id,'normal');return;}
+ const operationId=crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
+ try{
+  const session=await v123NewSession(room);
+  session.inventoryCountMode=V171_SIMPLE_MODE;
+  v161ShowProcessing('開始時点の棚卸し対象を固定しています');
+  const answer=await callRpc(V171_CREATE_RPC,{p_id:STATE_ID,p_session:session,p_operation_id:operationId});
+  if(!answer?.ok)throw new Error(answer?.message||'棚卸しを開始できませんでした。');
+  await loadCloud();
+  return v171SectionPage(session.id,'normal','簡易棚卸しを開始しました。通常在庫・QR在庫・在庫数量は変更しません。');
+ }catch(error){alert(`棚卸しを開始できませんでした。\n${v161ErrorText(error)}`)}finally{v161HideProcessing()}
+}
+startInventoryCount=v171StartSession;
+window.APP_VERSION='v1.176';
+document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
+
+
+/* ===== v1.176: inventory Excel single final export path ===== */
+const V176_INVENTORY_EXCEL_VERSION='v1.176';
+function v175IsSimpleSession(session){return Boolean(session&&session.inventoryCountMode===V171_SIMPLE_MODE)}
+function v175IsLegacySession(session){return Boolean(session&&!v175IsSimpleSession(session))}
+function v175SectionRows(session,section){
+ const key=section==='normal'?'lines':section==='qr'?'qrLines':'kataokaLines';
+ return Array.isArray(session?.[key])?session[key]:[];
+}
+function v175EntryMap(session,section){
+ const rows=v175SectionRows(session,section), map=new Map();
+ for(const line of rows){const id=String(v124LineId(line,section)||'');if(id)map.set(id,line)}
+ return map;
+}
+function v175ExcelRows(session,section){
+ const rows=v175SectionRows(session,section), entries=v175EntryMap(session,section);
+ return rows.map(line=>{
+  const entry=entries.get(String(v124LineId(line,section)||''))||line||{};
+  const quantity=v119StrictDecimal(entry.actualQty??line.actualQty);
+  const large=section==='qr'&&qrIsLargeContainer(line.containerType);
+  const manual=large&&qrCountLargeWeightMode(line)==='manual';
+  let weight='';
+  if(section!=='qr')weight=v124LineKg({...line,actualQty:quantity},false);
+  else if(manual)weight=v119StrictDecimal(entry.actualWeightKg??line.actualWeightKg)??'';
+  else if(large)weight=quantity===null?'':(qrCountActualWeight({...line,actualQty:quantity})??'');
+  else weight=line.actualWeightKg??v119LineActualKg({...line,actualQty:quantity},true)??'';
+  return {section,item:line.itemName||'',lot:section==='qr'?(line.lotNo||line.qrKey||''):'',received:line.receivedDate||'',origin:line.origin||'',supplier:entry.supplier??line.supplier??line.supplier_name??'',spec:section==='qr'?(line.containerType||line.unit||''):(line.unit||''),qty:quantity??'',unit:line.unit||'',weight,memo:entry.memo??line.memo??''};
+ });
+}
+function v175ExportSections(session){
+ const allowed=v175IsSimpleSession(session)?v124Sections(session):['normal','qr','kataoka'];
+ return allowed.filter(section=>v175SectionRows(session,section).length>0);
+}
+function v175AppendWorkbookSheets(workbook,session,legacy=false){
+ const sections=v175ExportSections(session);
+ for(const section of ['normal','kataoka']){
+  if(!sections.includes(section))continue;
+  const label=section==='kataoka'?'片岡在庫':`${session.roomLabel} 通常在庫`;
+  v171AddExcelSheet(workbook,label,`${label} 棚卸し結果${legacy?'（旧仕様・閲覧専用）':''}`,session,section,v175ExcelRows(session,section));
+ }
+ if(sections.includes('qr')){
+  const label=`${session.roomLabel} QR在庫`, rows=v171SortQrExcelRows(v175ExcelRows(session,'qr'));
+  v171AddExcelSheet(workbook,label,`${label}${legacy?'（旧仕様・閲覧専用）':''}`,session,'qr',rows);
+ }
+}
+v171AppendWorkbookSheets=v175AppendWorkbookSheets;
+v171ExcelRows=v175ExcelRows;
+v171DownloadExcel=function(id,otherId=''){
+ const session=countSession(id),other=otherId?countSession(otherId):null;
+ if(!session)return;
+ const simple=v175IsSimpleSession(session),legacy=v175IsLegacySession(session);
+ if(simple&&!Boolean(session?.v171CompletedAt))return alert('Excelは棚卸し完了後に出力できます。');
+ if(legacy&&otherId)return alert('旧棚卸し結果は冷蔵庫別の閲覧用Excelとして出力します。');
+ if(other&&(!v175IsSimpleSession(other)||!Boolean(other?.v171CompletedAt)||other.room===session.room))return alert('統合対象の棚卸しを確認してください。');
+ if(!ensureXlsxReady())return;
+ /* Export must read the session snapshot as-is: normalization can migrate legacy rows and must not run during read-only Excel output. */
+ if(!v175ExportSections(session).length)return alert('出力できる棚卸し明細がありません。');
+ const workbook=XLSX.utils.book_new(),sessions=[session,...(other?[other]:[])];
+ for(const target of sessions)v175AppendWorkbookSheets(workbook,target,legacy);
+ const rooms=sessions.map(target=>target.roomLabel||'冷蔵庫').join('・');
+ const prefix=legacy?'旧棚卸し結果_閲覧用':'棚卸し結果_単価入力用';
+ const file=`${prefix}_${rooms}_${String(session.countNo||'棚卸し').replace(/[\\/:*?"<>|]/g,'_')}.xlsx`.replace(/[\\/:*?"<>|]/g,'_');
+ downloadWorkbookXlsx(workbook,file);
+ inventoryCountHome(legacy?'旧仕様の棚卸し結果を閲覧用Excelとして出力しました。':'単価・配送費・金額が空欄のExcelを出力しました。');
+};
+downloadInventoryCountExcel=v171DownloadExcel;
+window.APP_VERSION=V176_INVENTORY_EXCEL_VERSION;document.title='SEIKA＋ v1.176 棚卸しExcel・PWA整合最終版';
 
 </script>
-  </body>
+  
+<script>
+
+</script>
+</body>
 </html>
+
