@@ -1,6 +1,6 @@
 {
   "id": "./",
-  "version": "v1.176",
+  "version": "v1.177",
   "name": "SEIKA＋ 在庫管理",
   "short_name": "SEIKA＋",
   "description": "石岡青果センターの在庫・QR・廃棄・棚卸し管理",
@@ -12,7 +12,17 @@
   "background_color": "#f8fafc",
   "theme_color": "#102653",
   "icons": [
-    {"src": "./icons/seika-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-    {"src": "./icons/seika-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+    {
+      "src": "./icons/seika-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/seika-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }
