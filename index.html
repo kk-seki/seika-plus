@@ -6329,8 +6329,12 @@ const resolved=v1111QrResolveInventoryItemCore(lot);if(resolved.item)return reso
 ;return result};const v1111QrRenderContainerFieldsCore=qrRenderContainerFields;qrRenderContainerFields=function(){
 const result=v1111QrRenderContainerFieldsCore();v1111MarkQrEntryRequiredFields();return result};function v1111RequiredValue(id,message){
 const element=document.getElementById(id);if(!element)return true;const value=element.value?.trim()||"";return value?true:v161FocusField(id,message)}
+function v1111RequiredPurchaseStaff(message){
+const element=document.getElementById("qrPurchaseStaff");if(!element)return true
+;const info=typeof window.v1183ResolveQrPurchaseStaff==="function"?window.v1183ResolveQrPurchaseStaff(element):typeof window.v1144ReadPurchaseStaffFrom==="function"?window.v1144ReadPurchaseStaffFrom(element):null
+;return info?.display_name&&info?.legacy_user_id?true:v161FocusField("qrPurchaseStaff",message)}
 const v1111QrSaveLotCore=qrSaveLot;qrSaveLot=async function(){if(!v1111RequiredValue("qrReceivedDate","入庫日を入力してください。"))return
-;if(!v1111RequiredValue("qrItemName","品目を選択してください。"))return;if(!v1111RequiredValue("qrPurchaseStaff","仕入れ担当者を入力してください。"))return
+;if(!v1111RequiredValue("qrItemName","品目を選択してください。"))return;if(!v1111RequiredPurchaseStaff("仕入れ担当者を入力してください。"))return
 ;if(!v1111RequiredValue("qrContainerType","荷姿を選択してください。"))return;if(!v1111RequiredValue("qrQty","数量を入力してください。"))return
 ;if(!v1111RequiredValue("qrSupplier","仕入先を入力してください。"))return;if(!v1111RequiredValue("qrOrigin","産地を入力してください。"))return
 ;if(!v1111RequiredValue("qrLoc","保管場所を選択してください。"))return;return v1111QrSaveLotCore()};function v1111CloseQrPdfPanel(){
@@ -7133,7 +7137,7 @@ function v133WorkerVersion(worker){return new Promise(resolve=>{if(!worker)retur
 async function v133AssessWaitingWorker(worker){if(!worker||!navigator.serviceWorker.controller)return;await v133LoadReleaseNotes();const workerVersion=await v133WorkerVersion(worker),candidate=workerVersion||v133ReleaseVersion;if(!v133IsNewerVersion(candidate)){v133WaitingWorker=null;v133WaitingVersion='';if(workerVersion&&v133NormalizeVersion(workerVersion)===v133NormalizeVersion(window.APP_VERSION))worker.postMessage({type:'SKIP_WAITING'});v133RefreshNotices();return}v133WaitingWorker=worker;v133WaitingVersion=candidate;v133RefreshNotices()}
 function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133AssessWaitingWorker(worker)}
 async function v133ApplyUpdate(){if(!v133HasNewVersion())return alert('この端末はすでに最新です。');if(!v133CanApplyUpdate()){const p=v133PendingSummary();return alert(`未同期・下書きが ${p.total}件あります。保存・再送を完了してから更新してください。`)}if(!confirm(`SEIKA＋ ${v133WaitingVersion||v133ReleaseVersion}へ更新して再起動しますか？`))return;try{await v188IdbFlush?.()}catch(e){return alert('端末内データの保護が完了していません。画面を閉じず、もう一度お試しください。')}v133ReloadForUpdate=true;v133WaitingWorker.postMessage({type:'SKIP_WAITING'})}
-async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.177',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
+async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.183',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
 function v133InstallEvents(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();v133DeferredInstallPrompt=e;v133RefreshNotices()});window.addEventListener('appinstalled',()=>{v133DeferredInstallPrompt=null;v133GuideDismiss();v133Toast('SEIKA＋をホーム画面へ追加しました','ok')});navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(v133ReloadForUpdate)location.reload()});navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='SEIKA_VERSION_READY'&&event.data.version!==String(window.APP_VERSION||'')){v133Toast('新しいアプリ版を取得しました。画面を再読み込みしてください','info',false)}});window.addEventListener('online',()=>{v133Toast('オンラインに戻りました','ok',false);updateSyncDisplay();v133RefreshNotices()});window.addEventListener('offline',()=>{v133Toast('オフラインです。確定操作は行わないでください','err',false);updateSyncDisplay();v133RefreshNotices()});document.addEventListener('pointerdown',()=>{v133UserInteracted=true},{once:true,passive:true});document.addEventListener('keydown',()=>{v133UserInteracted=true},{once:true})}
 const v133PageShellCore=pageShell;pageShell=function(title,sub,body,opts={}){v133PageShellCore(title,sub,body,opts);const sync=document.getElementById('syncInfo');if(sync&&!document.getElementById('v133HeaderMeta'))sync.insertAdjacentHTML('beforebegin',`<div id="v133HeaderMeta">${v133HeaderMetaHtml()}</div>`);const main=document.querySelector('.wrap');if(main&&v133HasNewVersion()&&!document.getElementById('v133UpdateBanner'))main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())};
 const v133HomeCore=home;home=function(){v133HomeCore();const main=document.querySelector('.wrap');if(!main)return;const extra=`${v133InstallBannerHtml()}${v133StartupCheckHtml()}`,first=main.firstElementChild;if(first)first.insertAdjacentHTML('beforebegin',extra);else main.innerHTML=extra};
@@ -9770,36 +9774,41 @@ window.qrSaveLot=async function(){
 const v1180QrCreatePageCore=window.qrCreatePage;
 window.qrCreatePage=async function(){const result=await v1180QrCreatePageCore();await v1179LoadRegisteredUsers();const staff=v1144ReplacePurchaseStaffControl();const remembered=v1180ReadStoredStaffState();if(staff&&remembered)v1180ApplyStaffState(staff,remembered,{persist:true});qrAutoFillStaff();return result;};
 
-/* ===== v1.182: QR入庫担当者の旧value判定を最終経路でも無効化 =====
-   v1.144の保存ラッパーはv1.180より前に生成され、画面のselect再描画時に value が空でも
-   option/dataset に残る正式情報を見ずに停止していた。ここで全旧core chainの直前に同期する。 */
-function v1182SyncPurchaseStaffSelect(staff){
+/* ===== v1.183: QR入庫担当者の表示optionとcanonical IDを保存前に直接整合 ===== */
+window.v1183ResolveQrPurchaseStaff=function(staff){
   if(!staff)return {legacy_user_id:null,profile_id:null,display_name:null};
-  const optionInfo=typeof v1180OptionInfo==='function'?v1180OptionInfo(staff.options?.[staff.selectedIndex]):null;
-  const dataInfo=typeof v1180CanonicalStaffInfo==='function'
-    ?v1180CanonicalStaffInfo(staff.dataset?.staffLegacyUserId,staff.dataset?.staffDisplayName,staff.dataset?.staffProfileId||null)
-    :null;
-  const stored=typeof v1180ReadStoredStaffState==='function'?v1180ReadStoredStaffState():null;
-  const info=(optionInfo&&optionInfo.display_name?optionInfo:null)
-    ||(dataInfo&&dataInfo.display_name?dataInfo:null)
-    ||(stored&&stored.display_name?stored:null)
-    ||(typeof window.v1144ReadPurchaseStaffFrom==='function'?window.v1144ReadPurchaseStaffFrom(staff):null);
+  const selected=staff.options?.[staff.selectedIndex]||null;
+  const optionName=String(selected?.dataset?.displayName||selected?.textContent||'').trim();
+  const optionLegacy=String(selected?.dataset?.legacyUserId||selected?.value||'').trim();
+  const dataName=String(staff.dataset?.staffDisplayName||'').trim();
+  const dataLegacy=String(staff.dataset?.staffLegacyUserId||'').trim();
+  const optionHasChoice=!!optionName&&optionName!=='選択してください';
+  const optionByLegacy=typeof v1179ReferenceCandidate==='function'?v1179ReferenceCandidate(optionLegacy):null;
+  const optionByName=typeof v1179ReferenceCandidate==='function'?v1179ReferenceCandidate(optionName):null;
+  if(optionHasChoice&&optionByLegacy&&optionByName&&optionByLegacy.legacy_user_id!==optionByName.legacy_user_id)return {legacy_user_id:null,profile_id:null,display_name:null};
+  const dataByLegacy=!optionHasChoice&&typeof v1179ReferenceCandidate==='function'?v1179ReferenceCandidate(dataLegacy):null;
+  const dataByName=!optionHasChoice&&typeof v1179ReferenceCandidate==='function'?v1179ReferenceCandidate(dataName):null;
+  if(!optionHasChoice&&dataByLegacy&&dataByName&&dataByLegacy.legacy_user_id!==dataByName.legacy_user_id)return {legacy_user_id:null,profile_id:null,display_name:null};
+  const candidate=optionHasChoice?(optionByLegacy||optionByName):(dataByLegacy||dataByName);
+  const info=candidate?{legacy_user_id:candidate.legacy_user_id,profile_id:candidate.profile_id||null,display_name:candidate.display_name}:null;
   if(!info?.display_name||!info?.legacy_user_id)return {legacy_user_id:null,profile_id:null,display_name:null};
-  /* value は実在するoptionの場合だけ設定する。存在しない値を入れて空になるselectの仕様を避ける。 */
-  const option=[...(staff.options||[])].find(x=>String(x.value||'')===String(info.legacy_user_id));
-  if(option)staff.value=option.value;
+  let option=[...(staff.options||[])].find(x=>String(x.value||'').trim()===info.legacy_user_id);
+  if(!option&&selected&&optionName&&optionName!=='選択してください')option=selected;
+  if(!option&&staff.tagName==='SELECT'){
+    option=document.createElement('option');option.textContent=info.display_name;staff.appendChild(option);
+  }
+  if(option){option.value=info.legacy_user_id;option.dataset.legacyUserId=info.legacy_user_id;option.dataset.displayName=info.display_name;if(info.profile_id)option.dataset.profileId=info.profile_id;option.selected=true;staff.value=info.legacy_user_id;}
   if(typeof v1180ApplyStaffState==='function')v1180ApplyStaffState(staff,info,{manual:staff.dataset?.manual==='1',persist:true});
   return info;
-}
-/* v1.144の旧ラッパーを置き換えた状態で、後続ラッパー群に渡す。 */
-const v1182QrSaveLotCore=window.qrSaveLot;
+};
+const v1183QrSaveLotCore=window.qrSaveLot;
 window.qrSaveLot=async function(){
   const staff=document.getElementById('qrPurchaseStaff');
-  const info=v1182SyncPurchaseStaffSelect(staff);
+  const info=v1183ResolveQrPurchaseStaff(staff);
   if(!info.display_name){alert('仕入れ担当者を選択してください。');staff?.focus();return;}
-  return v1182QrSaveLotCore();
+  return v1183QrSaveLotCore();
 };
-window.APP_VERSION='v1.182';document.title='SEIKA＋ v1.182 QR入庫担当者登録修正版';
+window.APP_VERSION='v1.183';document.title='SEIKA＋ v1.183 QR入庫担当者必須判定修正版';
 
 
 </script>
