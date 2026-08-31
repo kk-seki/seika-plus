@@ -9941,14 +9941,103 @@ function v186Home(msg=''){
   setScreen('inventoryCountHome',[msg]);if(!v177Allowed())return home();v124AllSessions();const sessions=countSessions().slice().sort((a,b)=>new Date(b.updatedAt||b.startedAt||0)-new Date(a.updatedAt||a.startedAt||0)),active=sessions.filter(session=>v186Session(session)&&!v186Confirmed(session)),history=sessions.filter(session=>v186Session(session)&&v186Confirmed(session)),legacy=sessions.filter(session=>!v186Session(session));
   const activeCard=session=>`<div class="card"><div class="itemHead"><div><b>${esc(session.countNo)}</b><div class="small">${esc(session.roomLabel)} / 開始：${esc(session.startedAt?dt(session.startedAt):'－')}</div></div><span class="badge unset">確認・訂正中</span></div><div class="notice" style="margin-top:10px"><b>1. 記入票</b><div class="small">ボタンを押した時点の最新在庫で作成します。</div><div class="mini" style="margin-top:8px"><button class="btn orange" ${seikaEventAttrs('click','v186PrintLatest',[session.id,'all'])}>通常・QR記入票を印刷</button><button class="btn btn2" ${seikaEventAttrs('click','v186PrintLatest',[session.id,'normal'])}>通常だけ印刷</button><button class="btn btn2" ${seikaEventAttrs('click','v186PrintLatest',[session.id,'qr'])}>QRだけ印刷</button></div></div><div class="notice" style="margin-top:10px"><b>2. 在庫を入力・訂正</b><div class="small">棚卸し専用入力はありません。いつもの画面で入力します。</div><div class="mini" style="margin-top:8px"><button class="btn green" ${seikaEventAttrs('click','v186OpenNormal',[session.room])}>通常在庫入力を開く</button><button class="btn blue" ${seikaEventAttrs('click','v186OpenQrOut',[])}>QR出庫を開く</button><button class="btn btn2" ${seikaEventAttrs('click','v186OpenQrAdjust',[])}>QR在庫調整を開く</button></div></div><div class="notice" style="margin-top:10px"><b>3. 棚卸しを確定</b><div class="small">すべての入力・訂正後、確定時点の最新在庫を保存します。</div><button class="btn orange" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','v186Confirm',[session.id])}>現在の在庫で棚卸しを確定</button></div></div>`;
   const historyCard=session=>`<div class="card"><div class="itemHead"><div><b>${esc(session.countNo)}</b><div class="small">${esc(session.roomLabel)} / 確定：${esc(session.v186ConfirmedAt?dt(session.v186ConfirmedAt):'－')}</div></div><span class="badge normal">確定済み</span></div><div class="mini" style="margin-top:8px"><button class="btn orange" ${seikaEventAttrs('click','v186DownloadExcel',[session.id])}>Excelを出力</button><button class="btn btn2" ${seikaEventAttrs('click','v186PrintLatest',[session.id,'all'])}>現在の記入票を再印刷</button></div></div>`;
-  pageShell('棚卸しモード',`${esc(v119RoleLabel())} / v1.186`,`${okHtml(msg)}<div class="card notice"><b>かんたん3ステップ</b><div class="small">①最新在庫の記入票を印刷　②いつもの通常在庫・QR画面で入力や訂正　③棚卸しモードに戻って確定・Excel出力<br>棚卸し専用の入力画面は使用しません。</div></div><div class="card"><b>新しい棚卸しを開始</b><div class="grid" style="margin-top:9px"><button class="btn orange" ${seikaEventAttrs('click','v186Start',['room2'])}>第2冷蔵庫</button><button class="btn orange" ${seikaEventAttrs('click','v186Start',['room3'])}>第3冷蔵庫</button></div></div><div class="card"><b>進行中</b>${active.map(activeCard).join('')||'<div class="small">進行中の棚卸しはありません。</div>'}</div><div class="card"><b>確定済み</b>${history.map(historyCard).join('')||'<div class="small">確定済みの棚卸しはありません。</div>'}</div>${legacy.length?`<details class="card"><summary><b>旧棚卸し履歴（${legacy.length}件）</b></summary><div style="margin-top:10px">${legacy.map(v186LegacyCard).join('')}</div></details>`:''}`)
+  pageShell('棚卸しモード',`${esc(v119RoleLabel())} / v1.187`,`${okHtml(msg)}<div class="card notice"><b>かんたん3ステップ</b><div class="small">①最新在庫の記入票を印刷　②いつもの通常在庫・QR画面で入力や訂正　③棚卸しモードに戻って確定・Excel出力<br>棚卸し専用の入力画面は使用しません。</div></div><div class="card"><b>新しい棚卸しを開始</b><div class="grid" style="margin-top:9px"><button class="btn orange" ${seikaEventAttrs('click','v186Start',['room2'])}>第2冷蔵庫</button><button class="btn orange" ${seikaEventAttrs('click','v186Start',['room3'])}>第3冷蔵庫</button></div></div><div class="card"><b>進行中</b>${active.map(activeCard).join('')||'<div class="small">進行中の棚卸しはありません。</div>'}</div><div class="card"><b>確定済み</b>${history.map(historyCard).join('')||'<div class="small">確定済みの棚卸しはありません。</div>'}</div>${legacy.length?`<details class="card"><summary><b>旧棚卸し履歴（${legacy.length}件）</b></summary><div style="margin-top:10px">${legacy.map(v186LegacyCard).join('')}</div></details>`:''}`)
 }
-function v186Guide(){setScreen('inventoryCountGuidePage');if(!v177Allowed())return home();pageShell('棚卸しモードの使い方','管理者・青果社員のみ / v1.186',`<div class="card notice"><b>1. 記入票を印刷</b><div class="small">第2・第3冷蔵庫を選び、「通常・QR記入票を印刷」を押します。ボタンを押した時点の最新在庫が記載されます。</div></div><div class="card"><b>2. いつもの画面で入力・訂正</b><div class="small">通常在庫は「通常在庫入力」、QRは「QR出庫」または「QR在庫調整」を使用します。棚卸し専用入力画面はありません。</div></div><div class="card"><b>3. 確定・Excel</b><div class="small">入力・訂正が終わったら棚卸しモードへ戻り、「現在の在庫で棚卸しを確定」を押します。確定時点の最新在庫が保存され、Excelを出力できます。</div></div><div class="card"><b>データ保護</b><div class="small">未同期データが残る場合は確定を停止します。旧棚卸し履歴も削除せず、画面下部から確認できます。</div></div>`)}
+function v186Guide(){setScreen('inventoryCountGuidePage');if(!v177Allowed())return home();pageShell('棚卸しモードの使い方','管理者・青果社員のみ / v1.187',`<div class="card notice"><b>1. 記入票を印刷</b><div class="small">第2・第3冷蔵庫を選び、「通常・QR記入票を印刷」を押します。ボタンを押した時点の最新在庫が記載されます。</div></div><div class="card"><b>2. いつもの画面で入力・訂正</b><div class="small">通常在庫は「通常在庫入力」、QRは「QR出庫」または「QR在庫調整」を使用します。棚卸し専用入力画面はありません。</div></div><div class="card"><b>3. 確定・Excel</b><div class="small">入力・訂正が終わったら棚卸しモードへ戻り、「現在の在庫で棚卸しを確定」を押します。確定時点の最新在庫が保存され、Excelを出力できます。</div></div><div class="card"><b>データ保護</b><div class="small">未同期データが残る場合は確定を停止します。旧棚卸し履歴も削除せず、画面下部から確認できます。</div></div>`)}
 function v186OpenLegacy(id){const session=countSession(id);if(!session)return inventoryCountHome('旧棚卸しが見つかりません。');if(v177Session(session))return v177Completed(session)?v171ReadOnlyView(id):v177SectionPage(id,'normal');if(typeof v124NormalizeSession==='function')v124NormalizeSession(session);return v186InventoryCountPageLegacy(id,'旧棚卸しデータを保持したまま表示しています。')}
 window.v186Start=v186Start;window.v186PrintLatest=v186PrintLatest;window.v186Confirm=v186Confirm;window.v186DownloadExcel=v186DownloadExcel;window.v186OpenNormal=v186OpenNormal;window.v186OpenQrOut=v186OpenQrOut;window.v186OpenQrAdjust=v186OpenQrAdjust;window.v186OpenLegacy=v186OpenLegacy;
 window.inventoryCountHome=v186Home;inventoryCountHome=v186Home;startInventoryCount=v186Start;downloadInventoryCountExcel=v186DownloadExcel;inventoryCountGuidePage=v186Guide;
 const v186InventoryCountPageLegacy=inventoryCountPage;inventoryCountPage=function(id,msg=''){const session=countSession(id);return v186Session(session)?v186Home(msg):v186InventoryCountPageLegacy(id,msg)};
 window.APP_VERSION='v1.186';document.title='SEIKA＋ v1.186 簡単棚卸し・印刷調整版';
+
+/* ===== v1.187: 記入票の量目・仕入先表示 / 低評価のホーム表示復旧 / QR出庫の連続操作 ===== */
+/* 1. 棚卸し記入票：現物確認しやすいよう、量目（入数）と仕入先を印字します。 */
+function v187NormalPackText(line){
+  if(line&&line.type==='normal'){
+    const record=latestRecord(line.itemId),text=record?inventoryLineText(record):'';
+    if(text)return text;
+  }
+  const pack=Number(line&&line.snapshotPackKg),cases=Number(line&&line.snapshotCases),unit=String((line&&line.unit)||'');
+  if(Number.isFinite(pack)&&pack>0&&Number.isFinite(cases)&&cases>0)return `${fmt(pack)}kg×${fmt(cases)}${unit&&unit!=='kg'?unit:'ケース'}`;
+  if(Number.isFinite(pack)&&pack>0)return `${fmt(pack)}kg入`;
+  return '';
+}
+function v187NormalSupplierText(line){return String((line&&line.supplier)||'').trim()}
+function v187QrPackText(line){
+  const pack=Number(line&&line.packWeight);
+  if(Number.isFinite(pack)&&pack>0)return `${fmt(pack)}kg`;
+  const total=Number(line&&line.snapshotTotalWeight),initial=Number(line&&line.snapshotInitialQty);
+  if(Number.isFinite(total)&&total>0&&Number.isFinite(initial)&&initial>0)return `${fmt(total/initial)}kg/${String((line&&line.unit)||'基')}`;
+  return '';
+}
+v186NormalPages=function(session,lines){
+  const chunks=v186Chunk(lines,15);
+  return chunks.map((chunk,index)=>v186PrintPage(`${session.roomLabel} 通常在庫 棚卸し記入票`,`${session.countNo} / 印刷時点の最新在庫`,
+    ['区分','品名','量目・入数','仕入先','帳簿在庫','実数','備考'],[9,20,21,14,11,11,14],
+    chunk.map(line=>{const supplier=v187NormalSupplierText(line);
+      return `<tr class="dataRow"><td>${esc(line.group||'')}</td><td>${esc(line.itemName||'')}</td><td>${esc(v187NormalPackText(line))}</td><td class="${supplier?'':'write'}">${esc(supplier)}</td><td>${fmt(line.systemQty)} ${esc(line.unit||'')}</td><td class="write"></td><td class="write"></td></tr>`}),
+    index+1,chunks.length)).join('');
+};
+v186QrPages=function(session,lines){
+  const items=[...new Set(lines.map(line=>String(line.itemName||'品名未設定')))].sort((a,b)=>a.localeCompare(b,'ja'));
+  return items.map(item=>{
+    const chunks=v186Chunk(lines.filter(line=>String(line.itemName||'品名未設定')===item),15);
+    return chunks.map((chunk,index)=>v186PrintPage(`${session.roomLabel} QR在庫 ${item} 記入票`,`${session.countNo} / 印刷時点の最新在庫 / 品目別`,
+      ['ロット','入荷日','荷姿','量目','仕入先','帳簿在庫','実数','備考'],[20,10,11,9,15,12,12,11],
+      chunk.map(line=>`<tr class="dataRow"><td>${esc(line.lotNo||line.qrKey||'')}</td><td>${esc(line.receivedDate||line.received_date||'')}</td><td>${esc(line.containerType||'')}</td><td>${esc(v187QrPackText(line))}</td><td>${esc(line.supplier||'')}</td><td>${fmt(line.systemQty)} ${esc(line.unit||'')}</td><td class="write"></td><td class="write"></td></tr>`),
+      index+1,chunks.length)).join('');
+  }).join('');
+};
+
+/* 2. 仕入れ担当者ホームの未確認低評価表示を復旧します。
+      v1.171 で「今日の作業」から品質評価の表示枠（#v1143QualityTask）が外れ、
+      v1143LoadQualityTask が描画先を見つけられず何も表示されない状態でした。 */
+v1143TodayTaskHtml=function(){
+  if(['viewer','office_viewer'].includes(db.role))return '';
+  const role=db.role,rows=[],add=(label,count,action,labelGo)=>{if(Number(count)>0)rows.push(v1143TaskRow(label,count,action,labelGo))},personal=v1143PersonalPendingCount();
+  if(role==='admin'){add('本日未入力',todayMissingItems().length,'inventory','在庫入力を開く');add('月次Excel作成待ち',monthlyExportTasks().length,'monthlyArchive','月次Excelを開く');add('この端末の保留・下書き',personal,'personalWork','保留作業を開く')}
+  else if(role==='worker'){add('本日未入力',todayMissingItems().length,'inventory','在庫入力を開く');add('棚卸しの入力・下書き',v1143ActiveCount(),'inventoryCount','棚卸しを開く');add('この端末の保留・下書き',personal,'personalWork','保留作業を開く');v1143RequiredQualityKey=String(localStorage.getItem(V1111_REQUIRED_QUALITY_KEY)||'');if(v1143RequiredQualityKey)rows.push(v1143TaskRow('QR入庫後の品質評価',1,'requiredQuality','品質評価一覧を開く'))}
+  else if(role==='buyer'){add('発注候補',orderCandidatesForBuyer(db.userId).length,'orderCandidates','発注候補を開く');add('過多品目',excessCandidatesForBuyer(db.userId).length,'excessCandidates','過多品目を開く')}
+  else if(role==='clerk'){add('月次Excel作成待ち',monthlyExportTasks().length,'monthlyArchive','月次Excelを開く');add('この端末の保留・下書き',personal,'personalWork','保留作業を開く')}
+  const waitsForQuality=['admin','buyer'].includes(role);
+  if(!rows.length&&!waitsForQuality)return '';
+  const empty=`<div id="v1143TodayTaskEmpty" class="small">${esc(v1143TaskText('現在、対応が必要な項目はありません'))}</div>`;
+  return `<section id="v1143TodayTasks" class="card v1143TodayTasks"><h2 style="margin:0">${esc(v1143TaskText('今日の作業'))}</h2><div id="v1143TodayTaskRows" class="v1143TaskRows">${rows.join('')||(waitsForQuality?'':empty)}</div>${waitsForQuality?`<div id="v1143QualityTask" class="small" style="margin-top:10px">${esc(v1143TaskText('未確認の低評価'))}：${esc(v1143TaskText('確認中'))}</div>`:''}</section>`;
+};
+
+/* 3. QR出庫後は、同じ品目のロット一覧（出庫モード）へ直接戻します。 */
+let v187LastOutItemName='',v187LastOutQrKey='';
+const v187QrSaveLotMovementCore=(typeof v1156QrSaveLotMovementCore==='function')?v1156QrSaveLotMovementCore:qrSaveLotMovement;
+qrSaveLotMovement=async function(kind,q){
+  if(kind==='out'){
+    const lot=await qrFindLot(q).catch(()=>null);
+    v187LastOutItemName=String(lot?.item_name||'').trim();
+    v187LastOutQrKey=String(lot?.qr_key||q||'');
+    if(typeof v1156QrSearchState==='object'&&v1156QrSearchState)v1156QrSearchState.returnEnabled=false;
+  }
+  return await v187QrSaveLotMovementCore(kind,q);
+};
+function v187ContinueCardHtml(item,qrKey){
+  return `<div id="v187ContinueCard" class="card notice"><b>続けて処理できます</b><div class="small" style="margin-top:6px">上の一覧から同じ品目の別ロットを選ぶと、そのまま出庫入力へ進みます。</div><div class="mini" style="margin-top:9px">${qrKey?`<button class="btn green" ${seikaEventAttrs('click','qrOperationLotPage',['out',qrKey])}>同じロットを続けて出庫</button>`:''}<button class="btn blue" ${seikaEventAttrs('click','qrCameraPage',['out'])}>別のQRを読む</button><button class="btn btn2" data-seika-click-action="qrHome" data-seika-click-args="%5B%5D">QR在庫管理へ戻る</button></div>${qrKey?`<button class="btn orange" style="width:100%;margin-top:9px" ${seikaEventAttrs('click','cancelLatestQrOperation',[qrKey])}>直前のQR操作を取消</button>`:''}</div>`;
+}
+function v187AfterOutPage(item,qrKey){
+  qrManualSearchPage('out',item,true,`${item}の出庫を保存しました。同じ品目の別ロットを続けて出庫できます。`);
+  const wrap=document.querySelector('.wrap');
+  if(!wrap||document.getElementById('v187ContinueCard'))return;
+  const results=document.getElementById('qrManualResults');
+  if(results)results.insertAdjacentHTML('beforebegin',v187ContinueCardHtml(item,qrKey));
+  else wrap.insertAdjacentHTML('beforeend',v187ContinueCardHtml(item,qrKey));
+}
+const v187QrOperationCompletePageCore=qrOperationCompletePage;
+qrOperationCompletePage=function(kind,q,rpc,wastePriceResult){
+  const item=v187LastOutItemName,qrKey=String(q||v187LastOutQrKey||'');
+  v187LastOutItemName='';
+  if(kind==='out'&&item&&canQrOperate())return v187AfterOutPage(item,qrKey);
+  return v187QrOperationCompletePageCore(kind,q,rpc,wastePriceResult);
+};
+window.v187AfterOutPage=v187AfterOutPage;
+window.APP_VERSION='v1.187';document.title='SEIKA＋ v1.187 記入票詳細・低評価表示・QR連続出庫版';
+
 
 
 </script>
