@@ -7969,10 +7969,16 @@ qrCreatePage=async function(){
   qrAutoFillStaff();
   return result;
 };
+/* v1.182: このラッパーは後続版のselect/dataset正規化より先に実行される。
+   表示valueだけで未設定判定せず、その時点で利用可能な正式担当者解決関数を使う。 */
 const v1144QrSaveLotBuyerFixCore=qrSaveLot;
 qrSaveLot=async function(){
   const item=document.getElementById('qrItemName'),staff=document.getElementById('qrPurchaseStaff');
-  if(item&&staff&&!String(staff.value||'').trim()){
+  const read=typeof window.v1144ReadPurchaseStaffFrom==='function'
+    ?window.v1144ReadPurchaseStaffFrom
+    :(el=>typeof window.v1144ReadPurchaseStaff==='function'?window.v1144ReadPurchaseStaff():null);
+  const info=staff&&read?read(staff):null;
+  if(item&&staff&&!(info?.display_name&&info?.legacy_user_id)){
     alert('仕入れ担当者が未設定です。品目を選び直すか、有効な仕入れ担当者を選択してください。');staff.focus();return;
   }
   return v1144QrSaveLotBuyerFixCore();
@@ -9763,7 +9769,38 @@ window.qrSaveLot=async function(){
 };
 const v1180QrCreatePageCore=window.qrCreatePage;
 window.qrCreatePage=async function(){const result=await v1180QrCreatePageCore();await v1179LoadRegisteredUsers();const staff=v1144ReplacePurchaseStaffControl();const remembered=v1180ReadStoredStaffState();if(staff&&remembered)v1180ApplyStaffState(staff,remembered,{persist:true});qrAutoFillStaff();return result;};
-window.APP_VERSION='v1.181';document.title='SEIKA＋ v1.181 QR入庫担当者登録確定修正版';
+
+/* ===== v1.182: QR入庫担当者の旧value判定を最終経路でも無効化 =====
+   v1.144の保存ラッパーはv1.180より前に生成され、画面のselect再描画時に value が空でも
+   option/dataset に残る正式情報を見ずに停止していた。ここで全旧core chainの直前に同期する。 */
+function v1182SyncPurchaseStaffSelect(staff){
+  if(!staff)return {legacy_user_id:null,profile_id:null,display_name:null};
+  const optionInfo=typeof v1180OptionInfo==='function'?v1180OptionInfo(staff.options?.[staff.selectedIndex]):null;
+  const dataInfo=typeof v1180CanonicalStaffInfo==='function'
+    ?v1180CanonicalStaffInfo(staff.dataset?.staffLegacyUserId,staff.dataset?.staffDisplayName,staff.dataset?.staffProfileId||null)
+    :null;
+  const stored=typeof v1180ReadStoredStaffState==='function'?v1180ReadStoredStaffState():null;
+  const info=(optionInfo&&optionInfo.display_name?optionInfo:null)
+    ||(dataInfo&&dataInfo.display_name?dataInfo:null)
+    ||(stored&&stored.display_name?stored:null)
+    ||(typeof window.v1144ReadPurchaseStaffFrom==='function'?window.v1144ReadPurchaseStaffFrom(staff):null);
+  if(!info?.display_name||!info?.legacy_user_id)return {legacy_user_id:null,profile_id:null,display_name:null};
+  /* value は実在するoptionの場合だけ設定する。存在しない値を入れて空になるselectの仕様を避ける。 */
+  const option=[...(staff.options||[])].find(x=>String(x.value||'')===String(info.legacy_user_id));
+  if(option)staff.value=option.value;
+  if(typeof v1180ApplyStaffState==='function')v1180ApplyStaffState(staff,info,{manual:staff.dataset?.manual==='1',persist:true});
+  return info;
+}
+/* v1.144の旧ラッパーを置き換えた状態で、後続ラッパー群に渡す。 */
+const v1182QrSaveLotCore=window.qrSaveLot;
+window.qrSaveLot=async function(){
+  const staff=document.getElementById('qrPurchaseStaff');
+  const info=v1182SyncPurchaseStaffSelect(staff);
+  if(!info.display_name){alert('仕入れ担当者を選択してください。');staff?.focus();return;}
+  return v1182QrSaveLotCore();
+};
+window.APP_VERSION='v1.182';document.title='SEIKA＋ v1.182 QR入庫担当者登録修正版';
+
 
 </script>
 </body>
