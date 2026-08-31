@@ -10038,7 +10038,7 @@ qrOperationCompletePage=function(kind,q,rpc,wastePriceResult){
 window.v187AfterOutPage=v187AfterOutPage;
 window.APP_VERSION='v1.187';document.title='SEIKA＋ v1.187 記入票詳細・低評価表示・QR連続出庫版';
 
-/* ===== v1.189: 月末棚卸し（月末スナップショット固定・確定前後編集・差異のみ月末反映） ===== */
+/* ===== v1.190: 月末棚卸し（月末スナップショット固定・確定前後編集・差異のみ月末反映） ===== */
 const V188_COUNT_MODE='month_end_v188';
 const V188_QR_RPC='v188_apply_month_end_qr_adjustment';
 let v188QrLiveMap={};
@@ -10143,7 +10143,7 @@ function v188Stats(session,section){
   return {total:lines.length,entered,diff,excluded,unchecked,missing:lines.length-excluded-entered};
 }
 
-/* Excel・記入票は既存関数をそのまま使うため、v1.189の編集値を既存のエントリ形式へ橋渡しします。 */
+/* Excel・記入票は既存関数をそのまま使うため、v1.190の編集値を既存のエントリ形式へ橋渡しします。 */
 const v188EntryMapCore=v177EntryMap;
 v177EntryMap=function(session,section){
   if(!v188Session(session))return v188EntryMapCore(session,section);
@@ -10179,35 +10179,64 @@ async function v188LoadQrLive(session){
   v188QrLiveMap=map;return map;
 }
 
+function v188TargetMonthValue(){
+  const raw=document.getElementById('v188TargetMonth')?.value||v188MonthValue();
+  return /^\d{4}-\d{2}$/.test(raw)?raw:'';
+}
+async function v188StartOne(room,monthValue){
+  const asOfKey=v188AsOfKey(monthValue);
+  await v186ProtectPending();await loadCloud();
+  const duplicate=countSessions().find(session=>v188Session(session)&&session.room===room&&session.targetMonth===monthValue&&!['cancelled'].includes(String(session.status||'')));
+  if(duplicate)return {room,skipped:true,message:`${roomLabel(room)}の${v188MonthLabel(monthValue)}の棚卸しは既にあります。`};
+  const others=countSessions().map(v188CopySession).filter(Boolean);
+  const lines=v188NormalLines(room,asOfKey),qrLines=await v188QrLines(room,asOfKey),at=nowIso();
+  await v188LoadQrLive();
+  const session={id:qrInventoryUuid(),inventoryCountMode:V177_COUNT_MODE,monthEndMode:V188_COUNT_MODE,targetMonth:monthValue,asOfKey,countNo:`${monthValue.replace('-','')}-${room==='room2'?'R2':'R3'}-${String(countSessions().filter(s=>s.room===room).length+1).padStart(3,'0')}`,room,roomLabel:roomLabel(room),status:'counting',startedAt:at,startedBy:db.user,startedById:db.userId,updatedAt:at,updatedBy:db.user,revision:1,normalStatus:'counting',qrCountStatus:'counting',lines,qrLines,v188Entries:{},v188History:[],v188AppliedActual:{},v188Confirmations:[],v177SnapshotRule:`${v188MonthLabel(monthValue)}末（基準日${asOfKey}）時点の在庫`,v177QrSnapshotAt:at,inventoryApplied:false,qrApplied:false};
+  for(const line of [...lines,...qrLines]){const live=v188LiveQty(line);session.v188Entries[String(line.lineId)]={actualQty:live===null?'':String(live),reason:'',memo:'',included:true,checked:false}}
+  session.v188ImportedAt=at;
+  const answer=await callRpc(V177_CREATE_RPC,{p_id:STATE_ID,p_session:session,p_operation_id:qrInventoryUuid()});
+  if(answer?.conflict)throw new Error(answer.message||'別端末で更新されています。');
+  if(!answer?.ok)throw new Error(answer?.message||'棚卸しを開始できませんでした。');
+  const id=String(answer.sessionId||session.id);session.id=id;
+  const local={...session,revision:Number(session.revision||0)+1};
+  await loadCloud();
+  /* 他の冷蔵庫の棚卸しが消えていないか確認し、消えていれば戻してから保存する。 */
+  let repaired=0;
+  for(const backup of others){if(backup?.id&&!countSession(backup.id)){v1184UpsertLocalCountSession(backup);repaired++}}
+  if(!countSession(id)){v1184UpsertLocalCountSession(local);repaired++}
+  if(repaired)await v188SaveSession(countSession(id)||local);
+  return {room,id,lines:lines.length,qrLines:qrLines.length,repaired,message:`${roomLabel(room)}の${v188MonthLabel(monthValue)}末棚卸しを開始しました（通常 ${lines.length}件 / QR ${qrLines.length}件）。`};
+}
 async function v188Start(room){
   if(!v188CanCount())return alert('棚卸しを操作できるのは管理者・青果社員のみです。');
   if(!validColdRoom(room))return alert('冷蔵庫を選択してください。');
-  const monthValue=document.getElementById('v188TargetMonth')?.value||v188MonthValue();
-  if(!/^\d{4}-\d{2}$/.test(monthValue))return alert('対象月を選択してください。');
-  const range=monthRangeFromMonthValue(monthValue);
-  if(range.start>todayKey())return alert('未来の月は棚卸しできません。');
-  const asOfKey=v188AsOfKey(monthValue);
+  const monthValue=v188TargetMonthValue();
+  if(!monthValue)return alert('対象月を選択してください。');
+  if(monthRangeFromMonthValue(monthValue).start>todayKey())return alert('未来の月は棚卸しできません。');
   v161ShowProcessing(`${v188MonthLabel(monthValue)}末時点の在庫を固定しています`);
   try{
-    await v186ProtectPending();await loadCloud();
-    const duplicate=countSessions().find(session=>v188Session(session)&&session.room===room&&session.targetMonth===monthValue&&!['cancelled'].includes(String(session.status||'')));
-    if(duplicate)return inventoryCountHome(`${roomLabel(room)}の${v188MonthLabel(monthValue)}の棚卸しは既にあります。`);
-    const lines=v188NormalLines(room,asOfKey),qrLines=await v188QrLines(room,asOfKey),at=nowIso();
-    await v188LoadQrLive();
-    const session={id:qrInventoryUuid(),inventoryCountMode:V177_COUNT_MODE,monthEndMode:V188_COUNT_MODE,targetMonth:monthValue,asOfKey,countNo:`${monthValue.replace('-','')}-${room==='room2'?'R2':'R3'}-${String(countSessions().filter(s=>s.room===room).length+1).padStart(3,'0')}`,room,roomLabel:roomLabel(room),status:'counting',startedAt:at,startedBy:db.user,startedById:db.userId,updatedAt:at,updatedBy:db.user,revision:1,normalStatus:'counting',qrCountStatus:'counting',lines,qrLines,v188Entries:{},v188History:[],v188AppliedActual:{},v188Confirmations:[],v177SnapshotRule:`${v188MonthLabel(monthValue)}末（基準日${asOfKey}）時点の在庫`,v177QrSnapshotAt:at,inventoryApplied:false,qrApplied:false};
-    for(const line of [...lines,...qrLines]){const live=v188LiveQty(line);session.v188Entries[String(line.lineId)]={actualQty:live===null?'':String(live),reason:'',memo:'',included:true,checked:false}}
-    session.v188ImportedAt=at;
-    const answer=await callRpc(V177_CREATE_RPC,{p_id:STATE_ID,p_session:session,p_operation_id:qrInventoryUuid()});
-    if(answer?.conflict)throw new Error(answer.message||'別端末で更新されています。');
-    if(!answer?.ok)throw new Error(answer?.message||'棚卸しを開始できませんでした。');
-    const id=String(answer.sessionId||session.id);session.id=id;const local={...session,revision:Number(session.revision||0)+1};
-    await loadCloud();
-    if(!countSession(id)){v1184UpsertLocalCountSession(local);await v188SaveSession(countSession(id)||local)}
-    return inventoryCountHome(`${roomLabel(room)}の${v188MonthLabel(monthValue)}末棚卸しを開始しました。記入票を印刷してください。`);
+    const result=await v188StartOne(room,monthValue);
+    return inventoryCountHome(result.message);
   }catch(error){alert(`棚卸しを開始できませんでした。\n${v161ErrorText(error)}\n\n入力中・未同期データは削除していません。`);return inventoryCountHome()}
   finally{v161HideProcessing()}
 }
-
+async function v188StartBoth(){
+  if(!v188CanCount())return alert('棚卸しを操作できるのは管理者・青果社員のみです。');
+  const monthValue=v188TargetMonthValue();
+  if(!monthValue)return alert('対象月を選択してください。');
+  if(monthRangeFromMonthValue(monthValue).start>todayKey())return alert('未来の月は棚卸しできません。');
+  if(!confirm(`第2冷蔵庫と第3冷蔵庫の${v188MonthLabel(monthValue)}末棚卸しをまとめて開始します。\n\n2件は別々の棚卸しとして進行し、片方を確定しても もう片方はそのまま残ります。\n実行しますか？`))return;
+  const messages=[],failed=[];
+  try{
+    for(const room of ['room2','room3']){
+      v161ShowProcessing(`${roomLabel(room)}の${v188MonthLabel(monthValue)}末在庫を固定しています`);
+      try{const result=await v188StartOne(room,monthValue);messages.push(result.message)}
+      catch(error){failed.push(`${roomLabel(room)}：${v161ErrorText(error)}`)}
+    }
+  }finally{v161HideProcessing()}
+  if(failed.length)alert(`開始できなかった冷蔵庫があります。\n${failed.join('\n')}\n\n開始できた分と、入力中・未同期データは削除していません。`);
+  return inventoryCountHome(messages.join(' ')||'棚卸しを開始できませんでした。');
+}
 const V188_PRINT_BAR=`<style>.v188Bar{position:sticky;top:0;left:0;right:0;z-index:99;display:flex;gap:10px;padding:10px 12px;background:#0f2747;box-shadow:0 2px 8px rgba(0,0,0,.25)}.v188Bar button{flex:1;min-height:44px;border:0;border-radius:999px;font-size:16px;font-weight:700;color:#0f2747;background:#dbe6f5}.v188Bar button.pr{background:#ea8b1f;color:#fff}@media print{.v188Bar{display:none!important}}</style>
 <div class="v188Bar"><button type="button" onclick="v188BarClose()">閉じる</button><button type="button" class="pr" onclick="window.print()">印刷</button></div>
 <script>function v188BarClose(){try{window.close()}catch(e){}setTimeout(function(){if(!window.closed){try{history.back()}catch(e){}}},150)}<\/script>`;
@@ -10426,16 +10455,16 @@ function v188Home(msg=''){
   const sessions=countSessions().slice().sort((a,b)=>new Date(b.updatedAt||b.startedAt||0)-new Date(a.updatedAt||a.startedAt||0));
   const active=sessions.filter(session=>v188Session(session)&&!v188Confirmed(session)),history=sessions.filter(session=>v188Session(session)&&v188Confirmed(session)),legacy=sessions.filter(session=>!v188Session(session));
   const month=v188MonthValue();
-  pageShell('棚卸しモード',`${esc(v119RoleLabel())} / v1.189`,
+  pageShell('棚卸しモード',`${esc(v119RoleLabel())} / v1.190`,
     `${okHtml(msg)}<div class="card notice"><b>月末棚卸しの流れ</b><div class="small">①対象月と冷蔵庫を選んで開始（その時点で対象月末の在庫が固定されます）　②記入票を印刷して現物確認　③通常在庫入力・QR画面で入力／棚卸し画面で実数・差異理由を編集　④確定すると差異分だけを対象月末日の棚卸し調整として反映　⑤Excel出力（単価欄あり）<br>開始後は、翌日以降の入庫・出庫・調整があっても対象月末の帳簿在庫は変わりません。</div></div>
-<div class="card"><b>新しい棚卸しを開始</b><label class="label" style="margin-top:8px">対象月</label><select id="v188TargetMonth" class="input">${v188MonthOptions(month)}</select><div class="grid" style="margin-top:10px"><button class="btn orange" ${seikaEventAttrs('click','v188Start',['room2'])}>第2冷蔵庫</button><button class="btn orange" ${seikaEventAttrs('click','v188Start',['room3'])}>第3冷蔵庫</button></div></div>
+<div class="card"><b>新しい棚卸しを開始</b><label class="label" style="margin-top:8px">対象月</label><select id="v188TargetMonth" class="input">${v188MonthOptions(month)}</select><button class="btn orange" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v188StartBoth',[])}>第2・第3をまとめて開始</button><div class="grid" style="margin-top:10px"><button class="btn btn2" ${seikaEventAttrs('click','v188Start',['room2'])}>第2冷蔵庫だけ</button><button class="btn btn2" ${seikaEventAttrs('click','v188Start',['room3'])}>第3冷蔵庫だけ</button></div><div class="small" style="margin-top:8px">第2・第3は同時に進行できます。片方を確定しても もう片方は残ります。</div></div>
 <div class="card"><b>進行中</b>${active.map(v188SessionCard).join('')||'<div class="small">進行中の棚卸しはありません。</div>'}</div>
 <div class="card"><b>確定済み</b>${history.map(v188SessionCard).join('')||'<div class="small">確定済みの棚卸しはありません。</div>'}</div>
 ${legacy.length?`<details class="card"><summary><b>旧棚卸し履歴（${legacy.length}件）</b></summary><div style="margin-top:10px">${legacy.map(v186LegacyCard).join('')}</div></details>`:''}`);
 }
 function v188Guide(){
   setScreen('inventoryCountGuidePage');if(!v177Allowed())return home();
-  pageShell('月末棚卸しの使い方','管理者・青果社員のみ / v1.189',
+  pageShell('月末棚卸しの使い方','管理者・青果社員のみ / v1.190',
     `<div class="card notice"><b>1. 対象月を選んで開始</b><div class="small">対象月と冷蔵庫を選ぶと、その月の月末時点（当月は本日時点）の通常・片岡・その他・QR在庫が帳簿在庫として固定されます。開始後の入庫・出庫・調整では変わりません。</div></div>
 <div class="card"><b>2. 記入票を印刷して現物確認</b><div class="small">記入票には月末時点の帳簿在庫、量目・入数、仕入先が入ります。A4横です。</div></div>
 <div class="card"><b>3. 実数を入れる</b><div class="small">いつもの通常在庫入力・QR出庫・QR在庫調整で入力し、棚卸し画面の「現在の在庫を実数へ取り込む」で反映します。行ごとの手入力・修正もできます。</div></div>
@@ -10445,13 +10474,13 @@ function v188Guide(){
 <button class="btn btn2" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しモードへ戻る</button>`);
 }
 
-window.v188Start=v188Start;window.v188Repair=v188Repair;window.v188Print=v188Print;window.v188CountPage=v188CountPage;window.v188Save=v188Save;window.v188ImportLive=v188ImportLive;window.v188Confirm=v188Confirm;window.v188DownloadExcel=v188DownloadExcel;window.v188HistoryPage=v188HistoryPage;window.v188Home=v188Home;
+window.v188Start=v188Start;window.v188StartBoth=v188StartBoth;window.v188Repair=v188Repair;window.v188Print=v188Print;window.v188CountPage=v188CountPage;window.v188Save=v188Save;window.v188ImportLive=v188ImportLive;window.v188Confirm=v188Confirm;window.v188DownloadExcel=v188DownloadExcel;window.v188HistoryPage=v188HistoryPage;window.v188Home=v188Home;
 window.inventoryCountHome=v188Home;inventoryCountHome=v188Home;startInventoryCount=v188Start;downloadInventoryCountExcel=v188DownloadExcel;inventoryCountGuidePage=v188Guide;
 const v188InventoryCountPageLegacy=inventoryCountPage;
 inventoryCountPage=function(id,msg=''){const session=countSession(id);return v188Session(session)?v188CountPage(id,'normal',msg):v188InventoryCountPageLegacy(id,msg)};
 const v188PrintLatestCore=v186PrintLatest;
 v186PrintLatest=async function(id,mode='all'){const session=countSession(id);if(v188Session(session))return v188Print(id,mode);return v188PrintLatestCore(id,mode)};
-window.APP_VERSION='v1.189';document.title='SEIKA＋ v1.189 月末棚卸し修正版';
+window.APP_VERSION='v1.190';document.title='SEIKA＋ v1.190 月末棚卸し同時開始版';
 
 
 
