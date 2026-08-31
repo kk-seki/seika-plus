@@ -3276,7 +3276,7 @@ container_type:containerType,lot_manage_type:manageType,quantity_label:quantityL
 current_weight:currentWeight,weight_status:weightStatus,purchase_staff:purchaseStaff,purchase_staff_profile_id:purchaseStaffInfo.profile_id||null,purchase_staff_legacy_user_id:purchaseStaffInfo.legacy_user_id||null,...qrUserFields()}
 ;const meta=operationMeta("qr_lot_create_v185",{qrKey,itemName,qty});const ans=await callRpc("create_qr_lot_v185",{p_lot:row,
 p_operation_id:meta.operationId,p_device_meta:{deviceId:meta.deviceId,userAgent:navigator.userAgent||""},p_operation_meta:meta})
-;if(!ans?.ok)throw new Error(ans?.message||"QR入庫を保存できませんでした");qrSaveSupplierCandidate(supplier);qrSaveCooperativeCandidate(cooperativeName)
+;if(!ans?.ok)throw new Error(ans?.message||"QR入庫を保存できませんでした");window.__v1181QrLotPersisted=true;qrSaveSupplierCandidate(supplier);qrSaveCooperativeCandidate(cooperativeName)
 ;await qrPrintLot(qrKey,palletPrintOpts)}catch(e){throw new Error("作成に失敗しました："+e.message)}}async function qrFindLot(q){q=qrExtractKey(q)
 ;if(!q)return null
 ;const rows=await qrSelect("qr_lots",`select=*&active=eq.true&or=(qr_key.eq.${encodeURIComponent(q)},lot_no.eq.${encodeURIComponent(q)})&limit=1`)
@@ -9650,7 +9650,120 @@ window.qrAutoFillStaff=function(){
 };
 const v1179QrCreatePageCore=window.qrCreatePage;
 window.qrCreatePage=async function(){const result=await v1179QrCreatePageCore();await v1179LoadRegisteredUsers();v1144ReplacePurchaseStaffControl();qrAutoFillStaff();return result;};
-window.APP_VERSION='v1.179';document.title='SEIKA＋ v1.179 仕入れ担当者フルネーム完全統一版';
+
+/* ===== v1.180: QR入庫仕入れ担当者の選択状態を保存経路まで固定 =====
+   select表示、非同期候補更新、旧保存ラッパーを分離し、選択時の3値をDOM datasetに固定する。 */
+const V1180_QR_STAFF_STATE_KEY='seika.qrPurchaseStaffState.v1180';
+function v1180CanonicalStaffInfo(reference, fallbackName='', fallbackProfileId=null){
+  const raw=String(reference||'').trim(), canonical=v1179CanonicalStaffId(raw, fallbackName||raw);
+  const formal=v1179FormalStaffName(canonical, fallbackName||raw);
+  if(!canonical||!formal)return {legacy_user_id:null,profile_id:null,display_name:null};
+  return {legacy_user_id:canonical,profile_id:fallbackProfileId||null,display_name:formal};
+}
+function v1180ReadStoredStaffState(){
+  try{const row=JSON.parse(sessionStorage.getItem(V1180_QR_STAFF_STATE_KEY)||'null');
+    return row&&row.legacy_user_id&&row.display_name?v1180CanonicalStaffInfo(row.legacy_user_id,row.display_name,row.profile_id):null;
+  }catch(_){return null;}
+}
+function v1180StoreStaffState(info){
+  const stable=info?.legacy_user_id?v1180CanonicalStaffInfo(info.legacy_user_id,info.display_name,info.profile_id):null;
+  try{if(stable)sessionStorage.setItem(V1180_QR_STAFF_STATE_KEY,JSON.stringify(stable));else sessionStorage.removeItem(V1180_QR_STAFF_STATE_KEY);}catch(_){}
+  return stable;
+}
+function v1180ClearStaffState(){try{sessionStorage.removeItem(V1180_QR_STAFF_STATE_KEY);}catch(_){}
+  const el=document.getElementById('qrPurchaseStaff');if(el){delete el.dataset.staffLegacyUserId;delete el.dataset.staffDisplayName;delete el.dataset.staffProfileId;}
+}
+function v1180OptionInfo(option){
+  if(!option)return null;
+  const legacy=String(option.dataset?.legacyUserId||option.value||'').trim();
+  const name=String(option.dataset?.displayName||option.textContent||'').trim();
+  const profile=String(option.dataset?.profileId||'').trim()||null;
+  const info=v1180CanonicalStaffInfo(legacy,name,profile);
+  return info.display_name?info:null;
+}
+function v1180ApplyStaffState(select, info, {manual=false,persist=true}={}){
+  if(!select)return null;
+  const stable=info?.legacy_user_id?v1180CanonicalStaffInfo(info.legacy_user_id,info.display_name,info.profile_id):null;
+  if(!stable){select.value='';delete select.dataset.staffLegacyUserId;delete select.dataset.staffDisplayName;delete select.dataset.staffProfileId;if(persist)v1180StoreStaffState(null);return null;}
+  select.value=stable.legacy_user_id;
+  select.dataset.staffLegacyUserId=stable.legacy_user_id;
+  select.dataset.staffDisplayName=stable.display_name;
+  if(stable.profile_id)select.dataset.staffProfileId=stable.profile_id;else delete select.dataset.staffProfileId;
+  if(manual)select.dataset.manual='1';
+  if(persist)v1180StoreStaffState(stable);
+  return stable;
+}
+function v1180SelectChanged(select,{manual=true}={}){
+  const option=select?.options?.[select.selectedIndex];
+  const info=v1180OptionInfo(option);
+  const stable=v1180ApplyStaffState(select,info,{manual,persist:true});
+  const note=document.getElementById('qrStaffNote');
+  if(note)note.textContent=stable?'選択した担当者を入庫ロットと品質評価へ連携します。':'仕入れ担当者を選択してください。';
+  return stable;
+}
+function v1180StaffOptionHtml(selectedInfo=null){
+  const rows=v1144PurchaseStaffCandidates();
+  const selectedId=selectedInfo?.legacy_user_id||'';
+  return `<option value="">選択してください</option>${rows.map(row=>{const info=v1180CanonicalStaffInfo(row.legacy_user_id,row.display_name,row.profile_id);return `<option value="${esc(info.legacy_user_id)}" data-legacy-user-id="${esc(info.legacy_user_id)}" data-display-name="${esc(info.display_name)}" data-profile-id="${esc(info.profile_id||'')}" ${info.legacy_user_id===selectedId?'selected':''}>${esc(info.display_name)}</option>`;}).join('')}`;
+}
+/* 候補再取得には依存しない。option/datasetを第一優先、canonical辞書だけを最後の安全網にする。 */
+window.v1144ReadPurchaseStaffFrom=function(el){
+  if(!el)return {legacy_user_id:null,profile_id:null,display_name:null};
+  const dataInfo=v1180CanonicalStaffInfo(el.dataset?.staffLegacyUserId,el.dataset?.staffDisplayName,el.dataset?.staffProfileId||null);
+  if(dataInfo.display_name&&dataInfo.legacy_user_id===v1179CanonicalStaffId(el.value||dataInfo.legacy_user_id,dataInfo.display_name))return dataInfo;
+  const optionInfo=v1180OptionInfo(el.options?.[el.selectedIndex]);
+  if(optionInfo)return v1180ApplyStaffState(el,optionInfo,{persist:true})||{legacy_user_id:null,profile_id:null,display_name:null};
+  const remembered=v1180ReadStoredStaffState();
+  if(remembered&&String(el.value||'').trim()===remembered.legacy_user_id)return v1180ApplyStaffState(el,remembered,{persist:false})||remembered;
+  const fallback=v1180CanonicalStaffInfo(el.value,el.value,null);
+  return fallback.display_name?v1180ApplyStaffState(el,fallback,{persist:true}):{legacy_user_id:null,profile_id:null,display_name:null};
+};
+window.v1144ReadPurchaseStaff=function(){return v1144ReadPurchaseStaffFrom(document.getElementById('qrPurchaseStaff'));};
+/* 置換時も前回の安定状態をcanonical IDで復元する。非同期候補取得後の再描画で選択が消えない。 */
+window.v1144ReplacePurchaseStaffControl=function(){
+  const old=document.getElementById('qrPurchaseStaff');if(!old)return null;
+  const remembered=v1180ReadStoredStaffState();
+  const before=v1144ReadPurchaseStaffFrom(old);
+  const selected=before.display_name?before:(remembered||null);
+  const select=document.createElement('select');select.id='qrPurchaseStaff';select.className=old.className||'input';select.required=true;
+  select.innerHTML=v1180StaffOptionHtml(selected);old.replaceWith(select);
+  if(selected?.legacy_user_id)v1180ApplyStaffState(select,selected,{manual:old.dataset?.manual==='1',persist:true});
+  select.addEventListener('change',()=>v1180SelectChanged(select,{manual:true}));
+  return select;
+};
+window.qrAutoFillStaff=function(){
+  const item=document.getElementById('qrItemName'),staff=document.getElementById('qrPurchaseStaff');if(!item||!staff)return;
+  const itemName=String(item.value||'').trim();if(staff.dataset.itemName===itemName)return;
+  const candidate=v1144AutoPurchaseStaffForItemName(itemName);
+  const stable=candidate?v1180ApplyStaffState(staff,candidate,{manual:false,persist:true}):v1180ApplyStaffState(staff,null,{manual:false,persist:true});
+  staff.dataset.itemName=itemName;staff.dataset.manual='';
+  const note=document.getElementById('qrStaffNote');if(note)note.textContent=stable?'品目担当を自動設定しました。必要な場合のみ変更してください。':'この品目の仕入れ担当者が未設定です。登録ユーザーから選択してください。';
+  const managed=document.getElementById('qrManagedNotice');if(managed&&typeof qrManagedNotice==='function')managed.innerHTML=qrManagedNotice(itemName);
+};
+/* 最終入口で一度だけ確定し、baseには同じ安定状態を読ませる。成功したときだけ状態を消す。 */
+const v1180QrSaveLotCore=window.qrSaveLot;
+window.qrSaveLot=async function(){
+  const staff=document.getElementById('qrPurchaseStaff');const info=v1144ReadPurchaseStaffFrom(staff);
+  if(!info.display_name){alert('仕入れ担当者を選択してください。');staff?.focus();return;}
+  v1180ApplyStaffState(staff,info,{manual:staff?.dataset?.manual==='1',persist:true});
+  /* DBのcreate_qr_lot_v185がokを返すまで、入力状態は絶対に消さない。 */
+  window.__v1181QrLotPersisted=false;
+  const base=qrSaveLotBase;
+  qrSaveLotBase=async function(){
+    const current=v1144ReadPurchaseStaffFrom(document.getElementById('qrPurchaseStaff'));
+    if(!current.display_name)throw new Error('仕入れ担当者を選択してください。');
+    return base.apply(this,arguments);
+  };
+  try{return await v1180QrSaveLotCore();
+  } finally{
+    qrSaveLotBase=base;
+    if(window.__v1181QrLotPersisted===true)v1180ClearStaffState();
+    try{delete window.__v1181QrLotPersisted;}catch(_){window.__v1181QrLotPersisted=false;}
+  }
+};
+const v1180QrCreatePageCore=window.qrCreatePage;
+window.qrCreatePage=async function(){const result=await v1180QrCreatePageCore();await v1179LoadRegisteredUsers();const staff=v1144ReplacePurchaseStaffControl();const remembered=v1180ReadStoredStaffState();if(staff&&remembered)v1180ApplyStaffState(staff,remembered,{persist:true});qrAutoFillStaff();return result;};
+window.APP_VERSION='v1.181';document.title='SEIKA＋ v1.181 QR入庫担当者登録確定修正版';
 
 </script>
 </body>
