@@ -10038,7 +10038,7 @@ qrOperationCompletePage=function(kind,q,rpc,wastePriceResult){
 window.v187AfterOutPage=v187AfterOutPage;
 window.APP_VERSION='v1.187';document.title='SEIKA＋ v1.187 記入票詳細・低評価表示・QR連続出庫版';
 
-/* ===== v1.191: 月末棚卸し（月末スナップショット固定・確定前後編集・差異のみ月末反映） ===== */
+/* ===== 月末棚卸し（月末スナップショット固定・確定前後編集・差異のみ月末反映） ===== */
 const V188_COUNT_MODE='month_end_v188';
 const V188_QR_RPC='v188_apply_month_end_qr_adjustment';
 let v188QrLiveMap={};
@@ -10143,7 +10143,7 @@ function v188Stats(session,section){
   return {total:lines.length,entered,diff,excluded,unchecked,missing:lines.length-excluded-entered};
 }
 
-/* Excel・記入票は既存関数をそのまま使うため、v1.191の編集値を既存のエントリ形式へ橋渡しします。 */
+/* Excel・記入票は既存関数をそのまま使うため、v1.192の編集値を既存のエントリ形式へ橋渡しします。 */
 const v188EntryMapCore=v177EntryMap;
 v177EntryMap=function(session,section){
   if(!v188Session(session))return v188EntryMapCore(session,section);
@@ -10171,6 +10171,7 @@ async function v188SaveSession(session){
   const saved=countSession(session.id);
   if(!saved)throw new Error('棚卸しの保存を確認できませんでした。もう一度お試しください。');
   return saved;
+
 }
 async function v188LoadQrLive(session){
   const map={};
@@ -10211,6 +10212,14 @@ async function v188StartOne(room,monthValue){
   for(const backup of others){if(backup?.id&&!countSession(backup.id)){v1184UpsertLocalCountSession(backup);repaired++}}
   if(!countSession(id)){v1184UpsertLocalCountSession(local);repaired++}
   if(repaired)await v188SaveSession(countSession(id)||local);
+  /* サーバーに本当に残ったかを読み直して確認する。消えていれば一度だけ保存し直す。 */
+  await loadCloud();
+  if(!countSession(id)){
+    v1184UpsertLocalCountSession(local);
+    await v188SaveSession(countSession(id)||local);
+    await loadCloud();
+    if(!countSession(id))throw new Error(`${roomLabel(room)}の棚卸しをサーバーに保存できませんでした。通信状態を確認してもう一度お試しください。`);
+  }
   return {room,id,lines:lines.length,qrLines:qrLines.length,repaired,message:`${roomLabel(room)}の${v188MonthLabel(monthValue)}末棚卸しを開始しました（通常 ${lines.length}件 / QR ${qrLines.length}件）。`};
 }
 async function v188Start(room){
@@ -10468,7 +10477,7 @@ function v188Home(msg=''){
   const sessions=countSessions().slice().sort((a,b)=>new Date(b.updatedAt||b.startedAt||0)-new Date(a.updatedAt||a.startedAt||0));
   const active=sessions.filter(session=>v188Session(session)&&!v188Confirmed(session)),history=sessions.filter(session=>v188Session(session)&&v188Confirmed(session)),legacy=sessions.filter(session=>!v188Session(session));
   const month=v188MonthValue();
-  pageShell('棚卸しモード',`${esc(v119RoleLabel())} / v1.191`,
+  pageShell('棚卸しモード',`${esc(v119RoleLabel())} / v1.192`,
     `${okHtml(msg)}<div class="card notice"><b>月末棚卸しの流れ</b><div class="small">①対象月と冷蔵庫を選んで開始（その時点で対象月末の在庫が固定されます）　②記入票を印刷して現物確認　③通常在庫入力・QR画面で入力／棚卸し画面で実数・差異理由を編集　④確定すると差異分だけを対象月末日の棚卸し調整として反映　⑤Excel出力（単価欄あり）<br>開始後は、翌日以降の入庫・出庫・調整があっても対象月末の帳簿在庫は変わりません。</div></div>
 ${['room2','room3'].map(room=>{const blocking=v188BlockingSession(room);return blocking?`<div class="card warn"><b>${esc(roomLabel(room))}は今のままでは開始できません</b><div class="small" style="margin-top:6px">進行中の旧棚卸し（${esc(blocking.countNo||blocking.id)} / 状態：${esc(countStatusLabel(blocking))}）が残っています。下の「旧棚卸し履歴」からその棚卸しを破棄または取消すると開始できます。</div></div>`:''}).join('')}
 <div class="card"><b>新しい棚卸しを開始</b><label class="label" style="margin-top:8px">対象月</label><select id="v188TargetMonth" class="input">${v188MonthOptions(month)}</select><button class="btn orange" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v188StartBoth',[])}>第2・第3をまとめて開始</button><div class="grid" style="margin-top:10px"><button class="btn btn2" ${seikaEventAttrs('click','v188Start',['room2'])}>第2冷蔵庫だけ</button><button class="btn btn2" ${seikaEventAttrs('click','v188Start',['room3'])}>第3冷蔵庫だけ</button></div><div class="small" style="margin-top:8px">第2・第3は同時に進行できます。片方を確定しても もう片方は残ります。</div></div>
@@ -10478,7 +10487,7 @@ ${legacy.length?`<details class="card"><summary><b>旧棚卸し履歴（${legacy
 }
 function v188Guide(){
   setScreen('inventoryCountGuidePage');if(!v177Allowed())return home();
-  pageShell('月末棚卸しの使い方','管理者・青果社員のみ / v1.191',
+  pageShell('月末棚卸しの使い方','管理者・青果社員のみ / v1.192',
     `<div class="card notice"><b>1. 対象月を選んで開始</b><div class="small">対象月と冷蔵庫を選ぶと、その月の月末時点（当月は本日時点）の通常・片岡・その他・QR在庫が帳簿在庫として固定されます。開始後の入庫・出庫・調整では変わりません。</div></div>
 <div class="card"><b>2. 記入票を印刷して現物確認</b><div class="small">記入票には月末時点の帳簿在庫、量目・入数、仕入先が入ります。A4横です。</div></div>
 <div class="card"><b>3. 実数を入れる</b><div class="small">いつもの通常在庫入力・QR出庫・QR在庫調整で入力し、棚卸し画面の「現在の在庫を実数へ取り込む」で反映します。行ごとの手入力・修正もできます。</div></div>
@@ -10488,13 +10497,23 @@ function v188Guide(){
 <button class="btn btn2" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しモードへ戻る</button>`);
 }
 
+/* 同期キュー経路が inventoryCounts を落とすため、棚卸しを操作できる権限のときは必ず含める。
+   これを外すと、開始した棚卸しがサーバー側の app_state 上書きで消える。 */
+const v188RolePayloadKeepCounts=v188RolePayload;
+v188RolePayload=function(payload,role=db?.role){
+  const out=v188RolePayloadKeepCounts(payload,role);
+  if(!out||!payload||typeof payload!=='object')return out;
+  if(!['admin','worker'].includes(String(role||'')))return out;
+  if(Object.prototype.hasOwnProperty.call(payload,'inventoryCounts'))out.inventoryCounts=payload.inventoryCounts;
+  return out;
+};
 window.v188Start=v188Start;window.v188StartBoth=v188StartBoth;window.v188Repair=v188Repair;window.v188Print=v188Print;window.v188CountPage=v188CountPage;window.v188Save=v188Save;window.v188ImportLive=v188ImportLive;window.v188Confirm=v188Confirm;window.v188DownloadExcel=v188DownloadExcel;window.v188HistoryPage=v188HistoryPage;window.v188Home=v188Home;
 window.inventoryCountHome=v188Home;inventoryCountHome=v188Home;startInventoryCount=v188Start;downloadInventoryCountExcel=v188DownloadExcel;inventoryCountGuidePage=v188Guide;
 const v188InventoryCountPageLegacy=inventoryCountPage;
 inventoryCountPage=function(id,msg=''){const session=countSession(id);return v188Session(session)?v188CountPage(id,'normal',msg):v188InventoryCountPageLegacy(id,msg)};
 const v188PrintLatestCore=v186PrintLatest;
 v186PrintLatest=async function(id,mode='all'){const session=countSession(id);if(v188Session(session))return v188Print(id,mode);return v188PrintLatestCore(id,mode)};
-window.APP_VERSION='v1.191';document.title='SEIKA＋ v1.191 月末棚卸し差異なし確定版';
+window.APP_VERSION='v1.192';document.title='SEIKA＋ v1.192 棚卸し保存修正版';
 
 
 
