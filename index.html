@@ -10038,6 +10038,370 @@ qrOperationCompletePage=function(kind,q,rpc,wastePriceResult){
 window.v187AfterOutPage=v187AfterOutPage;
 window.APP_VERSION='v1.187';document.title='SEIKA＋ v1.187 記入票詳細・低評価表示・QR連続出庫版';
 
+/* ===== v1.188: 月末棚卸し（月末スナップショット固定・確定前後編集・差異のみ月末反映） ===== */
+const V188_COUNT_MODE='month_end_v188';
+const V188_QR_RPC='v188_apply_month_end_qr_adjustment';
+let v188QrLiveMap={};
+const V188_REASONS=['数え間違い','伝票未入力','入力漏れ','入力誤り','廃棄未登録','出庫未登録','荷傷み・目減り','移動先違い','その他'];
+
+function v188Session(session){return Boolean(session&&session.monthEndMode===V188_COUNT_MODE)}
+function v188Confirmed(session){return v188Session(session)&&Boolean(session.v188ConfirmedAt)}
+function v188CanEdit(){return canAdmin()}
+function v188CanCount(){return v177Allowed()}
+function v188MonthValue(){return monthInputValue(new Date)}
+function v188AsOfKey(monthValue){const range=monthRangeFromMonthValue(monthValue),today=todayKey();return range.end>today?today:range.end}
+function v188AsOfIso(asOfKey){return `${asOfKey}T23:59:59.000+09:00`}
+function v188MonthLabel(monthValue){const range=monthRangeFromMonthValue(monthValue);return `${range.year}年${range.month}月`}
+function v188MonthOptions(selected){
+  const rows=[],now=new Date();
+  for(let i=0;i<12;i++){const d=new Date(now.getFullYear(),now.getMonth()-i,1),value=monthInputValue(d);rows.push(`<option value="${esc(value)}" ${value===selected?'selected':''}>${esc(v188MonthLabel(value))}</option>`)}
+  return rows.join('');
+}
+
+/* 月末時点の帳簿在庫。基準日23:59:59以前の最新記録だけを採用します。 */
+function v188RecordsUntil(asOfKey){return (db.records||[]).filter(record=>record?.createdAt&&ymdKey(new Date(record.createdAt))<=asOfKey)}
+function v188LatestUntil(asOfKey){return latestMap(v188RecordsUntil(asOfKey))}
+function v188SpecialLatestUntil(tableId,asOfKey){
+  const latest={};
+  (db.specialRecords||[]).filter(row=>row?.tableId===tableId&&row?.createdAt&&ymdKey(new Date(row.createdAt))<=asOfKey)
+    .sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0)).forEach(row=>latest[row.itemId]=row);
+  return latest;
+}
+function v188NormalLines(room,asOfKey){
+  const rows=[],latest=v188LatestUntil(asOfKey);
+  for(const item of allSortedItems()){
+    if(coldRoomForNormalItem(item)!==room)continue;
+    const record=latest[item.id]||null,qty=yen(Number(record?.total||0));
+    if(!(qty>0))continue;
+    rows.push({lineId:newId(),type:'normal',itemId:item.id,itemName:item.name,unit:'kg',group:'通常在庫',room,systemQty:qty,snapshotPackKg:countSnapshotPackKg(item,record),snapshotCases:countSnapshotCases(item,record,'kg',qty),snapshotRecordId:record?.id||null,supplier:'',memo:'',status:'unentered'});
+  }
+  for(const tableId of Object.keys(SPECIAL_STOCK_TABLES)){
+    const latestSpecial=v188SpecialLatestUntil(tableId,asOfKey);
+    for(const item of specialItems(tableId)){
+      if(coldRoomForSpecialItem(tableId,item)!==room)continue;
+      const record=latestSpecial[item.id]||null,qty=yen(Number(record?.qty||0));
+      if(!(qty>0))continue;
+      rows.push({lineId:newId(),type:'special',tableId,itemId:item.id,itemName:item.name,unit:item.unit||'ケース',group:tableId==='kataoka'?'片岡在庫':'その他在庫',room,systemQty:qty,snapshotPackKg:countSnapshotPackKg(item,record),snapshotCases:countSnapshotCases(item,record,item.unit||'ケース',qty),snapshotRecordId:record?.id||null,supplier:'',memo:'',status:'unentered'});
+    }
+  }
+  return rows;
+}
+async function v188QrLines(room,asOfKey){
+  const locations=qrCountLocations(room),{lots,moves}=await v199LoadQrExcelData(),rows=[];
+  for(const lot of lots||[]){
+    const snapshot=v1101LotSnapshotAtDayEnd(lot,v199QrLotMoves(lot,moves),asOfKey);
+    if(!snapshot||!(Number(snapshot.qty)>0))continue;
+    const location=String(snapshot.location||lot.storage_location||'').trim();
+    if(!locations.includes(location))continue;
+    rows.push({lineId:newId(),type:'qr',qrKey:String(lot.qr_key||'').trim(),lotId:lot.id||null,lotNo:lot.lot_no||'',itemName:lot.item_name||'（品名未設定）',containerType:lot.container_type||'',packWeight:lot.pack_weight??'',origin:lot.origin||'',supplier:lot.supplier||'',receivedDate:lot.received_date||'',storageLocation:location,unit:qrCountUnit(lot),systemQty:yen(Number(snapshot.qty)),snapshotTotalWeight:lot.total_weight??null,snapshotInitialQty:lot.received_qty??lot.initial_quantity??null,weightStatus:lot.weight_status||'',memo:'',status:'unentered'});
+  }
+  return rows.sort((a,b)=>String(a.itemName).localeCompare(String(b.itemName),'ja')||String(a.receivedDate).localeCompare(String(b.receivedDate)));
+}
+
+/* 実数・差異理由・対象品目・QR確認状態は編集値として保持し、変更はすべて履歴に残します。 */
+function v188SectionLines(session,section){const rows=section==='qr'?session?.qrLines:session?.lines;return Array.isArray(rows)?rows:[]}
+function v188Entries(session){return session&&typeof session.v188Entries==='object'&&session.v188Entries?session.v188Entries:{}}
+function v188Entry(session,lineId){const entry=v188Entries(session)[String(lineId)];return entry&&typeof entry==='object'?entry:{actualQty:'',reason:'',memo:'',included:true,checked:false}}
+function v188Included(session,lineId){return v188Entry(session,lineId).included!==false}
+function v188Actual(session,lineId){return v119StrictDecimal(v188Entry(session,lineId).actualQty)}
+function v188Applied(session,lineId){const map=session?.v188AppliedActual||{},value=map[String(lineId)];return value===undefined||value===null?null:Number(value)}
+function v188BookQty(session,line){const applied=v188Applied(session,line.lineId);return applied===null?yen(Number(line.systemQty||0)):yen(applied)}
+function v188Diff(session,line){const actual=v188Actual(session,line.lineId);return actual===null?null:yen(actual-v188BookQty(session,line))}
+function v188LiveQty(line){
+  if(line.type==='qr'){const lot=v188QrLiveMap[String(line.qrKey||'')];return lot===undefined?null:yen(Number(lot))}
+  if(line.type==='special'){const record=(specialLatestMap(line.tableId)||{})[line.itemId];return record?yen(Number(record.qty||0)):0}
+  const record=latestRecord(line.itemId);return record?yen(Number(record.total||0)):0;
+}
+function v188PushHistory(session,line,field,before,after){
+  session.v188History=Array.isArray(session.v188History)?session.v188History:[];
+  if(String(before??'')===String(after??''))return;
+  session.v188History.push({id:newId(),at:nowIso(),by:db.user||'',byId:db.userId||'',phase:v188Confirmed(session)?'確定後':'確定前',lineId:String(line.lineId),itemName:line.itemName||'',lot:line.lotNo||line.qrKey||'',field,before:String(before??''),after:String(after??'')});
+  if(session.v188History.length>2000)session.v188History=session.v188History.slice(-2000);
+}
+function v188SetEntry(session,line,patch){
+  session.v188Entries=session.v188Entries&&typeof session.v188Entries==='object'?session.v188Entries:{};
+  const key=String(line.lineId),current=v188Entry(session,key),labels={actualQty:'実数',reason:'差異理由',memo:'備考',included:'対象品目',checked:'QRロット確認'};
+  const next={...current};
+  for(const field of Object.keys(patch)){
+    const before=field==='included'?(current.included!==false?'対象':'対象外'):field==='checked'?(current.checked?'確認済み':'未確認'):(current[field]??'');
+    const after=field==='included'?(patch[field]!==false?'対象':'対象外'):field==='checked'?(patch[field]?'確認済み':'未確認'):(patch[field]??'');
+    v188PushHistory(session,line,labels[field]||field,before,after);
+    next[field]=patch[field];
+  }
+  session.v188Entries[key]=next;
+}
+function v188Stats(session,section){
+  const lines=v188SectionLines(session,section);let entered=0,diff=0,excluded=0,unchecked=0;
+  for(const line of lines){
+    if(!v188Included(session,line.lineId)){excluded++;continue}
+    const actual=v188Actual(session,line.lineId);
+    if(actual===null)continue;
+    entered++;
+    if(v188Diff(session,line))diff++;
+    if(section==='qr'&&!v188Entry(session,line.lineId).checked)unchecked++;
+  }
+  return {total:lines.length,entered,diff,excluded,unchecked,missing:lines.length-excluded-entered};
+}
+
+/* Excel・記入票は既存関数をそのまま使うため、v1.188の編集値を既存のエントリ形式へ橋渡しします。 */
+const v188EntryMapCore=v177EntryMap;
+v177EntryMap=function(session,section){
+  if(!v188Session(session))return v188EntryMapCore(session,section);
+  return new Map(v188SectionLines(session,section).map(line=>{
+    const key=v177LineId(line,section),entry=v188Entry(session,key),actual=v188Actual(session,key),included=entry.included!==false;
+    const perWeight=line.type==='qr'&&qrIsLargeContainer(line.containerType)?qrCountLargePerWeight(line):null;
+    return [key,{id:key,actualQty:included&&actual!==null?actual:'',supplier:line.supplier||'',memo:[entry.reason?`差異理由：${entry.reason}`:'',entry.memo||'',included?'':'対象外',section==='qr'&&entry.checked?'確認済み':''].filter(Boolean).join(' / '),destination:'',shipTiming:'',actualWeightKg:perWeight!==null&&actual!==null?yen(perWeight*actual):'',weightEntries:undefined,remainderKg:undefined,kgPerUnit:undefined}];
+  }));
+};
+
+async function v188LoadQrLive(session){
+  const map={};
+  try{const lots=await qrSelect('qr_lots','select=qr_key,current_qty&active=eq.true&limit=5000');for(const lot of lots||[])map[String(lot.qr_key||'')]=Number(lot.current_qty||0)}
+  catch(error){return null}
+  v188QrLiveMap=map;return map;
+}
+
+async function v188Start(room){
+  if(!v188CanCount())return alert('棚卸しを操作できるのは管理者・青果社員のみです。');
+  if(!validColdRoom(room))return alert('冷蔵庫を選択してください。');
+  const monthValue=document.getElementById('v188TargetMonth')?.value||v188MonthValue();
+  if(!/^\d{4}-\d{2}$/.test(monthValue))return alert('対象月を選択してください。');
+  const range=monthRangeFromMonthValue(monthValue);
+  if(range.start>todayKey())return alert('未来の月は棚卸しできません。');
+  const asOfKey=v188AsOfKey(monthValue);
+  v161ShowProcessing(`${v188MonthLabel(monthValue)}末時点の在庫を固定しています`);
+  try{
+    await v186ProtectPending();await loadCloud();
+    const duplicate=countSessions().find(session=>v188Session(session)&&session.room===room&&session.targetMonth===monthValue&&!['cancelled'].includes(String(session.status||'')));
+    if(duplicate)return inventoryCountHome(`${roomLabel(room)}の${v188MonthLabel(monthValue)}の棚卸しは既にあります。`);
+    const lines=v188NormalLines(room,asOfKey),qrLines=await v188QrLines(room,asOfKey),at=nowIso();
+    await v188LoadQrLive();
+    const session={id:qrInventoryUuid(),inventoryCountMode:V177_COUNT_MODE,monthEndMode:V188_COUNT_MODE,targetMonth:monthValue,asOfKey,countNo:`${monthValue.replace('-','')}-${room==='room2'?'R2':'R3'}-${String(countSessions().filter(s=>s.room===room).length+1).padStart(3,'0')}`,room,roomLabel:roomLabel(room),status:'counting',startedAt:at,startedBy:db.user,startedById:db.userId,updatedAt:at,updatedBy:db.user,revision:1,normalStatus:'counting',qrCountStatus:'counting',lines,qrLines,v188Entries:{},v188History:[],v188AppliedActual:{},v188Confirmations:[],v177SnapshotRule:`${v188MonthLabel(monthValue)}末（基準日${asOfKey}）時点の在庫`,v177QrSnapshotAt:at,inventoryApplied:false,qrApplied:false};
+    for(const line of [...lines,...qrLines]){const live=v188LiveQty(line);session.v188Entries[String(line.lineId)]={actualQty:live===null?'':String(live),reason:'',memo:'',included:true,checked:false}}
+    session.v188ImportedAt=at;
+    const answer=await callRpc(V177_CREATE_RPC,{p_id:STATE_ID,p_session:session,p_operation_id:qrInventoryUuid()});
+    if(answer?.conflict)throw new Error(answer.message||'別端末で更新されています。');
+    if(!answer?.ok)throw new Error(answer?.message||'棚卸しを開始できませんでした。');
+    const id=String(answer.sessionId||session.id);session.id=id;await loadCloud();
+    if(!countSession(id))v1184UpsertLocalCountSession({...session,revision:Number(session.revision||0)+1});
+    return inventoryCountHome(`${roomLabel(room)}の${v188MonthLabel(monthValue)}末棚卸しを開始しました。記入票を印刷してください。`);
+  }catch(error){alert(`棚卸しを開始できませんでした。\n${v161ErrorText(error)}\n\n入力中・未同期データは削除していません。`);return inventoryCountHome()}
+  finally{v161HideProcessing()}
+}
+
+function v188Print(id,mode='all'){
+  const session=countSession(id);if(!session||!v188Session(session))return alert('棚卸しが見つかりません。');
+  const win=window.open('','_blank');if(!win)return alert('印刷画面を開けませんでした。ポップアップ許可を確認してください。');
+  const target={...session,countNo:`${session.countNo} / ${v188MonthLabel(session.targetMonth)}末（基準日${session.asOfKey}）`};
+  win.document.open();win.document.write(v186PrintDocument(target,v188SectionLines(session,'normal'),v188SectionLines(session,'qr'),mode));win.document.close();win.focus();
+}
+
+async function v188ImportLive(id,section){
+  const session=countSession(id);if(!session||!v188Session(session))return;
+  if(!v188CanCount())return alert('取り込みできるのは管理者・青果社員のみです。');
+  v161ShowProcessing('現在の在庫を取り込んでいます');
+  try{
+    await loadCloud();if(section==='qr'&&!await v188LoadQrLive())throw new Error('QR在庫を取得できませんでした。');
+    const target=countSession(id);let changed=0;
+    for(const line of v188SectionLines(target,section)){
+      const live=v188LiveQty(line);if(live===null)continue;
+      if(String(v188Entry(target,line.lineId).actualQty??'')===String(live))continue;
+      v188SetEntry(target,line,{actualQty:String(live)});changed++;
+    }
+    target.v188ImportedAt=nowIso();target.updatedAt=nowIso();target.updatedBy=db.user;
+    v1184UpsertLocalCountSession(target);await saveCloudNow({skipHistory:true,requireRpc:true});
+    return v188CountPage(id,section,`現在の在庫を実数へ取り込みました（${changed}件更新）。`);
+  }catch(error){alert(`取り込みできませんでした。\n${v161ErrorText(error)}`);return v188CountPage(id,section)}
+  finally{v161HideProcessing()}
+}
+
+function v188ReadDom(session,section){
+  for(const line of v188SectionLines(session,section)){
+    const key=String(line.lineId),patch={actualQty:v171Value(`v188_qty_${key}`),reason:v171Value(`v188_reason_${key}`),memo:v171Value(`v188_memo_${key}`),included:!!document.getElementById(`v188_inc_${key}`)?.checked};
+    if(section==='qr')patch.checked=!!document.getElementById(`v188_chk_${key}`)?.checked;
+    v188SetEntry(session,line,patch);
+  }
+}
+async function v188Save(id,section){
+  const session=countSession(id);if(!session||!v188Session(session))return;
+  if(v188Confirmed(session)&&!v188CanEdit())return alert('確定後に編集できるのは管理者のみです。');
+  if(!v188CanCount())return alert('編集できるのは管理者・青果社員のみです。');
+  v161ShowProcessing('棚卸しの入力を保存しています');
+  try{
+    v188ReadDom(session,section);
+    session.updatedAt=nowIso();session.updatedBy=db.user;
+    session[section==='qr'?'qrCountStatus':'normalStatus']='entered';
+    v1184UpsertLocalCountSession(session);await saveCloudNow({skipHistory:true,requireRpc:true});
+    return v188CountPage(id,section,'保存しました。');
+  }catch(error){alert(`保存できませんでした。\n${v161ErrorText(error)}\n\n入力内容は端末に保持しています。`);return v188CountPage(id,section)}
+  finally{v161HideProcessing()}
+}
+
+function v188RowHtml(session,line,section,editable){
+  const key=String(line.lineId),entry=v188Entry(session,key),actual=v188Actual(session,key),diff=v188Diff(session,line),book=v188BookQty(session,line),included=entry.included!==false;
+  const unit=esc(line.unit||''),diffText=diff===null?'未入力':`${diff>0?'+':''}${fmt(diff)} ${unit}`;
+  const diffColor=diff===null?'#6b7280':diff<0?'#dc2626':diff>0?'#ea580c':'#16a34a';
+  const pack=section==='qr'?v187QrPackText(line):v187NormalPackText(line);
+  return `<div class="box" style="margin:9px 0;${included?'':'opacity:.55'}"><div class="itemHead"><div><b>${esc(line.itemName||'')}</b><div class="small">${esc(line.group||line.lotNo||line.qrKey||'')}${pack?` / ${esc(pack)}`:''}${line.receivedDate?` / 入荷 ${esc(line.receivedDate)}`:''}</div></div><span class="badge ${diff===null?'unset':diff?'excess':'normal'}" style="color:${diffColor}">${esc(diffText)}</span></div>
+<div class="row" style="margin-top:8px"><div><label class="label">月末帳簿（固定）</label><div class="input" style="background:#f3f4f6">${fmt(book)} ${unit}</div></div><div><label class="label">実数</label><input id="v188_qty_${esc(key)}" class="input" inputmode="decimal" value="${esc(entry.actualQty??'')}" ${editable?'':'disabled'}></div></div>
+<label class="label" style="margin-top:8px">差異理由</label><input id="v188_reason_${esc(key)}" class="input" list="v188ReasonList" maxlength="120" value="${esc(entry.reason||'')}" placeholder="${diff?'差異がある場合は理由を入力':'任意'}" ${editable?'':'disabled'}>
+<label class="label" style="margin-top:8px">備考</label><input id="v188_memo_${esc(key)}" class="input" maxlength="200" value="${esc(entry.memo||'')}" ${editable?'':'disabled'}>
+<div class="mini" style="margin-top:8px"><label class="switch"><input id="v188_inc_${esc(key)}" type="checkbox" ${included?'checked':''} ${editable?'':'disabled'}> 棚卸し対象</label>${section==='qr'?`<label class="switch"><input id="v188_chk_${esc(key)}" type="checkbox" ${entry.checked?'checked':''} ${editable?'':'disabled'}> ロット確認済み</label>`:''}</div></div>`;
+}
+function v188CountPage(id,section='normal',msg=''){
+  const session=countSession(id);if(!session||!v188Session(session))return inventoryCountHome('棚卸しが見つかりません。');
+  if(!v188CanCount())return home();
+  setScreen('v188CountPage',[id,section,msg]);
+  const confirmed=v188Confirmed(session),editable=confirmed?v188CanEdit():v188CanCount(),stats=v188Stats(session,section);
+  const lines=v188SectionLines(session,section);
+  const filter=`<div class="card"><div class="countStatGrid"><div class="countStat"><span class="small">対象</span><b>${stats.total-stats.excluded}</b></div><div class="countStat"><span class="small">入力済み</span><b>${stats.entered}</b></div><div class="countStat"><span class="small">未入力</span><b>${stats.missing}</b></div><div class="countStat"><span class="small">差異あり</span><b>${stats.diff}</b></div>${section==='qr'?`<div class="countStat"><span class="small">未確認ロット</span><b>${stats.unchecked}</b></div>`:''}</div></div>`;
+  const notice=confirmed?`<div class="warn"><b>確定済みの棚卸しです</b><div class="small">${v188CanEdit()?'管理者は実数・差異理由・対象品目・確認状態を編集できます。保存後に「差異を追加反映」を押すと、変更分だけを対象月末日の棚卸し調整として追加します。':'確定後の編集は管理者のみです。'}</div></div>`:'';
+  pageShell(`${section==='qr'?'QR在庫':'通常在庫'}の棚卸し`,`${esc(session.countNo)} / ${esc(v188MonthLabel(session.targetMonth))}末（基準日${esc(session.asOfKey)}）`,
+    `${okHtml(msg)}${notice}<datalist id="v188ReasonList">${V188_REASONS.map(reason=>`<option value="${esc(reason)}">`).join('')}</datalist>${filter}
+<div class="card"><b>現在の在庫から実数を取り込む</b><div class="small" style="margin-top:6px">通常在庫入力・QR出庫で入力・訂正した内容を実数欄へ反映します。手入力した値も上書きされるため、必要な行だけ入力し直してください。</div><div class="small" style="margin-top:6px">前回取込：${esc(session.v188ImportedAt?dt(session.v188ImportedAt):'－')}</div>${editable?`<button class="btn blue" style="width:100%;margin-top:9px" ${seikaEventAttrs('click','v188ImportLive',[id,section])}>現在の在庫を実数へ取り込む</button>`:''}</div>
+<div class="card">${lines.map(line=>v188RowHtml(session,line,section,editable)).join('')||'<div class="small">対象在庫はありません。</div>'}</div>
+${editable?`<button class="btn green" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v188Save',[id,section])}>入力内容を保存</button>`:''}
+<button class="btn btn2" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しモードへ戻る</button>`);
+}
+
+function v188HistoryPage(id){
+  const session=countSession(id);if(!session||!v188Session(session))return inventoryCountHome('棚卸しが見つかりません。');
+  if(!v188CanCount())return home();
+  setScreen('v188HistoryPage',[id]);
+  const rows=(Array.isArray(session.v188History)?session.v188History:[]).slice().reverse();
+  pageShell('棚卸しの編集履歴',`${esc(session.countNo)} / ${esc(v188MonthLabel(session.targetMonth))}末`,
+    `<div class="card"><b>編集履歴 ${rows.length}件</b><div class="small" style="margin-top:6px">実数・差異理由・対象品目・QRロット確認状態の変更をすべて記録しています。</div></div>
+<div class="card"><div class="weeklyWrap"><table class="table"><thead><tr><th>日時</th><th>操作者</th><th>時点</th><th>品名・ロット</th><th>項目</th><th>変更前</th><th>変更後</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${esc(dt(row.at))}</td><td>${esc(row.by||'')}</td><td>${esc(row.phase||'')}</td><td>${esc(row.itemName||'')}${row.lot?`<br><span class="small">${esc(row.lot)}</span>`:''}</td><td>${esc(row.field||'')}</td><td>${esc(row.before||'（空欄）')}</td><td>${esc(row.after||'（空欄）')}</td></tr>`).join('')||'<tr><td colspan="7">編集履歴はまだありません。</td></tr>'}</tbody></table></div></div>
+<button class="btn btn2" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しモードへ戻る</button>`);
+}
+
+/* 確定：差異がある行だけを、対象月末日の「棚卸し調整」として在庫履歴へ反映します。 */
+function v188PendingRows(session){
+  const rows=[];
+  for(const section of ['normal','qr'])for(const line of v188SectionLines(session,section)){
+    if(!v188Included(session,line.lineId))continue;
+    const actual=v188Actual(session,line.lineId);if(actual===null)continue;
+    const book=v188BookQty(session,line),diff=yen(actual-book);if(!diff)continue;
+    rows.push({section,line,actual,book,diff,entry:v188Entry(session,line.lineId)});
+  }
+  return rows;
+}
+async function v188Confirm(id){
+  let session=countSession(id);
+  if(!session||!v188Session(session))return alert('棚卸しが見つかりません。');
+  if(!v188CanCount())return alert('確定できるのは管理者・青果社員のみです。');
+  if(v188Confirmed(session)&&!v188CanEdit())return alert('確定後の追加反映は管理者のみです。');
+  if(stateVersion===null)return alert('棚卸し確定には競合防止RPCが必要です。同期状態を確認してください。');
+  const stats=v188Stats(session,'qr');
+  if(stats.unchecked&&!confirm(`QRロットに未確認が ${stats.unchecked}件あります。\nこのまま確定しますか？`))return;
+  const rows=v188PendingRows(session);
+  if(!rows.length)return alert('反映が必要な差異はありません。実数と対象品目を確認してください。');
+  const noReason=rows.filter(row=>!String(row.entry.reason||'').trim()).length;
+  if(noReason&&!confirm(`差異理由が未入力の行が ${noReason}件あります。\nこのまま確定しますか？`))return;
+  if(!confirm(`${v188MonthLabel(session.targetMonth)}末（基準日${session.asOfKey}）の棚卸しを確定します。\n\n差異 ${rows.length}件を、対象月末日の「棚卸し調整」として在庫履歴へ反映します。\n差異がない品目・対象外の品目は履歴を作りません。\n\n実行しますか？`))return;
+  v161ShowProcessing('未同期データを確認し、差異を反映しています');
+  const beforeDb=JSON.parse(JSON.stringify(db)),beforeVersion=stateVersion;
+  try{
+    await v186ProtectPending();await loadCloud();
+    session=countSession(id);if(!session||!v188Session(session))throw new Error('棚卸しが見つかりません。');
+    const targets=v188PendingRows(session);
+    if(!targets.length)throw new Error('反映が必要な差異はありません。');
+    const at=v188AsOfIso(session.asOfKey),operation=`v188_${session.id}_${newId()}`,sequence=(Array.isArray(session.v188Confirmations)?session.v188Confirmations.length:0)+1;
+    let qrApplied=0;
+    for(const row of targets.filter(target=>target.section==='qr')){
+      const answer=await callRpc(V188_QR_RPC,{p_qr_key:row.line.qrKey,p_operation_id:qrInventoryStableUuid(`${session.id}:${row.line.lineId}:${sequence}`,'v188_qr_adjust'),p_target_month:session.targetMonth,p_as_of_date:session.asOfKey,p_book_qty:row.book,p_actual_qty:row.actual,p_reason:String(row.entry.reason||'')||null,p_memo:String(row.entry.memo||'')||null,p_session_id:session.id,p_count_no:session.countNo});
+      if(!answer?.ok)throw new Error(answer?.message||`QRロット ${row.line.lotNo||row.line.qrKey} の調整に失敗しました。`);
+      if(!answer.skipped&&!answer.idempotent)qrApplied++;
+    }
+    const latestNormal=v188LatestUntil(session.asOfKey),latestSpecial={};
+    for(const tableId of Object.keys(SPECIAL_STOCK_TABLES))latestSpecial[tableId]=v188SpecialLatestUntil(tableId,session.asOfKey);
+    let normalApplied=0,specialApplied=0;
+    for(const row of targets.filter(target=>target.section==='normal')){
+      const line=row.line,memo=`${v188MonthLabel(session.targetMonth)}末棚卸し ${session.countNo}${row.entry.reason?` / 理由：${row.entry.reason}`:''}${row.entry.memo?` / ${row.entry.memo}`:''}`;
+      if(line.type==='normal'){
+        const previous=latestNormal[line.itemId]||null,setting=db.settings[line.itemId]||{};
+        const record={id:newId(),kind:'棚卸し調整',itemId:line.itemId,itemName:line.itemName,total:row.actual,setting:{...setting},status:judge(row.actual,setting),lines:countLinesWithAdjustment(previous,row.actual,line.itemId),user:db.user,role:db.role,createdAt:at,stocktakeSessionId:session.id,stocktakeLineId:line.lineId,operationId:operation,v188TargetMonth:session.targetMonth,v188AsOfKey:session.asOfKey};
+        db.records.push(record);
+        db.movements.push({id:newId(),recordId:record.id,itemId:line.itemId,itemName:line.itemName,type:'棚卸し調整',beforeTotal:row.book,afterTotal:row.actual,diffKg:row.diff,pack:null,cases:null,memo,user:db.user,role:db.role,createdAt:at,stocktakeSessionId:session.id,stocktakeLineId:line.lineId,operationId:operation});
+        latestNormal[line.itemId]=record;normalApplied++;
+      }else{
+        db.specialRecords=db.specialRecords||[];
+        const record={id:newId(),tableId:line.tableId,itemId:line.itemId,itemName:line.itemName,qty:row.actual,unit:line.unit,memo,kind:'棚卸し調整',user:db.user,role:db.role,createdAt:at,stocktakeSessionId:session.id,stocktakeLineId:line.lineId,operationId:operation,beforeQty:row.book,applyDifference:row.diff,v188TargetMonth:session.targetMonth,v188AsOfKey:session.asOfKey};
+        db.specialRecords.push(record);latestSpecial[line.tableId][line.itemId]=record;specialApplied++;
+      }
+    }
+    session.v188AppliedActual=session.v188AppliedActual&&typeof session.v188AppliedActual==='object'?session.v188AppliedActual:{};
+    for(const row of targets)session.v188AppliedActual[String(row.line.lineId)]=row.actual;
+    session.v188Confirmations=Array.isArray(session.v188Confirmations)?session.v188Confirmations:[];
+    session.v188Confirmations.push({at:nowIso(),by:db.user||'',byId:db.userId||'',sequence,normalApplied,specialApplied,qrApplied,operationId:operation,recordedAt:at});
+    session.v188ConfirmedAt=session.v188ConfirmedAt||nowIso();
+    session.v188ConfirmedBy=session.v188ConfirmedBy||db.user||'';
+    session.status='completed';session.normalStatus='submitted';session.qrCountStatus='submitted';
+    session.updatedAt=nowIso();session.updatedBy=db.user;
+    v1184UpsertLocalCountSession(session);
+    await saveCloudNow({skipHistory:true,requireRpc:true});v188PersistDb();
+    return inventoryCountHome(`${v188MonthLabel(session.targetMonth)}末の棚卸しを確定しました。通常 ${normalApplied}件 / その他・片岡 ${specialApplied}件 / QR ${qrApplied}件を対象月末日で反映しました。`);
+  }catch(error){
+    db=beforeDb;stateVersion=beforeVersion;v188PersistDb();setSyncState('失敗');
+    alert(`棚卸しを確定できませんでした。\n${v161ErrorText(error)}\n\n通常在庫の反映は取り消しました。QR在庫は反映済みの分だけ残ることがあるため、QRロット一覧で確認してください。`);
+    return inventoryCountHome();
+  }finally{v161HideProcessing()}
+}
+
+function v188DownloadExcel(id){
+  const session=countSession(id);if(!session||!v188Session(session))return v186DownloadExcel(id);
+  if(!ensureXlsxReady())return;
+  const target={...session,countNo:`${session.countNo}（${v188MonthLabel(session.targetMonth)}末 基準日${session.asOfKey}）`,v177AppliedAt:session.v188ConfirmedAt||null,v177CompletedAt:session.v188ConfirmedAt||null};
+  const wb=XLSX.utils.book_new(),normal=v177AddDetailSheet(wb,`${session.roomLabel} 通常在庫`,`${session.roomLabel} 通常在庫 ${v188MonthLabel(session.targetMonth)}末棚卸し`,target,'normal'),qr=v177AddDetailSheet(wb,`${session.roomLabel} QR在庫`,`${session.roomLabel} QR在庫 ${v188MonthLabel(session.targetMonth)}末棚卸し`,target,'qr');
+  v177AddSummarySheet(wb,target,normal,qr);
+  const note=`${v188MonthLabel(session.targetMonth)}末時点（基準日${session.asOfKey}）／差異のみ月末日で在庫反映`;
+  for(const sheetName of [normal.name,qr.name]){const sheet=wb.Sheets[sheetName];if(sheet?.B5)sheet.B5.v=note}
+  downloadWorkbookXlsx(wb,`棚卸し_${String(session.targetMonth||'').replace('-','')}_${String(session.roomLabel||'冷蔵庫').replace(/[\\/:*?"<>|]/g,'_')}_${String(session.countNo||'').replace(/[\\/:*?"<>|]/g,'_')}.xlsx`);
+  return inventoryCountHome('棚卸しExcelを出力しました。単価欄へ入力すると金額と合計が計算されます。');
+}
+
+function v188SessionCard(session){
+  const confirmed=v188Confirmed(session),normal=v188Stats(session,'normal'),qr=v188Stats(session,'qr'),pending=v188PendingRows(session).length;
+  return `<div class="card"><div class="itemHead"><div><b>${esc(session.countNo)}</b><div class="small">${esc(session.roomLabel)} / ${esc(v188MonthLabel(session.targetMonth))}末（基準日${esc(session.asOfKey)}）<br>開始：${esc(session.startedAt?dt(session.startedAt):'－')}${confirmed?` / 確定：${esc(dt(session.v188ConfirmedAt))}`:''}</div></div><span class="badge ${confirmed?'normal':'unset'}">${confirmed?'確定済み':'確認・入力中'}</span></div>
+<div class="notice" style="margin-top:10px"><b>1. 記入票を印刷</b><div class="small">${esc(v188MonthLabel(session.targetMonth))}末時点の帳簿在庫で作成します（量目・仕入先入り）。</div><div class="mini" style="margin-top:8px"><button class="btn orange" ${seikaEventAttrs('click','v188Print',[session.id,'all'])}>通常・QR記入票を印刷</button><button class="btn btn2" ${seikaEventAttrs('click','v188Print',[session.id,'normal'])}>通常だけ</button><button class="btn btn2" ${seikaEventAttrs('click','v188Print',[session.id,'qr'])}>QRだけ</button></div></div>
+<div class="notice" style="margin-top:10px"><b>2. 実数・差異理由を確認</b><div class="small">通常 ${normal.entered}/${normal.total-normal.excluded}入力・差異${normal.diff} / QR ${qr.entered}/${qr.total-qr.excluded}入力・差異${qr.diff}・未確認${qr.unchecked}</div><div class="mini" style="margin-top:8px"><button class="btn green" ${seikaEventAttrs('click','v188CountPage',[session.id,'normal'])}>通常在庫を確認・編集</button><button class="btn blue" ${seikaEventAttrs('click','v188CountPage',[session.id,'qr'])}>QR在庫を確認・編集</button></div><div class="mini" style="margin-top:8px"><button class="btn btn2" ${seikaEventAttrs('click','v186OpenNormal',[session.room])}>通常在庫入力を開く</button><button class="btn btn2" ${seikaEventAttrs('click','v186OpenQrOut',[])}>QR出庫を開く</button><button class="btn btn2" ${seikaEventAttrs('click','v186OpenQrAdjust',[])}>QR在庫調整を開く</button></div></div>
+<div class="notice" style="margin-top:10px"><b>3. 差異を対象月末で確定</b><div class="small">未反映の差異 ${pending}件。差異がある品目だけを${esc(session.asOfKey)}付の棚卸し調整として反映します。</div>${v188CanCount()&&(!confirmed||v188CanEdit())?`<button class="btn orange" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','v188Confirm',[session.id])} ${pending?'':'disabled'}>${confirmed?'差異を追加反映':'棚卸しを確定して差異を反映'}</button>`:''}</div>
+<div class="mini" style="margin-top:10px">${confirmed?`<button class="btn orange" ${seikaEventAttrs('click','v188DownloadExcel',[session.id])}>Excelを出力</button>`:''}<button class="btn btn2" ${seikaEventAttrs('click','v188HistoryPage',[session.id])}>編集履歴（${(session.v188History||[]).length}）</button></div></div>`;
+}
+function v188Home(msg=''){
+  setScreen('inventoryCountHome',[msg]);if(!v177Allowed())return home();
+  v124AllSessions();
+  const sessions=countSessions().slice().sort((a,b)=>new Date(b.updatedAt||b.startedAt||0)-new Date(a.updatedAt||a.startedAt||0));
+  const active=sessions.filter(session=>v188Session(session)&&!v188Confirmed(session)),history=sessions.filter(session=>v188Session(session)&&v188Confirmed(session)),legacy=sessions.filter(session=>!v188Session(session));
+  const month=v188MonthValue();
+  pageShell('棚卸しモード',`${esc(v119RoleLabel())} / v1.188`,
+    `${okHtml(msg)}<div class="card notice"><b>月末棚卸しの流れ</b><div class="small">①対象月と冷蔵庫を選んで開始（その時点で対象月末の在庫が固定されます）　②記入票を印刷して現物確認　③通常在庫入力・QR画面で入力／棚卸し画面で実数・差異理由を編集　④確定すると差異分だけを対象月末日の棚卸し調整として反映　⑤Excel出力（単価欄あり）<br>開始後は、翌日以降の入庫・出庫・調整があっても対象月末の帳簿在庫は変わりません。</div></div>
+<div class="card"><b>新しい棚卸しを開始</b><label class="label" style="margin-top:8px">対象月</label><select id="v188TargetMonth" class="input">${v188MonthOptions(month)}</select><div class="grid" style="margin-top:10px"><button class="btn orange" ${seikaEventAttrs('click','v188Start',['room2'])}>第2冷蔵庫</button><button class="btn orange" ${seikaEventAttrs('click','v188Start',['room3'])}>第3冷蔵庫</button></div></div>
+<div class="card"><b>進行中</b>${active.map(v188SessionCard).join('')||'<div class="small">進行中の棚卸しはありません。</div>'}</div>
+<div class="card"><b>確定済み</b>${history.map(v188SessionCard).join('')||'<div class="small">確定済みの棚卸しはありません。</div>'}</div>
+${legacy.length?`<details class="card"><summary><b>旧棚卸し履歴（${legacy.length}件）</b></summary><div style="margin-top:10px">${legacy.map(v186LegacyCard).join('')}</div></details>`:''}`);
+}
+function v188Guide(){
+  setScreen('inventoryCountGuidePage');if(!v177Allowed())return home();
+  pageShell('月末棚卸しの使い方','管理者・青果社員のみ / v1.188',
+    `<div class="card notice"><b>1. 対象月を選んで開始</b><div class="small">対象月と冷蔵庫を選ぶと、その月の月末時点（当月は本日時点）の通常・片岡・その他・QR在庫が帳簿在庫として固定されます。開始後の入庫・出庫・調整では変わりません。</div></div>
+<div class="card"><b>2. 記入票を印刷して現物確認</b><div class="small">記入票には月末時点の帳簿在庫、量目・入数、仕入先が入ります。A4横です。</div></div>
+<div class="card"><b>3. 実数を入れる</b><div class="small">いつもの通常在庫入力・QR出庫・QR在庫調整で入力し、棚卸し画面の「現在の在庫を実数へ取り込む」で反映します。行ごとの手入力・修正もできます。</div></div>
+<div class="card"><b>4. 差異理由・対象品目・QR確認状態</b><div class="small">差異がある行には理由を入力します。棚卸し対象から外す品目はチェックを外します。QRはロットごとに確認済みにできます。変更はすべて編集履歴に残ります。</div></div>
+<div class="card"><b>5. 確定</b><div class="small">差異がある行だけを、対象月末日付の「棚卸し調整」として在庫履歴へ反映します。差異なし・対象外は履歴を作りません。確定後も管理者は編集でき、「差異を追加反映」で変更分だけを追加します。</div></div>
+<div class="card"><b>6. Excel</b><div class="small">確定後にExcelを出力できます。単価欄へ入力すると金額と合計が自動計算されます。</div></div>
+<button class="btn btn2" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しモードへ戻る</button>`);
+}
+
+window.v188Start=v188Start;window.v188Print=v188Print;window.v188CountPage=v188CountPage;window.v188Save=v188Save;window.v188ImportLive=v188ImportLive;window.v188Confirm=v188Confirm;window.v188DownloadExcel=v188DownloadExcel;window.v188HistoryPage=v188HistoryPage;window.v188Home=v188Home;
+window.inventoryCountHome=v188Home;inventoryCountHome=v188Home;startInventoryCount=v188Start;downloadInventoryCountExcel=v188DownloadExcel;inventoryCountGuidePage=v188Guide;
+const v188InventoryCountPageLegacy=inventoryCountPage;
+inventoryCountPage=function(id,msg=''){const session=countSession(id);return v188Session(session)?v188CountPage(id,'normal',msg):v188InventoryCountPageLegacy(id,msg)};
+const v188PrintLatestCore=v186PrintLatest;
+v186PrintLatest=async function(id,mode='all'){const session=countSession(id);if(v188Session(session))return v188Print(id,mode);return v188PrintLatestCore(id,mode)};
+window.APP_VERSION='v1.188';document.title='SEIKA＋ v1.188 月末棚卸し版';
+
+
 
 
 </script>
