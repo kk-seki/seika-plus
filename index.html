@@ -5849,19 +5849,19 @@ base64:"data:image/jpeg;base64,"+v1102ArrayBufferToBase64(await out.arrayBuffer(
 async function v1102DownloadQualityExcel(key){if(!["admin","worker","clerk"].includes(db.role))return alert("品質評価Excelを出力する権限がありません")
 ;if(typeof ExcelJS==="undefined")return alert("Excel作成ライブラリを読み込めません。通信状況を確認して再読込してください。");v161ShowProcessing("品質評価と写真を読み込み、Excelを作成しています");try{
 if(!key||key>previousMonthKey())return alert("前月以前を選択してください");const ans=await callRpc("get_monthly_quality_export_v1102",{
-p_target_month:v1101MonthDate(key)}),rows=ans?.evaluations||[];if(!rows.length)return alert("対象月の品質評価はありません");const wb=new ExcelJS.Workbook
+p_target_month:v1101MonthDate(key)}),rows=ans?.evaluations||[];if(!rows.length)return alert("対象月の品質評価はありません");V192_QUALITY_LOTS=await v192LoadQualityLots(rows);const wb=new ExcelJS.Workbook
 ;wb.creator="SEIKA＋";wb.created=new Date;const ws=wb.addWorksheet("品質評価履歴",{views:[{state:"frozen",ySplit:1}]});ws.columns=[{header:"評価日時",key:"date",
-width:21},{header:"品名",key:"item",width:18},{header:"ロット番号",key:"lot",width:22},{header:"QRキー",key:"qr",width:28},{header:"判定",key:"grade",width:10},{
+width:21},{header:"品名",key:"item",width:18},{header:"仕入先",key:"supplier",width:18},{header:"ロット番号",key:"lot",width:22},{header:"QRキー",key:"qr",width:28},{header:"判定",key:"grade",width:10},{
 header:"状態",key:"issues",width:28},{header:"メモ",key:"memo",width:34},{header:"評価者",key:"user",width:16},{header:"訂正理由",key:"correction",width:28},{
 header:"訂正前",key:"old",width:10},{header:"写真1",key:"p1",width:22},{header:"写真2",key:"p2",width:22},{header:"写真3",key:"p3",width:22}]
 ;ws.getRow(1).height=25;ws.getRow(1).font={bold:true,color:{argb:"FFFFFFFF"}};ws.getRow(1).fill={type:"pattern",pattern:"solid",fgColor:{
 argb:"FF102653"}};ws.getRow(1).alignment={horizontal:"center",vertical:"middle"};let photoCount=0;for(const x of rows){const row=ws.addRow({
-date:new Date(x.evaluated_at).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}),item:x.item_name||"",lot:x.lot_no||"",qr:x.qr_key||"",
+date:new Date(x.evaluated_at).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}),item:x.item_name||"",supplier:v192QualitySupplier(x),lot:x.lot_no||"",qr:x.qr_key||"",
 grade:v1102GradeLabel(x.grade),issues:(x.issues||[]).join("、"),memo:x.memo||"",user:x.evaluated_by_name||"",correction:x.correction_reason||"",
 old:x.is_superseded?"訂正前":""});row.alignment={vertical:"top",wrapText:true};const photos=x.photos||[];if(photos.length){row.height=105
 ;for(let i=0;i<Math.min(3,photos.length);i++){const image=await v1102PhotoBase64(photos[i].storage_path),id=wb.addImage({base64:image.base64,
-extension:"jpeg"});ws.addImage(id,{tl:{col:10+i,row:row.number-1},ext:{width:150,height:95},editAs:"oneCell"});photoCount++}}}ws.autoFilter={
-from:"A1",to:"M1"};const info=wb.addWorksheet("出力情報")
+extension:"jpeg"});ws.addImage(id,{tl:{col:11+i,row:row.number-1},ext:{width:150,height:95},editAs:"oneCell"});photoCount++}}}ws.autoFilter={
+from:"A1",to:"N1"};const info=wb.addWorksheet("出力情報")
 ;info.addRows([["対象月",key],["評価件数",rows.length],["写真枚数",photoCount],["作成日時",(new Date).toLocaleString("ja-JP")],["保管先","デスクネッツ → 文書管理 → 石岡青果C → SEIKA＋（在庫管理アプリ）→ QR在庫履歴"],["注意","写真を1枚でも取得できなかった場合は作成済みに記録しません。"]])
 ;info.getColumn(1).width=18;info.getColumn(2).width=80;info.getColumn(1).font={bold:true}
 ;const buffer=await wb.xlsx.writeBuffer(),fileName=`QR品質評価履歴_${key}.xlsx`,blob=new Blob([buffer],{
@@ -10667,7 +10667,23 @@ function v192DownloadExcel(id){
   downloadWorkbookXlsx(wb,`棚卸し_${String(session.targetMonth||'').replace('-','')}_${String(session.roomLabel||'冷蔵庫').replace(/[\\/:*?"<>|]/g,'_')}_${String(session.countNo||'').replace(/[\\/:*?"<>|]/g,'_')}.xlsx`);
   return inventoryCountHome('棚卸しExcelを出力しました。単価欄へ入力すると金額と合計が計算されます。');
 }
-downloadInventoryCountExcel=v192DownloadExcel;
+downloadInventoryCountExcel=v192DownloadExcel;window.downloadInventoryCountExcel=v192DownloadExcel;v188DownloadExcel=v192DownloadExcel;window.v188DownloadExcel=v192DownloadExcel;
+/* ===== v1.192 QR品質評価Excel：仕入先を追加 ===== */
+let V192_QUALITY_LOTS=new Map();
+async function v192LoadQualityLots(rows){
+  const map=new Map();
+  if(!(rows||[]).some(row=>!row?.supplier))return map;
+  try{
+    const lots=await v163SelectAll('qr_lots','select=qr_key,supplier,received_date&order=qr_key.asc');
+    for(const lot of lots||[]){const key=String(lot?.qr_key||'').trim();if(key&&!map.has(key))map.set(key,lot)}
+  }catch(error){}
+  return map;
+}
+function v192QualitySupplier(x){
+  if(x&&x.supplier)return String(x.supplier);
+  const lot=V192_QUALITY_LOTS.get(String(x?.qr_key||'').trim());
+  return lot&&lot.supplier?String(lot.supplier):'';
+}
 
 const v188InventoryCountPageLegacy=inventoryCountPage;
 inventoryCountPage=function(id,msg=''){const session=countSession(id);return v188Session(session)?v188CountPage(id,'normal',msg):v188InventoryCountPageLegacy(id,msg)};
