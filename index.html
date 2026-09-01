@@ -10507,6 +10507,75 @@ v188RolePayload=function(payload,role=db?.role){
   if(Object.prototype.hasOwnProperty.call(payload,'inventoryCounts'))out.inventoryCounts=payload.inventoryCounts;
   return out;
 };
+/* QR出庫履歴のサーバー関数 list_qr_outbound_history_v1144 が失敗する環境向けの代替取得。
+   qr_lot_movements を直接読み、同じ形（rows / destinations / total_count）に整えて返す。 */
+function v192MovementQty(move){
+  for(const value of [move?.qty,move?.quantity]){const n=Number(value);if(Number.isFinite(n)&&n!==0)return Math.abs(n)}
+  return 0;
+}
+function v192MovementWeight(move){
+  for(const value of [move?.weight,move?.out_weight,move?.weight_kg]){const n=Number(value);if(Number.isFinite(n)&&n!==0)return Math.abs(n)}
+  return null;
+}
+function v192MovementDestination(move){return String(move?.destination||move?.ship_to||move?.destination_name||'').trim()}
+function v192IsCancelledMovement(move){
+  if(move?.cancelled_at||move?.canceled_at)return true;
+  return /取消|取り消し|キャンセル/.test(String(move?.movement_type||''));
+}
+function v192IsOutboundMovement(move){
+  const type=String(move?.movement_type||'');
+  if(/削除|棚卸し調整/.test(type))return false;
+  if(/出庫|出荷/.test(type))return true;
+  return !!v192MovementDestination(move);
+}
+async function v192OutboundHistoryFallback(args){
+  const date=String(args?.p_work_date||'').slice(0,10)||todayKey();
+  const wanted=String(args?.p_destination||'').trim();
+  const include=!!args?.p_include_cancelled;
+  const limit=Number(args?.p_limit||100),offset=Number(args?.p_offset||0);
+  const day=new Date(`${date}T00:00:00+09:00`);
+  const from=new Date(day.getTime()-24*60*60*1000).toISOString();
+  const to=new Date(day.getTime()+2*24*60*60*1000).toISOString();
+  let moves=[];
+  try{moves=await v163SelectAll('qr_lot_movements',`select=*&created_at=gte.${encodeURIComponent(from)}&created_at=lt.${encodeURIComponent(to)}&order=created_at.desc`)}
+  catch(error){moves=await v163SelectAll('qr_lot_movements','select=*&order=created_at.desc',1000)}
+  const outbound=(moves||[]).filter(v192IsOutboundMovement);
+  const destinations=[...new Set(outbound.map(v192MovementDestination).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
+  let target=outbound.filter(move=>ymdKey(new Date(v163MovementAt(move)))===date);
+  if(wanted)target=target.filter(move=>v192MovementDestination(move)===wanted);
+  if(!include)target=target.filter(move=>!v192IsCancelledMovement(move));
+  target.sort((a,b)=>v163MovementTime(b)-v163MovementTime(a));
+  let lotMap=null;
+  if(target.some(move=>!move?.item_name||!move?.lot_no)){
+    try{
+      const lots=await v163SelectAll('qr_lots','select=qr_key,lot_no,item_name,unit,container_type&order=qr_key.asc');
+      lotMap=new Map((lots||[]).map(lot=>[String(lot.qr_key||''),lot]));
+    }catch(error){lotMap=null}
+  }
+  const rows=target.slice(offset,offset+limit).map(move=>{
+    const lot=lotMap?lotMap.get(String(move?.qr_key||'')):null;
+    return {
+      qr_key:move?.qr_key||null,
+      lot_no:move?.lot_no||lot?.lot_no||'',
+      item_name:move?.item_name||lot?.item_name||'',
+      unit:move?.unit||lot?.unit||'',
+      qty:v192MovementQty(move),
+      weight:v192MovementWeight(move),
+      occurred_at:v163MovementAt(move),
+      user_name:move?.user_name||move?.user||'',
+      memo:move?.memo||'',
+      destination:v192MovementDestination(move),
+      is_cancelled:v192IsCancelledMovement(move)
+    };
+  });
+  return {ok:true,rows,destinations,total_count:target.length,summary_rows:null,fallback:true};
+}
+const v192CallRpcCore=callRpc;
+callRpc=async function(name,args){
+  if(name!=='list_qr_outbound_history_v1144')return v192CallRpcCore(name,args);
+  try{return await v192CallRpcCore(name,args)}
+  catch(error){return await v192OutboundHistoryFallback(args)}
+};
 window.v188Start=v188Start;window.v188StartBoth=v188StartBoth;window.v188Repair=v188Repair;window.v188Print=v188Print;window.v188CountPage=v188CountPage;window.v188Save=v188Save;window.v188ImportLive=v188ImportLive;window.v188Confirm=v188Confirm;window.v188DownloadExcel=v188DownloadExcel;window.v188HistoryPage=v188HistoryPage;window.v188Home=v188Home;
 window.inventoryCountHome=v188Home;inventoryCountHome=v188Home;startInventoryCount=v188Start;downloadInventoryCountExcel=v188DownloadExcel;inventoryCountGuidePage=v188Guide;
 const v188InventoryCountPageLegacy=inventoryCountPage;
