@@ -5851,17 +5851,17 @@ async function v1102DownloadQualityExcel(key){if(!["admin","worker","clerk"].inc
 if(!key||key>previousMonthKey())return alert("前月以前を選択してください");const ans=await callRpc("get_monthly_quality_export_v1102",{
 p_target_month:v1101MonthDate(key)}),rows=ans?.evaluations||[];if(!rows.length)return alert("対象月の品質評価はありません");V192_QUALITY_LOTS=await v192LoadQualityLots(rows);const wb=new ExcelJS.Workbook
 ;wb.creator="SEIKA＋";wb.created=new Date;const ws=wb.addWorksheet("品質評価履歴",{views:[{state:"frozen",ySplit:1}]});ws.columns=[{header:"評価日時",key:"date",
-width:21},{header:"品名",key:"item",width:18},{header:"仕入先",key:"supplier",width:18},{header:"ロット番号",key:"lot",width:22},{header:"QRキー",key:"qr",width:28},{header:"判定",key:"grade",width:10},{
+width:21},{header:"品名",key:"item",width:18},{header:"仕入先",key:"supplier",width:18},{header:"入荷日",key:"received",width:13},{header:"ロット番号",key:"lot",width:22},{header:"QRキー",key:"qr",width:28},{header:"判定",key:"grade",width:10},{
 header:"状態",key:"issues",width:28},{header:"メモ",key:"memo",width:34},{header:"評価者",key:"user",width:16},{header:"訂正理由",key:"correction",width:28},{
 header:"訂正前",key:"old",width:10},{header:"写真1",key:"p1",width:22},{header:"写真2",key:"p2",width:22},{header:"写真3",key:"p3",width:22}]
 ;ws.getRow(1).height=25;ws.getRow(1).font={bold:true,color:{argb:"FFFFFFFF"}};ws.getRow(1).fill={type:"pattern",pattern:"solid",fgColor:{
 argb:"FF102653"}};ws.getRow(1).alignment={horizontal:"center",vertical:"middle"};let photoCount=0;for(const x of rows){const row=ws.addRow({
-date:new Date(x.evaluated_at).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}),item:x.item_name||"",supplier:v192QualitySupplier(x),lot:x.lot_no||"",qr:x.qr_key||"",
+date:new Date(x.evaluated_at).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}),item:x.item_name||"",supplier:v192QualitySupplier(x),received:v192QualityReceived(x),lot:x.lot_no||"",qr:x.qr_key||"",
 grade:v1102GradeLabel(x.grade),issues:(x.issues||[]).join("、"),memo:x.memo||"",user:x.evaluated_by_name||"",correction:x.correction_reason||"",
 old:x.is_superseded?"訂正前":""});row.alignment={vertical:"top",wrapText:true};const photos=x.photos||[];if(photos.length){row.height=105
 ;for(let i=0;i<Math.min(3,photos.length);i++){const image=await v1102PhotoBase64(photos[i].storage_path),id=wb.addImage({base64:image.base64,
-extension:"jpeg"});ws.addImage(id,{tl:{col:11+i,row:row.number-1},ext:{width:150,height:95},editAs:"oneCell"});photoCount++}}}ws.autoFilter={
-from:"A1",to:"N1"};const info=wb.addWorksheet("出力情報")
+extension:"jpeg"});ws.addImage(id,{tl:{col:12+i,row:row.number-1},ext:{width:150,height:95},editAs:"oneCell"});photoCount++}}}ws.autoFilter={
+from:"A1",to:"O1"};const info=wb.addWorksheet("出力情報")
 ;info.addRows([["対象月",key],["評価件数",rows.length],["写真枚数",photoCount],["作成日時",(new Date).toLocaleString("ja-JP")],["保管先","デスクネッツ → 文書管理 → 石岡青果C → SEIKA＋（在庫管理アプリ）→ QR在庫履歴"],["注意","写真を1枚でも取得できなかった場合は作成済みに記録しません。"]])
 ;info.getColumn(1).width=18;info.getColumn(2).width=80;info.getColumn(1).font={bold:true}
 ;const buffer=await wb.xlsx.writeBuffer(),fileName=`QR品質評価履歴_${key}.xlsx`,blob=new Blob([buffer],{
@@ -10579,7 +10579,24 @@ callRpc=async function(name,args){
 window.v188Start=v188Start;window.v188StartBoth=v188StartBoth;window.v188Repair=v188Repair;window.v188Print=v188Print;window.v188CountPage=v188CountPage;window.v188Save=v188Save;window.v188ImportLive=v188ImportLive;window.v188Confirm=v188Confirm;window.v188DownloadExcel=v188DownloadExcel;window.v188HistoryPage=v188HistoryPage;window.v188Home=v188Home;
 window.inventoryCountHome=v188Home;inventoryCountHome=v188Home;startInventoryCount=v188Start;downloadInventoryCountExcel=v188DownloadExcel;inventoryCountGuidePage=v188Guide;
 /* ===== v1.192 月末棚卸しExcel：QR数量の欠落修正・入荷日の列追加・出庫先/出庫区分の廃止 ===== */
-const V192_EXCEL_HEADS=['区分','品名','ロット','入荷日','仕入先','荷姿・規格','単位','帳簿数量','棚卸し実数','差異','重量kg','差異理由','対象','QR確認','備考','単価（円/単位）','金額（円）'];
+const V192_SECTION_COLS={
+  normal:{
+    heads:['区分','品名','単位','帳簿数量','棚卸し実数','差異','重量kg','差異理由','対象','備考','単価（円/単位）','金額（円）'],
+    pick:row=>[row.group,row.item,row.unit,row.book,row.qty,row.diff,row.weight,row.reason,row.included,row.memo,'',''],
+    widths:[10,26,8,12,12,10,11,18,8,26,15,15],
+    right:[3,4,5,6,10,11],
+    accent:[],
+    cols:{unit:'C',qty:'E',weight:'G',price:'K',amount:'L'}
+  },
+  qr:{
+    heads:['区分','品名','入荷日','仕入先','ロット','荷姿・規格','単位','帳簿数量','棚卸し実数','差異','重量kg','差異理由','対象','QR確認','備考','単価（円/単位）','金額（円）'],
+    pick:row=>[row.group,row.item,row.received,row.supplier,row.lot,row.spec,row.unit,row.book,row.qty,row.diff,row.weight,row.reason,row.included,row.checked,row.memo,'',''],
+    widths:[10,24,13,18,22,14,8,12,12,10,11,16,8,10,24,15,15],
+    right:[7,8,9,10,15,16],
+    accent:[2,3],
+    cols:{unit:'G',qty:'I',weight:'K',price:'P',amount:'Q'}
+  }
+};
 function v192PackKg(line){const raw=String(line?.packWeight??'').replace(/[^0-9.]/g,'');if(raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>0?n:null}
 function v192QrWeight(line,actual){
   const manual=v119StrictDecimal(line?.actualWeightKg);
@@ -10603,7 +10620,7 @@ function v192ExcelRows(session,section){
       item:line.itemName||'',
       lot:section==='qr'?(line.lotNo||line.qrKey||''):'',
       received:section==='qr'?(line.receivedDate||''):'',
-      supplier:line.supplier||'',
+      supplier:section==='qr'?(line.supplier||''):'',
       spec:section==='qr'?(line.containerType||''):(line.unit||''),
       unit:line.unit||'',
       book:book===null||book===undefined?'':book,
@@ -10618,25 +10635,25 @@ function v192ExcelRows(session,section){
   });
 }
 function v192AddDetailSheet(wb,name,title,session,section){
-  const rows=v192ExcelRows(session,section),heads=V192_EXCEL_HEADS;
+  const spec=V192_SECTION_COLS[section],rows=v192ExcelRows(session,section),heads=spec.heads;
   const meta=[['棚卸し番号',session.countNo||''],['冷蔵庫',session.roomLabel||''],['対象月',`${v188MonthLabel(session.targetMonth)}末`],['基準日',session.asOfKey||''],['状態',v188Confirmed(session)?'確定済み（差異のみ対象月末日で在庫反映）':'未確定（在庫へ未反映）']];
-  const values=rows.map(row=>[row.group,row.item,row.lot,row.received,row.supplier,row.spec,row.unit,row.book,row.qty,row.diff,row.weight,row.reason,row.included,row.checked,row.memo,'','']
-    .map(value=>typeof value==='string'?inventoryCountExcelSafeText(value):value));
+  const values=rows.map(row=>spec.pick(row).map(value=>typeof value==='string'?inventoryCountExcelSafeText(value):value));
   const ws=XLSX.utils.aoa_to_sheet([[title],[],...meta,[],heads,...values]);
   const header=meta.length+3,start=header+2,end=header+rows.length+1;
-  for(let r=start;r<=end;r++)ws[`Q${r}`]={t:'n',f:`IF(OR(I${r}="",P${r}=""),"",I${r}*P${r})`};
-  ws[`P${end+1}`]={t:'s',v:'明細合計'};
-  ws[`Q${end+1}`]={t:'n',f:`SUM(Q${start}:Q${end})`};
+  const {qty,price,amount}=spec.cols;
+  for(let r=start;r<=end;r++)ws[`${amount}${r}`]={t:'n',f:`IF(OR(${qty}${r}="",${price}${r}=""),"",${qty}${r}*${price}${r})`};
+  ws[`${price}${end+1}`]={t:'s',v:'明細合計'};
+  ws[`${amount}${end+1}`]={t:'n',f:`SUM(${amount}${start}:${amount}${end})`};
   ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:end,c:heads.length-1}});
   ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:heads.length-1}}];
   ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:header,c:0},e:{r:Math.max(header,end-1),c:heads.length-1}})};
-  ws['!cols']=[10,22,18,12,16,14,8,12,12,10,11,16,8,10,26,15,15].map(wch=>({wch}));
+  ws['!cols']=spec.widths.map(wch=>({wch}));
   ws['!freeze']={xSplit:2,ySplit:header+1};
   inventoryCountExcelStyle(ws,'A1',{font:{name:'Yu Gothic',sz:15,bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'1D4ED8'}},alignment:{horizontal:'center'}});
-  for(let c=0;c<heads.length;c++)inventoryCountExcelStyle(ws,XLSX.utils.encode_cell({r:header,c}),{font:{name:'Yu Gothic',sz:10,bold:true},fill:{patternType:'solid',fgColor:{rgb:'D9EAF7'}},alignment:{horizontal:'center',vertical:'center',wrapText:true}});
-  for(let r=start;r<=end+1;r++)for(let c=0;c<heads.length;c++)inventoryCountExcelStyle(ws,XLSX.utils.encode_cell({r:r-1,c}),{font:{name:'Yu Gothic',sz:10},alignment:{vertical:'center',wrapText:true,horizontal:[7,8,9,10,15,16].includes(c)?'right':'left'}});
+  for(let c=0;c<heads.length;c++)inventoryCountExcelStyle(ws,XLSX.utils.encode_cell({r:header,c}),{font:{name:'Yu Gothic',sz:10,bold:true,color:{rgb:spec.accent.includes(c)?'FFFFFF':'000000'}},fill:{patternType:'solid',fgColor:{rgb:spec.accent.includes(c)?'0F766E':'D9EAF7'}},alignment:{horizontal:'center',vertical:'center',wrapText:true}});
+  for(let r=start;r<=end+1;r++)for(let c=0;c<heads.length;c++)inventoryCountExcelStyle(ws,XLSX.utils.encode_cell({r:r-1,c}),{font:{name:'Yu Gothic',sz:10,bold:spec.accent.includes(c)},fill:spec.accent.includes(c)&&r<=end?{patternType:'solid',fgColor:{rgb:'F0FDFA'}}:undefined,alignment:{vertical:'center',wrapText:true,horizontal:spec.right.includes(c)?'right':spec.accent.includes(c)?'center':'left'}});
   XLSX.utils.book_append_sheet(wb,ws,safeSheetName(name));
-  return {name,rows,start,end};
+  return {name,rows,start,end,cols:spec.cols};
 }
 function v192AddSummarySheet(wb,session,normal,qr){
   const all=[...v192ExcelRows(session,'normal'),...v192ExcelRows(session,'qr')];
@@ -10647,8 +10664,9 @@ function v192AddSummarySheet(wb,session,normal,qr){
   const n=String(normal.name).replace(/'/g,"''"),q=String(qr.name).replace(/'/g,"''");
   for(let r=start;r<=end;r++){
     const g=`A${r}`,it=`B${r}`,u=`C${r}`;
-    const sum=col=>`SUMIFS('${n}'!$${col}$${normal.start}:$${col}$${normal.end},'${n}'!$A$${normal.start}:$A$${normal.end},${g},'${n}'!$B$${normal.start}:$B$${normal.end},${it},'${n}'!$G$${normal.start}:$G$${normal.end},${u})+SUMIFS('${q}'!$${col}$${qr.start}:$${col}$${qr.end},'${q}'!$A$${qr.start}:$A$${qr.end},${g},'${q}'!$B$${qr.start}:$B$${qr.end},${it},'${q}'!$G$${qr.start}:$G$${qr.end},${u})`;
-    ws[`D${r}`]={t:'n',f:sum('I')};ws[`E${r}`]={t:'n',f:sum('K')};ws[`F${r}`]={t:'n',f:sum('Q')};
+    const part=(sheet,meta,col)=>`SUMIFS('${sheet}'!$${col}$${meta.start}:$${col}$${meta.end},'${sheet}'!$A$${meta.start}:$A$${meta.end},${g},'${sheet}'!$B$${meta.start}:$B$${meta.end},${it},'${sheet}'!$${meta.cols.unit}$${meta.start}:$${meta.cols.unit}$${meta.end},${u})`;
+    const sum=key=>`${part(n,normal,normal.cols[key])}+${part(q,qr,qr.cols[key])}`;
+    ws[`D${r}`]={t:'n',f:sum('qty')};ws[`E${r}`]={t:'n',f:sum('weight')};ws[`F${r}`]={t:'n',f:sum('amount')};
   }
   ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(end,header),c:heads.length-1}});
   ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:heads.length-1}}];
@@ -10678,6 +10696,11 @@ async function v192LoadQualityLots(rows){
     for(const lot of lots||[]){const key=String(lot?.qr_key||'').trim();if(key&&!map.has(key))map.set(key,lot)}
   }catch(error){}
   return map;
+}
+function v192QualityReceived(x){
+  if(x&&x.received_date)return String(x.received_date).slice(0,10);
+  const lot=V192_QUALITY_LOTS.get(String(x?.qr_key||'').trim());
+  return lot&&lot.received_date?String(lot.received_date).slice(0,10):'';
 }
 function v192QualitySupplier(x){
   if(x&&x.supplier)return String(x.supplier);
