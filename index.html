@@ -10544,7 +10544,7 @@ async function v192OutboundHistoryFallback(args){
   let target=outbound.filter(move=>ymdKey(new Date(v163MovementAt(move)))===date);
   if(wanted)target=target.filter(move=>v192MovementDestination(move)===wanted);
   if(!include)target=target.filter(move=>!v192IsCancelledMovement(move));
-  target.sort((a,b)=>v163MovementTime(b)-v163MovementTime(a));
+  target.sort((a,b)=>v163MovementTime(a)-v163MovementTime(b));
   let lotMap=null;
   if(target.some(move=>!move?.item_name||!move?.lot_no)){
     try{
@@ -10578,6 +10578,97 @@ callRpc=async function(name,args){
 };
 window.v188Start=v188Start;window.v188StartBoth=v188StartBoth;window.v188Repair=v188Repair;window.v188Print=v188Print;window.v188CountPage=v188CountPage;window.v188Save=v188Save;window.v188ImportLive=v188ImportLive;window.v188Confirm=v188Confirm;window.v188DownloadExcel=v188DownloadExcel;window.v188HistoryPage=v188HistoryPage;window.v188Home=v188Home;
 window.inventoryCountHome=v188Home;inventoryCountHome=v188Home;startInventoryCount=v188Start;downloadInventoryCountExcel=v188DownloadExcel;inventoryCountGuidePage=v188Guide;
+/* ===== v1.192 月末棚卸しExcel：QR数量の欠落修正・入荷日の列追加・出庫先/出庫区分の廃止 ===== */
+const V192_EXCEL_HEADS=['区分','品名','ロット','入荷日','仕入先','荷姿・規格','単位','帳簿数量','棚卸し実数','差異','重量kg','差異理由','対象','QR確認','備考','単価（円/単位）','金額（円）'];
+function v192PackKg(line){const raw=String(line?.packWeight??'').replace(/[^0-9.]/g,'');if(raw==='')return null;const n=Number(raw);return Number.isFinite(n)&&n>0?n:null}
+function v192QrWeight(line,actual){
+  const manual=v119StrictDecimal(line?.actualWeightKg);
+  if(qrIsLargeContainer(line?.containerType)){
+    const per=qrCountLargePerWeight(line);
+    if(per!==null&&per!==undefined&&actual!==null)return yen(actual*per);
+    return manual===null?'':manual;
+  }
+  if(manual!==null)return manual;
+  const pack=v192PackKg(line);
+  return pack!==null&&actual!==null?yen(actual*pack):'';
+}
+function v192ExcelRows(session,section){
+  return v188SectionLines(session,section).map(line=>{
+    const entry=v188Entry(session,line.lineId),actual=v188Actual(session,line.lineId),book=v188BookQty(session,line),diff=v188Diff(session,line);
+    const weight=section==='qr'
+      ?v192QrWeight(line,actual)
+      :(String(line.unit||'')==='kg'&&actual!==null?actual:'');
+    return {
+      group:line.group||(section==='qr'?'QR':line.type==='special'?'その他':'通常'),
+      item:line.itemName||'',
+      lot:section==='qr'?(line.lotNo||line.qrKey||''):'',
+      received:section==='qr'?(line.receivedDate||''):'',
+      supplier:line.supplier||'',
+      spec:section==='qr'?(line.containerType||''):(line.unit||''),
+      unit:line.unit||'',
+      book:book===null||book===undefined?'':book,
+      qty:actual===null?'':actual,
+      diff:diff===null?'':diff,
+      weight:weight===null||weight===undefined?'':weight,
+      reason:entry.reason||'',
+      included:entry.included===false?'対象外':'対象',
+      checked:section==='qr'?(entry.checked?'確認済み':'未確認'):'',
+      memo:entry.memo||''
+    };
+  });
+}
+function v192AddDetailSheet(wb,name,title,session,section){
+  const rows=v192ExcelRows(session,section),heads=V192_EXCEL_HEADS;
+  const meta=[['棚卸し番号',session.countNo||''],['冷蔵庫',session.roomLabel||''],['対象月',`${v188MonthLabel(session.targetMonth)}末`],['基準日',session.asOfKey||''],['状態',v188Confirmed(session)?'確定済み（差異のみ対象月末日で在庫反映）':'未確定（在庫へ未反映）']];
+  const values=rows.map(row=>[row.group,row.item,row.lot,row.received,row.supplier,row.spec,row.unit,row.book,row.qty,row.diff,row.weight,row.reason,row.included,row.checked,row.memo,'','']
+    .map(value=>typeof value==='string'?inventoryCountExcelSafeText(value):value));
+  const ws=XLSX.utils.aoa_to_sheet([[title],[],...meta,[],heads,...values]);
+  const header=meta.length+3,start=header+2,end=header+rows.length+1;
+  for(let r=start;r<=end;r++)ws[`Q${r}`]={t:'n',f:`IF(OR(I${r}="",P${r}=""),"",I${r}*P${r})`};
+  ws[`P${end+1}`]={t:'s',v:'明細合計'};
+  ws[`Q${end+1}`]={t:'n',f:`SUM(Q${start}:Q${end})`};
+  ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:end,c:heads.length-1}});
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:heads.length-1}}];
+  ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:header,c:0},e:{r:Math.max(header,end-1),c:heads.length-1}})};
+  ws['!cols']=[10,22,18,12,16,14,8,12,12,10,11,16,8,10,26,15,15].map(wch=>({wch}));
+  ws['!freeze']={xSplit:2,ySplit:header+1};
+  inventoryCountExcelStyle(ws,'A1',{font:{name:'Yu Gothic',sz:15,bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'1D4ED8'}},alignment:{horizontal:'center'}});
+  for(let c=0;c<heads.length;c++)inventoryCountExcelStyle(ws,XLSX.utils.encode_cell({r:header,c}),{font:{name:'Yu Gothic',sz:10,bold:true},fill:{patternType:'solid',fgColor:{rgb:'D9EAF7'}},alignment:{horizontal:'center',vertical:'center',wrapText:true}});
+  for(let r=start;r<=end+1;r++)for(let c=0;c<heads.length;c++)inventoryCountExcelStyle(ws,XLSX.utils.encode_cell({r:r-1,c}),{font:{name:'Yu Gothic',sz:10},alignment:{vertical:'center',wrapText:true,horizontal:[7,8,9,10,15,16].includes(c)?'right':'left'}});
+  XLSX.utils.book_append_sheet(wb,ws,safeSheetName(name));
+  return {name,rows,start,end};
+}
+function v192AddSummarySheet(wb,session,normal,qr){
+  const all=[...v192ExcelRows(session,'normal'),...v192ExcelRows(session,'qr')];
+  const keys=[...new Map(all.map(row=>[`${row.group}|${row.item}|${row.unit}`,row])).values()];
+  const heads=['区分','品名','単位','合計数量','合計重量kg','合計金額（円）'];
+  const ws=XLSX.utils.aoa_to_sheet([[`${session.roomLabel||''} 月末棚卸し 品目集計`],[],['棚卸し番号',session.countNo||''],['対象月',`${v188MonthLabel(session.targetMonth)}末`],['注記','明細シートの単価入力に連動します'],[],heads,...keys.map(row=>[row.group,row.item,row.unit,'','',''])]);
+  const header=7,start=8,end=7+keys.length;
+  const n=String(normal.name).replace(/'/g,"''"),q=String(qr.name).replace(/'/g,"''");
+  for(let r=start;r<=end;r++){
+    const g=`A${r}`,it=`B${r}`,u=`C${r}`;
+    const sum=col=>`SUMIFS('${n}'!$${col}$${normal.start}:$${col}$${normal.end},'${n}'!$A$${normal.start}:$A$${normal.end},${g},'${n}'!$B$${normal.start}:$B$${normal.end},${it},'${n}'!$G$${normal.start}:$G$${normal.end},${u})+SUMIFS('${q}'!$${col}$${qr.start}:$${col}$${qr.end},'${q}'!$A$${qr.start}:$A$${qr.end},${g},'${q}'!$B$${qr.start}:$B$${qr.end},${it},'${q}'!$G$${qr.start}:$G$${qr.end},${u})`;
+    ws[`D${r}`]={t:'n',f:sum('I')};ws[`E${r}`]={t:'n',f:sum('K')};ws[`F${r}`]={t:'n',f:sum('Q')};
+  }
+  ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(end,header),c:heads.length-1}});
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:heads.length-1}}];
+  ws['!cols']=[10,24,10,14,14,16].map(wch=>({wch}));
+  inventoryCountExcelStyle(ws,'A1',{font:{name:'Yu Gothic',sz:15,bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'0F766E'}},alignment:{horizontal:'center'}});
+  for(let c=0;c<heads.length;c++)inventoryCountExcelStyle(ws,XLSX.utils.encode_cell({r:header-1,c}),{font:{name:'Yu Gothic',sz:10,bold:true},fill:{patternType:'solid',fgColor:{rgb:'CCFBF1'}},alignment:{horizontal:'center',vertical:'center',wrapText:true}});
+  XLSX.utils.book_append_sheet(wb,ws,safeSheetName(`${session.roomLabel||'冷蔵庫'} 品目集計`));
+}
+function v192DownloadExcel(id){
+  const session=countSession(id);if(!session||!v188Session(session))return v186DownloadExcel(id);
+  if(!ensureXlsxReady())return;
+  const label=v188MonthLabel(session.targetMonth),wb=XLSX.utils.book_new();
+  const normal=v192AddDetailSheet(wb,`${session.roomLabel} 通常在庫`,`${session.roomLabel} 通常在庫 ${label}末棚卸し`,session,'normal');
+  const qr=v192AddDetailSheet(wb,`${session.roomLabel} QR在庫`,`${session.roomLabel} QR在庫 ${label}末棚卸し`,session,'qr');
+  v192AddSummarySheet(wb,session,normal,qr);
+  downloadWorkbookXlsx(wb,`棚卸し_${String(session.targetMonth||'').replace('-','')}_${String(session.roomLabel||'冷蔵庫').replace(/[\\/:*?"<>|]/g,'_')}_${String(session.countNo||'').replace(/[\\/:*?"<>|]/g,'_')}.xlsx`);
+  return inventoryCountHome('棚卸しExcelを出力しました。単価欄へ入力すると金額と合計が計算されます。');
+}
+downloadInventoryCountExcel=v192DownloadExcel;
+
 const v188InventoryCountPageLegacy=inventoryCountPage;
 inventoryCountPage=function(id,msg=''){const session=countSession(id);return v188Session(session)?v188CountPage(id,'normal',msg):v188InventoryCountPageLegacy(id,msg)};
 const v188PrintLatestCore=v186PrintLatest;
