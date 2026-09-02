@@ -1,4 +1,4 @@
-const CACHE_NAME="seika-static-v1.192-b7";
+const CACHE_NAME="seika-static-v1.193-b1";
 const APP_VERSION="v1.192";
 const APP_SHELL=["./","./index.html","./manifest.webmanifest","./icons/seika-192.png","./icons/seika-512.png","./vendor/exceljs-4.4.0.min.js","./vendor/html2canvas-1.4.1.min.js","./vendor/html5-qrcode-2.3.8.min.js","./vendor/jspdf-2.5.1.umd.min.js","./vendor/xlsx-js-style-1.2.0.bundle.js"];
 const CACHEABLE_PATHS=new Set(APP_SHELL.map(path=>new URL(path,self.registration.scope).pathname));
