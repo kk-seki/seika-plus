@@ -2874,6 +2874,7 @@ n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>
 
 <style id="v1143-quality-task-style">
 .homePrimary .btn.homeBtnQuality,.viewerHome .btn.homeBtnQuality{background:linear-gradient(90deg,#5b21b6 0%,#7e22ce 52%,#a855f7 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.28) !important;box-shadow:0 7px 16px rgba(88,28,135,.24) !important;border-color:transparent !important}
+   .homeBtnWeeklyReport{background:linear-gradient(90deg,#0e6f5c 0%,#159e86 48%,#7fd8c6 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.25) !important;border-color:transparent !important;}
 .homePrimary .btn.homeBtnQuality:hover,.viewerHome .btn.homeBtnQuality:hover{filter:brightness(1.06)}
 .homePrimary .btn.homeBtnQuality:focus-visible,.viewerHome .btn.homeBtnQuality:focus-visible{outline:3px solid rgba(168,85,247,.55);outline-offset:3px}
 .v1143TodayTasks{margin:14px 0}.v1143TaskRows{display:grid;gap:8px;margin-top:10px}.v1143TaskRow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-radius:10px;background:#f8fafc;border:1px solid #dbeafe}.v1143TaskRow .small{min-width:0}.v1143TaskRow .btn{flex:0 0 auto;white-space:nowrap}@media(max-width:520px){.v1143TaskRow{align-items:stretch;flex-direction:column}.v1143TaskRow .btn{width:100%}}
@@ -3624,7 +3625,7 @@ can:()=>true},{label:"廃棄管理",cls:"homeBtnWaste",go:"wasteManagementPage()
 noBack:true})}function inventoryManagementPage(){setScreen("inventoryManagementPage")
 ;pageShell("在庫管理","通常在庫の操作を選択してください",`<div class="homePrimary">${canEdit()?'<button class="btn homeBtnStock" data-seika-click-action="inventory" data-seika-click-args="%5B%5D">在庫入力</button>':""}<button class="btn homeBtnTable" data-seika-click-action="weeklyData" data-seika-click-args="%5B%5D">在庫表</button>${canEdit()?'<button class="btn homeBtnCheck" data-seika-click-action="stocks" data-seika-click-args="%5B%5D">在庫修正</button>':""}</div>`)
 }function wasteManagementPage(){setScreen("wasteManagementPage")
-;pageShell("廃棄管理","廃棄に関する操作を選択してください",`<div class="homePrimary">${canWasteInput()?'<button class="btn homeBtnWaste" data-seika-click-action="wasteEntryPage" data-seika-click-args="%5B%5D">廃棄入力</button>':""}<button class="btn homeBtnWasteList" data-seika-click-action="wasteListPage" data-seika-click-args="%5B%5D">廃棄一覧</button>${canWasteExport()?'<button class="btn homeBtnWasteList" data-seika-click-action="v193WeeklyReportPage" data-seika-click-args="%5B%5D">週次廃棄レポート</button>':""}</div>`)
+;pageShell("廃棄管理","廃棄に関する操作を選択してください",`<div class="homePrimary">${canWasteInput()?'<button class="btn homeBtnWaste" data-seika-click-action="wasteEntryPage" data-seika-click-args="%5B%5D">廃棄入力</button>':""}<button class="btn homeBtnWasteList" data-seika-click-action="wasteListPage" data-seika-click-args="%5B%5D">廃棄一覧</button>${canWasteExport()?'<button class="btn homeBtnWeeklyReport" data-seika-click-action="v193WeeklyReportPage" data-seika-click-args="%5B%5D">週次廃棄レポート</button>':""}</div>`)
 }function ensureWasteRecords(){db.wasteRecords=db.wasteRecords||[]}function wasteTodayRecords(){ensureWasteRecords()
 ;return db.wasteRecords.filter(r=>r.date===todayKey()&&!r.cancelledAt)}function wasteDateInputValue(){return todayKey()}function wasteAmount(r){
 return yen(Number(r.qty||0)*Number(r.unitPrice||0))}function money(n){return Math.round(Number(n||0)).toLocaleString("ja-JP")}
@@ -10780,8 +10781,8 @@ function v193SyncRange(){
   if(box)box.textContent=`${v193Shift(end,-6)} 〜 ${end} の7日間を集計します。`;
 }
 function v193BarRow(label,value,max,color){
-  const width=max>0?Math.max(3,Math.round(value/max*100)):0;
-  return `<div class="v193Bar"><div class="v193BarLabel">${esc(label)}</div><div class="v193BarTrack"><div class="v193BarFill" style="width:${width}%;background:${color}"></div></div><div class="v193BarValue">${v193Money(value)}円</div></div>`;
+  const width=max>0?Math.max(2,Math.round(value/max*100)):0;
+  return `<div class="v193Bar"><div class="v193BarLabel">${esc(label)}</div><div class="v193BarTrack"><svg width="100%" height="16" viewBox="0 0 100 16" preserveAspectRatio="none"><rect x="0" y="0" width="100" height="16" fill="#e4e7ea"></rect><rect x="0" y="0" width="${width}" height="16" fill="${color}"></rect></svg></div><div class="v193BarValue">${v193Money(value)}円</div></div>`;
 }
 function v193ReportHtml(d){
   const diffText=d.prev>0?`${d.diff>=0?'+':''}${Math.round(d.diff/d.prev*100)}%`:'—',
@@ -10792,44 +10793,44 @@ function v193ReportHtml(d){
   head=d.top[0];
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>今週の廃棄レポート</title>
 <style>
-@page{size:A4 portrait;margin:10mm}
+@page{size:A4 portrait;margin:12mm}
 *{box-sizing:border-box}
-body{margin:0;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;color:#212121;background:#fff}
-.sheet{padding:6mm 4mm}
-.hd{background:#1b5e20;color:#fff;border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:flex-end}
-.hd h1{margin:0;font-size:21px}
-.hd .sub{color:#c8e6c9;font-size:12px;margin-top:4px}
-.hd .goal{color:#c8e6c9;font-size:11px;text-align:right;line-height:1.5}
+html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;color:#111;background:#fff}
+.sheet{padding:0;width:100%;max-width:100%;overflow:hidden}
+.hd{border-bottom:3px solid #14471a;padding:0 0 8px;display:flex;justify-content:space-between;align-items:flex-end;gap:10px}
+.hd h1{margin:0;font-size:22px;color:#14471a;font-weight:700}
+.hd .sub{color:#222;font-size:12.5px;margin-top:4px;font-weight:700}
+.hd .goal{color:#14471a;font-size:11px;text-align:right;line-height:1.5;font-weight:700;flex:none}
 .kpis{display:flex;gap:8px;margin-top:12px}
-.kpi{flex:1;border:2px solid #ccc;border-radius:6px;overflow:hidden;text-align:center}
-.kpi .cap{color:#fff;font-size:12px;font-weight:700;padding:4px}
-.kpi .big{font-size:22px;font-weight:700;padding:8px 4px 2px}
-.kpi .sub{font-size:10px;color:#616161;padding-bottom:8px}
-.panel{border:1px solid #bdbdbd;border-radius:6px;padding:10px 12px;margin-top:12px}
-.panel h2{margin:0 0 8px;font-size:13px;color:#0f3d6e}
+.kpi{flex:1;min-width:0;border:2px solid #888;border-radius:6px;overflow:hidden;text-align:center}
+.kpi .cap{font-size:12px;font-weight:700;padding:5px 4px;border-bottom:1.5px solid currentColor}
+.kpi .big{font-size:23px;font-weight:700;padding:8px 4px 2px}
+.kpi .sub{font-size:9.5px;color:#222;padding:0 3px 8px;font-weight:700}
+.panel{border:1.5px solid #777;border-radius:6px;padding:10px 12px;margin-top:12px}
+.panel h2{margin:0 0 8px;font-size:13px;color:#0b2e57;font-weight:700}
 .v193Bar{display:flex;align-items:center;gap:8px;margin:5px 0}
-.v193BarLabel{width:96px;font-size:11.5px;text-align:right;flex:none}
-.v193BarTrack{flex:1;background:#f0f0f0;border-radius:3px;height:15px}
-.v193BarFill{height:15px;border-radius:3px}
-.v193BarValue{width:86px;font-size:11.5px;text-align:right;flex:none}
+.v193BarLabel{width:100px;font-size:11.5px;text-align:right;flex:none;color:#111;font-weight:700;overflow:hidden;white-space:nowrap}
+.v193BarTrack{flex:1;min-width:0;height:16px;line-height:0}
+.v193BarValue{width:84px;font-size:11.5px;text-align:right;flex:none;color:#111;font-weight:700}
 .lead{margin-top:12px;border:1.5px solid #e65100;background:#fff8e1;border-radius:6px;padding:9px;text-align:center;font-size:13.5px;font-weight:700;color:#e65100}
 .theme{margin-top:12px;border:1.5px solid #1b5e20;background:#e8f5e9;border-radius:6px;padding:10px 14px}
 .theme .cap{font-size:12px;font-weight:700;color:#1b5e20}
-.theme .name{font-size:18px;font-weight:700;margin:4px 0 8px}
-.theme li{font-size:12.5px;margin:3px 0}
+.theme .name{font-size:18px;font-weight:700;margin:4px 0 8px;color:#111}
+.theme li{font-size:13px;margin:4px 0;color:#111}
 .memo{margin-top:12px;border:1px solid #bdbdbd;border-radius:6px;padding:10px 12px}
-.memo h2{margin:0 0 6px;font-size:12.5px;color:#0f3d6e}
-.memo .ln{border-bottom:1px solid #e0e0e0;height:22px}
-.ft{margin-top:12px;text-align:center;font-size:12px;font-weight:700;color:#1b5e20}
-.ft .org{font-size:9px;color:#616161;font-weight:400;margin-top:4px}
+.memo h2{margin:0 0 6px;font-size:12.5px;color:#0b2e57;font-weight:700}
+.memo .ln{border-bottom:1px solid #9aa0a6;height:22px}
+.ft{margin-top:12px;text-align:center;font-size:12.5px;font-weight:700;color:#14471a}
+.ft .org{font-size:9.5px;color:#333;font-weight:400;margin-top:4px}
 </style></head><body>${V188_PRINT_BAR}
 <div class="sheet">
 <div class="hd"><div><h1>今週の廃棄レポート</h1><div class="sub">${esc(d.startLabel)} 〜 ${esc(d.endLabel)}</div></div>
 <div class="goal">今期の目標<br>残業を減らす／廃棄を減らす</div></div>
 <div class="kpis">
-<div class="kpi" style="border-color:#c62828"><div class="cap" style="background:#c62828">今週の廃棄金額</div><div class="big" style="color:#c62828">${v193Money(d.cur)}円</div><div class="sub">${d.count}件</div></div>
-<div class="kpi" style="border-color:${diffColor}"><div class="cap" style="background:${diffColor}">前の週とくらべて</div><div class="big" style="color:${diffColor}">${esc(diffText)}</div><div class="sub">${esc(diffSub)}</div></div>
-<div class="kpi" style="border-color:#0f3d6e"><div class="cap" style="background:#0f3d6e">期首からの累計</div><div class="big" style="color:#0f3d6e">${v193Money(d.cum)}円</div><div class="sub">${esc(d.fiscalLabel)}〜</div></div>
+<div class="kpi" style="border-color:#c62828"><div class="cap" style="color:#b71c1c">今週の廃棄金額</div><div class="big" style="color:#c62828">${v193Money(d.cur)}円</div><div class="sub">${d.count}件</div></div>
+<div class="kpi" style="border-color:${diffColor}"><div class="cap" style="color:${diffColor}">前の週とくらべて</div><div class="big" style="color:${diffColor}">${esc(diffText)}</div><div class="sub">${esc(diffSub)}</div></div>
+<div class="kpi" style="border-color:#0f3d6e"><div class="cap" style="color:#0b2e57">期首からの累計</div><div class="big" style="color:#0f3d6e">${v193Money(d.cum)}円</div><div class="sub">${esc(d.fiscalFull)}〜${esc(d.endLabel)}</div></div>
 </div>
 <div class="panel"><h2>今週の多い品目（金額）</h2>${d.top.length?d.top.map(x=>v193BarRow(x.name,x.amount,topMax,'#c62828')).join(''):'<div class="sub">この週の廃棄はありません。</div>'}</div>
 <div class="panel"><h2>週ごとの推移（金額）</h2>${d.weeks.length?d.weeks.map(w=>v193BarRow(w.label+'の週',w.amount,weekMax,'#1b5e20')).join(''):''}</div>
@@ -10867,7 +10868,7 @@ async function v193MakeReport(){
     const html=v193ReportHtml({
       cur,prev,diff:cur-prev,cum:v193Sum(rows,fiscal,end),
       count:rows.filter(x=>String(x.date||'')>=start&&String(x.date||'')<=end).length,
-      startLabel:start,endLabel:end,fiscalLabel:v193Label(fiscal),
+      startLabel:start,endLabel:end,fiscalLabel:v193Label(fiscal),fiscalFull:fiscal,
       top,weeks,theme:picked.t,actions:actions.length?actions:picked.a
     });
     win.document.open();win.document.write(html);win.document.close();win.focus();
