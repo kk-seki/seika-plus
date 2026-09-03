@@ -3241,7 +3241,7 @@ function qrLotCard(l,showDetail=true,showAge=false){
 const visibleSpec=qrVisibleMemo(l.memo||"").replace(/\s+/g," ").trim(),type=l.container_type||"",large=qrIsLargeContainer(type),q=esc(l.qr_key),age=showAge?qrLotAgeInfo(l):{
 card:"",badge:"",text:""
 },detailButtons=canQrOperate()?`<button class="btn blue qrLotOpen" ${seikaEventAttrs('click','qrOpenLotDetail',[q])}>詳細を見る</button><button class="btn btn2 qrLotOpen" ${seikaEventAttrs('click','qrOpenLotDetail',[q])}>操作</button>`:`<button class="btn blue qrLotOpen" ${seikaEventAttrs('click','qrOpenLotDetail',[q])}>詳細を見る</button>`
-;return`<div class="card ${age.card}"><div class="itemHead"><div><div class="qrLotTitle">${esc(l.item_name)}</div><div class="small">ロット番号：${esc(l.lot_no)}<br>入荷日：${esc(l.received_date||"")} / 産地：${esc(l.origin||"-")} / 仕入先：${esc(l.supplier||"-")}${l.cooperative_name?` / 単協名：${esc(l.cooperative_name)}`:""}${l.purchase_staff?`<br>仕入れ担当者：${esc(l.purchase_staff)}`:""}<br>荷受け担当者：${esc(l.receiver_name||l.received_by||l.user_name||"-")}</div>${age.text?`<span class="qrAgeBadge ${age.badge}">${esc(age.text)}</span>`:""}</div><span class="badge ${qrStatusClass(l.status)}">${esc(l.status||"在庫あり")}</span></div><div class="grid" style="margin-top:10px"><div class="box">現在残数<b>${qrLotQtyText(l,true)}</b></div><div class="box">${large?"現在残重量":"量目"}<b>${large?qrLotWeightText(l,true):esc(l.pack_weight||"-")}</b></div><div class="box">荷姿<b>${esc(type||"-")}</b></div><div class="box">保管場所<b>${esc(l.storage_location||"未設定")}</b></div></div>${visibleSpec?`<div class="memo"><span class="small">規格など</span><b style="display:block;margin-top:3px">${esc(visibleSpec)}</b></div>`:""}${showDetail?`<div class="row" style="margin-top:10px">${detailButtons}</div>`:""}</div>`
+;return`<div class="card ${age.card}"><div class="itemHead"><div><div class="qrLotTitle">${esc(l.item_name)}</div><div class="small">ロット番号：${esc(l.lot_no)}<br>入荷日：${esc(l.received_date||"")} / 産地：${esc(l.origin||"-")}${v194CertLabel(l.certification)} / 仕入先：${esc(l.supplier||"-")}${l.cooperative_name?` / 単協名：${esc(l.cooperative_name)}`:""}${l.purchase_staff?`<br>仕入れ担当者：${esc(l.purchase_staff)}`:""}<br>荷受け担当者：${esc(l.receiver_name||l.received_by||l.user_name||"-")}</div>${age.text?`<span class="qrAgeBadge ${age.badge}">${esc(age.text)}</span>`:""}</div><span class="badge ${qrStatusClass(l.status)}">${esc(l.status||"在庫あり")}</span></div><div class="grid" style="margin-top:10px"><div class="box">現在残数<b>${qrLotQtyText(l,true)}</b></div><div class="box">${large?"現在残重量":"量目"}<b>${large?qrLotWeightText(l,true):esc(l.pack_weight||"-")}</b></div><div class="box">荷姿<b>${esc(type||"-")}</b></div><div class="box">保管場所<b>${esc(l.storage_location||"未設定")}</b></div></div>${visibleSpec?`<div class="memo"><span class="small">規格など</span><b style="display:block;margin-top:3px">${esc(visibleSpec)}</b></div>`:""}${showDetail?`<div class="row" style="margin-top:10px">${detailButtons}</div>`:""}</div>`
 }function qrPrimaryActions(l){if(!qrCanEdit())return""
 ;return`<div class="qrActionGrid"><button class="btn orange" ${seikaEventAttrs('click','qrOperationLotPage',['out',l.qr_key])}>出庫</button><button class="btn red" ${seikaEventAttrs('click','qrOperationLotPage',['waste',l.qr_key])}>廃棄</button><button class="btn green" ${seikaEventAttrs('click','qrOperationLotPage',['adjust',l.qr_key])}>実数調整</button></div>`
 }function qrSecondaryActions(l,includeDelete=false){if(!canQrOperate())return""
@@ -3252,11 +3252,11 @@ const lots=await qrSelect("qr_lots","select=*&active=eq.true&order=created_at.de
 ;const operate=canQrOperate(),notice=operate?"入出庫・廃棄・調整":qrReadOnlyMessage()
 ;const qualityListButton=`<button id="v1140QualityHomeButton" type="button" class="btn homeBtnQuality" data-seika-click-action="v1103QualityListPage" data-seika-click-args="%5B%5D">${esc(v138T("品質評価一覧"))}<br><span style="font-size:15px;font-weight:800">${esc(v138T("評価済みロット・写真を確認"))}</span></button>`
 ;const outboundHistoryButton=`<button id="v1144QrOutboundHistoryButton" type="button" class="btn homeBtnOutboundHistory" data-seika-click-action="v1144QrOutboundHistoryPage" data-seika-click-args="%5B%5D">QR出庫履歴<br><span style="font-size:15px;font-weight:800">出庫先・日付ごとの全品目を確認</span></button>`
-;const actions=operate?`<button class="btn homeBtnQr" data-seika-click-action="qrCreatePage" data-seika-click-args="%5B%5D">QR入庫</button><button class="btn homeBtnCheck" data-seika-click-action="qrOperationSelectPage" data-seika-click-args="%5B%22detail%22%5D">QR在庫処理<br><span style="font-size:15px;font-weight:800">出庫・廃棄・実数調整</span></button><button class="btn homeBtnTable" data-seika-click-action="qrLotListPage" data-seika-click-args="%5B%5D">QRロット一覧・検索</button>${outboundHistoryButton}${qualityListButton}<button class="btn homeBtnSettings" data-seika-click-action="qrManagedItemsPage" data-seika-click-args="%5B%5D">QR対象品目設定</button>`:`<button class="btn homeBtnTable" data-seika-click-action="qrLotListPage" data-seika-click-args="%5B%5D">QRロット一覧・検索</button>${outboundHistoryButton}${qualityListButton}`
+;const actions=operate?`<button class="btn homeBtnQr" data-seika-click-action="qrCreatePage" data-seika-click-args="%5B%5D">QR入庫</button><button class="btn homeBtnCheck" data-seika-click-action="qrOperationSelectPage" data-seika-click-args="%5B%22detail%22%5D">QR在庫処理<br><span style="font-size:15px;font-weight:800">出庫・廃棄・実数調整</span></button><button class="btn homeBtnTable" data-seika-click-action="qrLotListPage" data-seika-click-args="%5B%5D">QRロット一覧・検索</button>${outboundHistoryButton}${qualityListButton}<button class="btn homeBtnSettings" data-seika-click-action="qrManagedItemsPage" data-seika-click-args="%5B%5D">QR対象品目設定</button><button class="btn homeBtnSettings" data-seika-click-action="v194DestinationsPage" data-seika-click-args="%5B%5D">納品先マスタ</button>`:`<button class="btn homeBtnTable" data-seika-click-action="qrLotListPage" data-seika-click-args="%5B%5D">QRロット一覧・検索</button>${outboundHistoryButton}${qualityListButton}`
 ;pageShell("QR在庫管理",`${esc(db.user)} / ${operate?"ロット管理":"閲覧専用"}`,`${okHtml(msg)}<div class="card ${operate?"notice":"ok"}"><b>${operate?"QRロット管理":"閲覧専用"}</b><div class="small">${notice}</div></div><div class="homePrimary">${actions}</div>`)
 }catch(e){pageShell("QR在庫管理","エラー",`<div class="err">読み込みに失敗しました。<br>${esc(e.message)}</div><button class="btn btn2" data-seika-click-action="home" data-seika-click-args="%5B%5D">ホームへ</button>`)}
 }async function qrCreatePageBase(){setScreen("qrCreatePage");qrEnsureMasters();if(!canQrOperate()){alert("QR入庫は管理者・青果社員のみです");return qrHome()}
-pageShell("QR入庫","品目と数量を入力して登録します",`<div class="card qrCreateForm"><section class="qrFormSection"><h2 class="qrSectionTitle"><span class="qrStep">1</span>入庫する品目</h2><div class="qrItemGrid"><div><label class="label">入庫日</label><input id="qrReceivedDate" type="date" class="input" value="${todayKey()}"></div><div><label class="label">品目 <span style="color:#dc2626">必須</span></label><select id="qrItemName" class="input" data-seika-change-action="qrAutoFillStaff" data-seika-change-args="%5B%5D"><option value="">マスターから選択してください</option>${qrItemOptions("",true)}</select><div class="small" style="margin-top:5px">通常品目の後に、じゃがいも品種をまとめて表示します。</div></div></div><div id="qrManagedNotice"></div></section><section class="qrFormSection"><h2 class="qrSectionTitle"><span class="qrStep">2</span>担当者</h2><div class="qrStaffGrid"><div><label class="label">仕入れ担当者</label><input id="qrPurchaseStaff" class="input" placeholder="品目から自動入力" data-seika-input-action="qrMarkStaffManual" data-seika-input-args="%5B%5D"><div id="qrStaffNote" class="small" style="margin-top:5px">品目選択後に自動入力</div></div><div><label class="label">荷受け担当者</label><div class="qrReadOnlyField">${esc(db.user||"未設定")}</div></div></div></section><section class="qrFormSection"><h2 class="qrSectionTitle"><span class="qrStep">3</span>荷姿と数量</h2><label class="label">荷姿</label><select id="qrContainerType" class="input" data-seika-change-action="qrRenderContainerFields" data-seika-change-args="%5B%5D">${qrContainerOptions()}</select><div id="qrContainerFields" style="margin-top:8px"></div></section><section class="qrFormSection"><h2 class="qrSectionTitle"><span class="qrStep">4</span>仕入先・保管場所</h2><div class="row"><div><label class="label">仕入先</label><input id="qrSupplier" class="input" list="qrSupplierList" placeholder="仕入先を入力" autocomplete="off" data-seika-input-action="qrFillSupplierDatalist" data-seika-input-args="%5B%5D"><datalist id="qrSupplierList"></datalist></div><div><label class="label">産地</label><input id="qrOrigin" class="input" placeholder="例：茨城 → 茨城県産" data-seika-blur-action="qrNormalizeOriginField" data-seika-blur-args="%5B%7B%22__seikaElement%22%3Atrue%7D%5D"></div></div>${qrCooperativeField()}<label class="label">規格など（任意）</label><textarea id="qrMemo" class="textarea" placeholder="例：3L、秀品、フジ用" style="min-height:84px"></textarea><label class="label">保管場所 <span style="color:#dc2626">必須</span></label><select id="qrLoc" class="input" required>${qrFixedLocationOptions()}</select><div id="qrPdfStatus" aria-live="polite"></div></section><button class="btn green bottom qrEntrySave" data-seika-click-action="qrSaveLot" data-seika-click-args="%5B%5D">登録してQR貼り紙PDFへ</button></div>`)
+pageShell("QR入庫","品目と数量を入力して登録します",`<div class="card qrCreateForm"><section class="qrFormSection"><h2 class="qrSectionTitle"><span class="qrStep">1</span>入庫する品目</h2><div class="qrItemGrid"><div><label class="label">入庫日</label><input id="qrReceivedDate" type="date" class="input" value="${todayKey()}"></div><div><label class="label">品目 <span style="color:#dc2626">必須</span></label><select id="qrItemName" class="input" data-seika-change-action="qrAutoFillStaff" data-seika-change-args="%5B%5D"><option value="">マスターから選択してください</option>${qrItemOptions("",true)}</select><div class="small" style="margin-top:5px">通常品目の後に、じゃがいも品種をまとめて表示します。</div></div></div><div id="qrManagedNotice"></div></section><section class="qrFormSection"><h2 class="qrSectionTitle"><span class="qrStep">2</span>担当者</h2><div class="qrStaffGrid"><div><label class="label">仕入れ担当者</label><input id="qrPurchaseStaff" class="input" placeholder="品目から自動入力" data-seika-input-action="qrMarkStaffManual" data-seika-input-args="%5B%5D"><div id="qrStaffNote" class="small" style="margin-top:5px">品目選択後に自動入力</div></div><div><label class="label">荷受け担当者</label><div class="qrReadOnlyField">${esc(db.user||"未設定")}</div></div></div></section><section class="qrFormSection"><h2 class="qrSectionTitle"><span class="qrStep">3</span>荷姿と数量</h2><label class="label">荷姿</label><select id="qrContainerType" class="input" data-seika-change-action="qrRenderContainerFields" data-seika-change-args="%5B%5D">${qrContainerOptions()}</select><div id="qrContainerFields" style="margin-top:8px"></div></section><section class="qrFormSection"><h2 class="qrSectionTitle"><span class="qrStep">4</span>仕入先・保管場所</h2><div class="row"><div><label class="label">仕入先</label><input id="qrSupplier" class="input" list="qrSupplierList" placeholder="仕入先を入力" autocomplete="off" data-seika-input-action="qrFillSupplierDatalist" data-seika-input-args="%5B%5D"><datalist id="qrSupplierList"></datalist></div><div><label class="label">産地</label><input id="qrOrigin" class="input" placeholder="例：茨城 → 茨城県産" data-seika-blur-action="qrNormalizeOriginField" data-seika-blur-args="%5B%7B%22__seikaElement%22%3Atrue%7D%5D"></div></div>${qrCooperativeField()}${v194CertField()}<label class="label">規格など（任意）</label><textarea id="qrMemo" class="textarea" placeholder="例：3L、秀品、フジ用" style="min-height:84px"></textarea><label class="label">保管場所 <span style="color:#dc2626">必須</span></label><select id="qrLoc" class="input" required>${qrFixedLocationOptions()}</select><div id="qrPdfStatus" aria-live="polite"></div></section><button class="btn green bottom qrEntrySave" data-seika-click-action="qrSaveLot" data-seika-click-args="%5B%5D">登録してQR貼り紙PDFへ</button></div>`)
 ;document.querySelector(".appShell")?.classList.add("qrCreateScreen");qrRenderContainerFields();qrUpdateCooperativeSuggestions()}
 async function qrSaveLotBase(){if(!canQrOperate())return alert("QR入庫の登録権限がありません");try{
 const itemRaw=document.getElementById("qrItemName").value.trim(),itemName=qrCanonicalNewLotItemName(itemRaw),containerType=document.getElementById("qrContainerType").value,large=qrIsLargeContainer(containerType),qtyRaw=String(document.getElementById("qrQty")?.value||""),qty=v162StrictPositiveNumber(qtyRaw)
@@ -3271,13 +3271,13 @@ const receivedDate=document.getElementById("qrReceivedDate").value||todayKey(),u
 ;const pallets=!large?qrPalletQuantities():[];if(!qrPalletTotalMatchesLot(qty,pallets))return alert("パレット別数量の合計をロット全体数量と一致させてください")
 ;const palletPrintOpts=pallets.length?{palletQtys:pallets,totalQty:qty,unit
 }:null,memoRaw=document.getElementById("qrMemo").value.trim(),memoForSave=memoRaw+qrPalletPrintMarker(palletPrintOpts);const row={lot_no:lotNo,
-qr_key:qrKey,item_id:item.id||null,item_name:itemName,origin:origin||null,supplier:supplier||null,cooperative_name:cooperativeName||null,
+qr_key:qrKey,item_id:item.id||null,item_name:itemName,origin:origin||null,supplier:supplier||null,cooperative_name:cooperativeName||null,certification:v194CertValue("qrCertification"),
 received_date:receivedDate,received_qty:qty,current_qty:qty,unit,storage_location:loc||null,status:"在庫あり",memo:memoForSave||null,
 container_type:containerType,lot_manage_type:manageType,quantity_label:quantityLabel,pack_weight:packWeight,total_weight:totalWeight,
 current_weight:currentWeight,weight_status:weightStatus,purchase_staff:purchaseStaff,purchase_staff_profile_id:purchaseStaffInfo.profile_id||null,purchase_staff_legacy_user_id:purchaseStaffInfo.legacy_user_id||null,...qrUserFields()}
 ;const meta=operationMeta("qr_lot_create_v185",{qrKey,itemName,qty});const ans=await callRpc("create_qr_lot_v185",{p_lot:row,
 p_operation_id:meta.operationId,p_device_meta:{deviceId:meta.deviceId,userAgent:navigator.userAgent||""},p_operation_meta:meta})
-;if(!ans?.ok)throw new Error(ans?.message||"QR入庫を保存できませんでした");window.__v1181QrLotPersisted=true;qrSaveSupplierCandidate(supplier);qrSaveCooperativeCandidate(cooperativeName)
+;if(!ans?.ok)throw new Error(ans?.message||"QR入庫を保存できませんでした");window.__v1181QrLotPersisted=true;await v194ApplyCertOnCreate(qrKey);qrSaveSupplierCandidate(supplier);qrSaveCooperativeCandidate(cooperativeName)
 ;await qrPrintLot(qrKey,palletPrintOpts)}catch(e){throw new Error("作成に失敗しました："+e.message)}}async function qrFindLot(q){q=qrExtractKey(q)
 ;if(!q)return null
 ;const rows=await qrSelect("qr_lots",`select=*&active=eq.true&or=(qr_key.eq.${encodeURIComponent(q)},lot_no.eq.${encodeURIComponent(q)})&limit=1`)
@@ -3308,7 +3308,7 @@ action_type:"詳細表示",device_info:navigator.userAgent||"",...qrUserFields()
 setScreen("qrEditLotPage",[q]);try{const lot=await qrFindLot(q);if(!lot)return pageShell("ロット編集","見つかりません",`<div class="err">対象ロットが見つかりません。</div>`)
 ;if(!canQrOperate())return pageShell("ロット編集","権限がありません",`<div class="err">編集できません。</div>`)
 ;const large=qrIsLargeContainer(lot.container_type),memo=qrVisibleMemo(lot.memo),weightStatus=lot.weight_status||(lot.total_weight!==null&&lot.total_weight!==undefined&&lot.total_weight!==""?"確定":"未確定")
-;pageShell("ロット編集・重量確定",`${esc(lot.item_name)} / ${esc(lot.lot_no)}`,`${qrLotCard(lot)}<div class="card"><label class="label">仕入れ担当者</label><input id="qrEditStaff" class="input" value="${esc(lot.purchase_staff||"")}"><label class="label">仕入先</label><input id="qrEditSupplier" class="input" value="${esc(lot.supplier||"")}"><label class="label">単協名（任意）</label><input id="qrEditCooperativeName" class="input" value="${esc(lot.cooperative_name||"")}" placeholder="単協名" data-seika-input-action="qrUpdateCooperativeSuggestions" data-seika-input-args="%5B%5D"><div id="qrCooperativeSuggestions" class="row" style="gap:6px;margin-top:7px;align-items:flex-start"></div><label class="label">産地</label><input id="qrEditOrigin" class="input" value="${esc(lot.origin||"")}" data-seika-blur-action="qrNormalizeOriginField" data-seika-blur-args="%5B%7B%22__seikaElement%22%3Atrue%7D%5D"><label class="label">規格など</label><textarea id="qrEditMemo" class="textarea" placeholder="例：3L、秀品、フジ用" style="min-height:84px">${esc(memo)}</textarea><label class="label">保管場所</label><select id="qrEditLoc" class="input">${qrFixedLocationOptions(lot.storage_location||"")}</select>${large?`<div class="notice"><b>大型容器の重量確定</b><div class="small">総重量を入力して「確定」にすると、入荷基数から1基あたり按分重量を計算し、現在残基数に応じた現在残重量へ更新します。</div></div><label class="label">総重量kg</label><input id="qrEditTotalWeight" type="number" step="0.01" class="input" value="${lot.total_weight??""}" ${seikaEventAttrs('input','qrEditWeightPreview',[lot.qr_key])}><label class="label">重量ステータス</label><select id="qrEditWeightStatus" class="input" ${seikaEventAttrs('change','qrEditWeightPreview',[lot.qr_key])}><option ${weightStatus==="未確定"?"selected":""}>未確定</option><option ${weightStatus==="確定"?"selected":""}>確定</option></select><div id="qrEditWeightCalc" class="notice"></div>`:`<label class="label">量目</label><input id="qrEditPackWeight" class="input" value="${esc(lot.pack_weight||"")}">`}<button class="btn green" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','qrSaveLotEdit',[lot.qr_key])}>編集内容を保存</button></div>`)
+;pageShell("ロット編集・重量確定",`${esc(lot.item_name)} / ${esc(lot.lot_no)}`,`${qrLotCard(lot)}<div class="card"><label class="label">仕入れ担当者</label><input id="qrEditStaff" class="input" value="${esc(lot.purchase_staff||"")}"><label class="label">仕入先</label><input id="qrEditSupplier" class="input" value="${esc(lot.supplier||"")}"><label class="label">単協名（任意）</label><input id="qrEditCooperativeName" class="input" value="${esc(lot.cooperative_name||"")}" placeholder="単協名" data-seika-input-action="qrUpdateCooperativeSuggestions" data-seika-input-args="%5B%5D"><div id="qrCooperativeSuggestions" class="row" style="gap:6px;margin-top:7px;align-items:flex-start"></div><label class="label">産地</label><input id="qrEditOrigin" class="input" value="${esc(lot.origin||"")}" data-seika-blur-action="qrNormalizeOriginField" data-seika-blur-args="%5B%7B%22__seikaElement%22%3Atrue%7D%5D">${v194CertField("qrEditCertification",lot.certification||"")}<label class="label">規格など</label><textarea id="qrEditMemo" class="textarea" placeholder="例：3L、秀品、フジ用" style="min-height:84px">${esc(memo)}</textarea><label class="label">保管場所</label><select id="qrEditLoc" class="input">${qrFixedLocationOptions(lot.storage_location||"")}</select>${large?`<div class="notice"><b>大型容器の重量確定</b><div class="small">総重量を入力して「確定」にすると、入荷基数から1基あたり按分重量を計算し、現在残基数に応じた現在残重量へ更新します。</div></div><label class="label">総重量kg</label><input id="qrEditTotalWeight" type="number" step="0.01" class="input" value="${lot.total_weight??""}" ${seikaEventAttrs('input','qrEditWeightPreview',[lot.qr_key])}><label class="label">重量ステータス</label><select id="qrEditWeightStatus" class="input" ${seikaEventAttrs('change','qrEditWeightPreview',[lot.qr_key])}><option ${weightStatus==="未確定"?"selected":""}>未確定</option><option ${weightStatus==="確定"?"selected":""}>確定</option></select><div id="qrEditWeightCalc" class="notice"></div>`:`<label class="label">量目</label><input id="qrEditPackWeight" class="input" value="${esc(lot.pack_weight||"")}">`}<button class="btn green" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','qrSaveLotEdit',[lot.qr_key])}>編集内容を保存</button></div>`)
 ;if(large)qrEditWeightPreview(lot.qr_key);qrUpdateCooperativeSuggestions()}catch(e){
 pageShell("ロット編集","エラー",`<div class="err">${esc(e.message)}</div>`)}}async function qrEditWeightPreview(q){
 const lot=await qrFindLot(q).catch(()=>null),box=document.getElementById("qrEditWeightCalc");if(!lot||!box)return
@@ -3318,7 +3318,7 @@ const lot=await qrFindLot(q).catch(()=>null),box=document.getElementById("qrEdit
 if(!canQrOperate())return alert("ロットを編集する権限がありません");try{const lot=await qrFindLot(q);if(!lot)return alert("ロットが見つかりません")
 ;const large=qrIsLargeContainer(lot.container_type),patch={purchase_staff:document.getElementById("qrEditStaff")?.value.trim()||null,
 supplier:document.getElementById("qrEditSupplier")?.value.trim()||null,
-cooperative_name:document.getElementById("qrEditCooperativeName")?.value.trim()||null,
+cooperative_name:document.getElementById("qrEditCooperativeName")?.value.trim()||null, certification:v194CertValue("qrEditCertification"),
 origin:qrNormalizeOrigin(document.getElementById("qrEditOrigin")?.value)||null,storage_location:document.getElementById("qrEditLoc")?.value||null,
 memo:(document.getElementById("qrEditMemo")?.value.trim()||"")+qrPalletPrintMarker(qrLotPalletPrintOpts(lot)),updated_at:(new Date).toISOString()}
 ;let movementMemo="ロット基本情報を編集";if(large){
@@ -4785,7 +4785,7 @@ p_memo:"画面から直前操作を取消"});if(!ans?.ok)throw new Error(ans?.me
 const lot=await qrFindLot(q);if(!lot)return pageShell("ロット編集","見つかりません",`<div class="err">対象ロットが見つかりません。</div>`)
 ;if(!canQrOperate())return pageShell("ロット編集","権限がありません",`<div class="err">編集できません。</div>`)
 ;const large=qrIsLargeContainer(lot.container_type),memo=qrVisibleMemo(lot.memo),weightStatus=lot.weight_status||(lot.total_weight!==null&&lot.total_weight!==undefined&&lot.total_weight!==""?"確定":"未確定"),receiver=lot.receiver_name||lot.received_by||lot.user_name||""
-;pageShell("QRロット編集",`${esc(lot.item_name)} / ${esc(lot.lot_no)}`,`${qrLotCard(lot,false)}<div class="card warn"><b>固定される項目</b><div class="small">QRキーとロット番号は、印刷済みQRとの対応を守るため変更できません。入荷数量・現在数を直す場合は、履歴が残る「実数調整」を使用してください。</div></div><div class="card"><div class="row"><div><label class="label">品名</label><select id="qrEditItemName" class="input"><option value="">選択してください</option>${qrItemOptions(lot.item_name,true)}</select></div><div><label class="label">入庫日</label><input id="qrEditReceivedDate" type="date" class="input" value="${esc(lot.received_date||"")}"></div></div><div class="row"><div><label class="label">仕入れ担当者</label><input id="qrEditStaff" class="input" value="${esc(lot.purchase_staff||"")}"></div><div><label class="label">荷受け担当者（登録時）</label><div class="qrReadOnlyField">${esc(receiver||"-")}</div><div class="small" style="margin-top:5px">登録者の監査情報のため変更できません。</div></div></div><div class="row"><div><label class="label">仕入先</label><input id="qrEditSupplier" class="input" value="${esc(lot.supplier||"")}"></div><div><label class="label">産地</label><input id="qrEditOrigin" class="input" value="${esc(lot.origin||"")}" data-seika-blur-action="qrNormalizeOriginField" data-seika-blur-args="%5B%7B%22__seikaElement%22%3Atrue%7D%5D"></div></div><label class="label">単協名（任意）</label><input id="qrEditCooperativeName" class="input" value="${esc(lot.cooperative_name||"")}" placeholder="単協名" data-seika-input-action="qrUpdateCooperativeSuggestions" data-seika-input-args="%5B%5D"><div id="qrCooperativeSuggestions" class="row" style="gap:6px;margin-top:7px;align-items:flex-start"></div><label class="label">規格など</label><textarea id="qrEditMemo" class="textarea" placeholder="例：3L、秀品" style="min-height:84px">${esc(memo)}</textarea><label class="label">保管場所</label><select id="qrEditLoc" class="input">${qrFixedLocationOptions(lot.storage_location||"")}</select>${large?`<div class="notice"><b>大型容器の重量</b><div class="small">総重量から、現在残基数に応じた現在残重量を再計算します。</div></div><label class="label">総重量kg</label><input id="qrEditTotalWeight" type="number" step="0.01" class="input" value="${lot.total_weight??""}" ${seikaEventAttrs('input','qrEditWeightPreview',[lot.qr_key])}><label class="label">重量ステータス</label><select id="qrEditWeightStatus" class="input" ${seikaEventAttrs('change','qrEditWeightPreview',[lot.qr_key])}><option ${weightStatus==="未確定"?"selected":""}>未確定</option><option ${weightStatus==="確定"?"selected":""}>確定</option></select><div id="qrEditWeightCalc" class="notice"></div>`:`<label class="label">量目</label><input id="qrEditPackWeight" class="input" value="${esc(lot.pack_weight||"")}">`}<label class="label">変更理由 <span style="color:#dc2626">必須</span></label><input id="qrEditReason" class="input" placeholder="例：入庫時の品名入力間違い"><button id="qrLotEditSaveBtn" class="btn green" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','qrSaveLotEdit',[lot.qr_key])}>編集内容を保存</button></div>`)
+;pageShell("QRロット編集",`${esc(lot.item_name)} / ${esc(lot.lot_no)}`,`${qrLotCard(lot,false)}<div class="card warn"><b>固定される項目</b><div class="small">QRキーとロット番号は、印刷済みQRとの対応を守るため変更できません。入荷数量・現在数を直す場合は、履歴が残る「実数調整」を使用してください。</div></div><div class="card"><div class="row"><div><label class="label">品名</label><select id="qrEditItemName" class="input"><option value="">選択してください</option>${qrItemOptions(lot.item_name,true)}</select></div><div><label class="label">入庫日</label><input id="qrEditReceivedDate" type="date" class="input" value="${esc(lot.received_date||"")}"></div></div><div class="row"><div><label class="label">仕入れ担当者</label><input id="qrEditStaff" class="input" value="${esc(lot.purchase_staff||"")}"></div><div><label class="label">荷受け担当者（登録時）</label><div class="qrReadOnlyField">${esc(receiver||"-")}</div><div class="small" style="margin-top:5px">登録者の監査情報のため変更できません。</div></div></div><div class="row"><div><label class="label">仕入先</label><input id="qrEditSupplier" class="input" value="${esc(lot.supplier||"")}"></div><div><label class="label">産地</label><input id="qrEditOrigin" class="input" value="${esc(lot.origin||"")}" data-seika-blur-action="qrNormalizeOriginField" data-seika-blur-args="%5B%7B%22__seikaElement%22%3Atrue%7D%5D"></div></div><label class="label">単協名（任意）</label><input id="qrEditCooperativeName" class="input" value="${esc(lot.cooperative_name||"")}" placeholder="単協名" data-seika-input-action="qrUpdateCooperativeSuggestions" data-seika-input-args="%5B%5D"><div id="qrCooperativeSuggestions" class="row" style="gap:6px;margin-top:7px;align-items:flex-start"></div>${v194CertField("qrEditCertification",lot.certification||"")}<label class="label">規格など</label><textarea id="qrEditMemo" class="textarea" placeholder="例：3L、秀品" style="min-height:84px">${esc(memo)}</textarea><label class="label">保管場所</label><select id="qrEditLoc" class="input">${qrFixedLocationOptions(lot.storage_location||"")}</select>${large?`<div class="notice"><b>大型容器の重量</b><div class="small">総重量から、現在残基数に応じた現在残重量を再計算します。</div></div><label class="label">総重量kg</label><input id="qrEditTotalWeight" type="number" step="0.01" class="input" value="${lot.total_weight??""}" ${seikaEventAttrs('input','qrEditWeightPreview',[lot.qr_key])}><label class="label">重量ステータス</label><select id="qrEditWeightStatus" class="input" ${seikaEventAttrs('change','qrEditWeightPreview',[lot.qr_key])}><option ${weightStatus==="未確定"?"selected":""}>未確定</option><option ${weightStatus==="確定"?"selected":""}>確定</option></select><div id="qrEditWeightCalc" class="notice"></div>`:`<label class="label">量目</label><input id="qrEditPackWeight" class="input" value="${esc(lot.pack_weight||"")}">`}<label class="label">変更理由 <span style="color:#dc2626">必須</span></label><input id="qrEditReason" class="input" placeholder="例：入庫時の品名入力間違い"><button id="qrLotEditSaveBtn" class="btn green" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','qrSaveLotEdit',[lot.qr_key])}>編集内容を保存</button></div>`)
 ;if(large)qrEditWeightPreview(lot.qr_key);qrUpdateCooperativeSuggestions()}catch(e){
 pageShell("ロット編集","エラー",`<div class="err">${esc(e.message)}</div>`)}};qrSaveLotEdit=async function(q){
 if(!canQrOperate())return alert("ロットを編集する権限がありません");if(isQrLotEditSaving)return
@@ -4798,7 +4798,7 @@ if(!canQrOperate())return alert("ロットを編集する権限がありませ�
 ;const item=qrFindItemByName(itemName)||{},large=qrIsLargeContainer(lot.container_type),patch={item_id:item.id||null,item_name:itemName,
 received_date:receivedDate,purchase_staff:document.getElementById("qrEditStaff")?.value.trim()||null,
 supplier:document.getElementById("qrEditSupplier")?.value.trim()||null,
-cooperative_name:document.getElementById("qrEditCooperativeName")?.value.trim()||null,
+cooperative_name:document.getElementById("qrEditCooperativeName")?.value.trim()||null, certification:v194CertValue("qrEditCertification"),
 origin:qrNormalizeOrigin(document.getElementById("qrEditOrigin")?.value)||null,storage_location:document.getElementById("qrEditLoc")?.value||null,
 memo:(document.getElementById("qrEditMemo")?.value.trim()||"")+qrPalletPrintMarker(qrLotPalletPrintOpts(lot)),updated_at:(new Date).toISOString()}
 ;if(!patch.storage_location)return v161FocusField("qrEditLoc","保管場所を選択してください。");if(large){
@@ -7138,7 +7138,7 @@ function v133WorkerVersion(worker){return new Promise(resolve=>{if(!worker)retur
 async function v133AssessWaitingWorker(worker){if(!worker||!navigator.serviceWorker.controller)return;await v133LoadReleaseNotes();const workerVersion=await v133WorkerVersion(worker),candidate=workerVersion||v133ReleaseVersion;if(!v133IsNewerVersion(candidate)){v133WaitingWorker=null;v133WaitingVersion='';if(workerVersion&&v133NormalizeVersion(workerVersion)===v133NormalizeVersion(window.APP_VERSION))worker.postMessage({type:'SKIP_WAITING'});v133RefreshNotices();return}v133WaitingWorker=worker;v133WaitingVersion=candidate;v133RefreshNotices()}
 function v133WorkerReady(worker){if(!worker||worker.state!=='installed'||!navigator.serviceWorker.controller)return;v133AssessWaitingWorker(worker)}
 async function v133ApplyUpdate(){if(!v133HasNewVersion())return alert('この端末はすでに最新です。');if(!v133CanApplyUpdate()){const p=v133PendingSummary();return alert(`未同期・下書きが ${p.total}件あります。保存・再送を完了してから更新してください。`)}if(!confirm(`SEIKA＋ ${v133WaitingVersion||v133ReleaseVersion}へ更新して再起動しますか？`))return;try{await v188IdbFlush?.()}catch(e){return alert('端末内データの保護が完了していません。画面を閉じず、もう一度お試しください。')}v133ReloadForUpdate=true;v133WaitingWorker.postMessage({type:'SKIP_WAITING'})}
-async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.193',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
+async function v133RegisterPwa(){if(!('serviceWorker'in navigator)||!/^https?:$/.test(location.protocol))return;try{const reg=await navigator.serviceWorker.register('./sw.js?v=1.194',{scope:'./',updateViaCache:'none'});v133Registration=reg;if(reg.waiting&&navigator.serviceWorker.controller)v133AssessWaitingWorker(reg.waiting);reg.addEventListener('updatefound',()=>{const w=reg.installing;if(w)w.addEventListener('statechange',()=>v133WorkerReady(w))});setTimeout(()=>reg.update().catch(()=>{}),1800)}catch(e){console.warn('PWA登録に失敗',e)}}
 function v133InstallEvents(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();v133DeferredInstallPrompt=e;v133RefreshNotices()});window.addEventListener('appinstalled',()=>{v133DeferredInstallPrompt=null;v133GuideDismiss();v133Toast('SEIKA＋をホーム画面へ追加しました','ok')});navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(v133ReloadForUpdate)location.reload()});navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='SEIKA_VERSION_READY'&&event.data.version!==String(window.APP_VERSION||'')){v133Toast('新しいアプリ版を取得しました。画面を再読み込みしてください','info',false)}});window.addEventListener('online',()=>{v133Toast('オンラインに戻りました','ok',false);updateSyncDisplay();v133RefreshNotices()});window.addEventListener('offline',()=>{v133Toast('オフラインです。確定操作は行わないでください','err',false);updateSyncDisplay();v133RefreshNotices()});document.addEventListener('pointerdown',()=>{v133UserInteracted=true},{once:true,passive:true});document.addEventListener('keydown',()=>{v133UserInteracted=true},{once:true})}
 const v133PageShellCore=pageShell;pageShell=function(title,sub,body,opts={}){v133PageShellCore(title,sub,body,opts);const sync=document.getElementById('syncInfo');if(sync&&!document.getElementById('v133HeaderMeta'))sync.insertAdjacentHTML('beforebegin',`<div id="v133HeaderMeta">${v133HeaderMetaHtml()}</div>`);const main=document.querySelector('.wrap');if(main&&v133HasNewVersion()&&!document.getElementById('v133UpdateBanner'))main.insertAdjacentHTML('afterbegin',v133UpdateBannerHtml())};
 const v133HomeCore=home;home=function(){v133HomeCore();const main=document.querySelector('.wrap');if(!main)return;const extra=`${v133InstallBannerHtml()}${v133StartupCheckHtml()}`,first=main.firstElementChild;if(first)first.insertAdjacentHTML('beforebegin',extra);else main.innerHTML=extra};
@@ -10878,6 +10878,148 @@ async function v193MakeReport(){
   }finally{v161HideProcessing()}
 }
 
+
+/* ===== v1.194 納品先マスタ・認証区分 ===== */
+const V194_INTERNAL_DESTS=["本社","埼玉","深谷","社外","荻沼","石岡冷凍","現場作業","その他","廃棄"];
+const V194_DEST_PRESET_VERSION=3;
+const V194_EXTERNAL_SEED=[
+ ["美野里D・デリカシェフ",[
+   ["美野里デリカ","美野里デリカ株式会社"],
+   ["デリカシェフ 久喜工場","株式会社デリカシェフ 久喜工場"],
+   ["麺の杜","麺の杜株式会社"]]],
+ ["虎昭・タマムラ",[
+   ["虎昭産業 館林工場","虎昭産業株式会社 館林工場"],
+   ["虎昭産業 茨城工場","虎昭産業株式会社 茨城工場"],
+   ["虎昭産業 もおか工場","虎昭産業株式会社 もおか工場"],
+   ["タマムラデリカ 佐野田沼工場","タマムラデリカ株式会社 佐野田沼工場"],
+   ["東部アシード","株式会社東部アシード"],
+   ["ティキューシー","株式会社ティキューシー"]]],
+ ["プライム",[
+   ["プライムデリカ 相模原工場","プライムデリカ株式会社 相模原工場",true],
+   ["プライムデリカ 相模原第二工場","プライムデリカ株式会社 相模原第二工場",true],
+   ["プライムデリカ 龍ケ崎工場","プライムデリカ株式会社 龍ケ崎工場",true]]],
+ ["フジ・日本デリカ・成城",[
+   ["フジフーズ 千葉工場","フジフーズ株式会社 千葉工場"],
+   ["日本デリカサービス 八千代工場","株式会社日本デリカサービス 八千代工場"],
+   ["成城石井","株式会社成城石井"],
+   ["武蔵野 千葉工場","株式会社武蔵野 千葉工場"],
+   ["わらべや日洋食品 吉川工場","わらべや日洋食品株式会社 吉川工場"],
+   ["わらべや日洋食品 浦和工場","わらべや日洋食品株式会社 浦和工場"],
+   ["わらべや日洋食品 茨城工場","わらべや日洋食品株式会社 茨城工場"],
+   ["ファーストフーズつくば","株式会社ファーストフーズつくば"]]]
+];
+const V194_RETIRED_DESTS=["麺の杜 株式会社","日本デリカサービス","成城石井 第三CK","成城石井 NCK","武蔵野 千葉工場（食堂用）"];
+const V194_CERTS=["JGAP","GGAP","ASIAGAP","その他"];
+function v194DefaultDestinations(){
+  const rows=V194_INTERNAL_DESTS.map(name=>({name,formal:"",kind:"内",group:"社内",outbound:true,weight:false,active:true}));
+  for(const [group,list] of V194_EXTERNAL_SEED)for(const [name,formal,weight] of list)
+    rows.push({name,formal:formal||"",kind:"外",group,outbound:false,weight:!!weight,active:true});
+  return rows;
+}
+function v194MigrateDestinations(){
+  if(Number(db.v194DestPresetVersion||0)>=V194_DEST_PRESET_VERSION)return;
+  const rows=db.v194Destinations,seed=v194DefaultDestinations().filter(r=>r.kind==="外");
+  for(let i=rows.length-1;i>=0;i--)if(rows[i].kind==="外"&&V194_RETIRED_DESTS.includes(rows[i].name))rows.splice(i,1);
+  for(const sd of seed){
+    const cur=rows.find(r=>r.name===sd.name);
+    if(cur){cur.formal=cur.formal||sd.formal;cur.group=sd.group;cur.weight=sd.weight}
+    else rows.push({...sd});
+  }
+  db.v194DestPresetVersion=V194_DEST_PRESET_VERSION;
+}
+function v194EnsureDestinations(){
+  if(!Array.isArray(db.v194Destinations)||!db.v194Destinations.length){db.v194Destinations=v194DefaultDestinations();db.v194DestPresetVersion=V194_DEST_PRESET_VERSION;}
+  const rows=db.v194Destinations.filter(r=>r&&r.name);
+  for(const r of rows){
+    r.name=String(r.name);
+    r.formal=String(r.formal||"");
+    r.kind=r.kind==="外"?"外":"内";
+    r.group=String(r.group||(r.kind==="外"?"未分類":"社内"));
+    r.outbound=r.outbound===undefined?r.kind!=="外":!!r.outbound;
+    r.weight=!!r.weight;
+    r.active=r.active!==false;
+  }
+  if(rows.length!==db.v194Destinations.length)db.v194Destinations=rows;
+  v194MigrateDestinations();
+  return db.v194Destinations;
+}
+function v194OutboundNames(){return v194EnsureDestinations().filter(r=>r.active&&r.outbound).map(r=>r.name)}
+function v194SyncOutDestinations(){
+  const names=v194OutboundNames();
+  if(!names.length)return;
+  QR_OUT_DESTINATIONS.length=0;
+  for(const n of names)QR_OUT_DESTINATIONS.push(n);
+}
+function v194DestinationsPage(msg=""){
+  setScreen("v194DestinationsPage",[msg]);
+  if(!canAdmin()){alert("納品先マスタは管理者のみです");return qrHome()}
+  const rows=v194EnsureDestinations(),groups=[...new Set(rows.map(r=>r.group))];
+  const form=`<div class="card"><b>納品先を追加</b>
+<label class="label">納品先名</label><input id="v194DestName" class="input" placeholder="例：プライムデリカ 龍ケ崎工場">
+<label class="label">区分</label><select id="v194DestKind" class="input"><option value="内">社内</option><option value="外">社外</option></select>
+<label class="label">グループ（産地報告のシート）</label><input id="v194DestGroup" class="input" list="v194DestGroupList" placeholder="例：プライム"><datalist id="v194DestGroupList">${groups.map(g=>`<option value="${esc(g)}">`).join("")}</datalist>
+<label class="label">正式名称（任意）</label><input id="v194DestFormal" class="input" placeholder="例：株式会社日本デリカサービス 八千代工場">
+<label class="label"><input type="checkbox" id="v194DestOutbound"> 出庫先の選択肢に表示する</label>
+<label class="label"><input type="checkbox" id="v194DestWeight"> レタス類を実重量(kg)で納品する</label>
+<button class="btn" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','v194AddDest',[])}>納品先を追加</button></div>`;
+  const body=groups.map(g=>{
+    const items=rows.map((r,i)=>[r,i]).filter(([r])=>r.group===g);
+    return `<div class="card"><b>${esc(g)}</b>${items.map(([r,i])=>`<div class="itemHead" style="margin-top:8px"><div><b>${esc(r.name)}</b><div class="small">${r.formal?esc(r.formal)+"<br>":""}${r.kind==="外"?"社外":"社内"} ／ 出庫先に表示：${r.outbound?"する":"しない"}${r.weight?" ／ <b>レタス類は実重量(kg)で納品</b>":""}</div></div><div class="row" style="gap:6px"><button class="btn btn2" ${seikaEventAttrs('click','v194ToggleDestOutbound',[i])}>${r.outbound?"表示をやめる":"出庫先に出す"}</button><button class="btn red" ${seikaEventAttrs('click','v194RemoveDest',[i])}>削除</button></div></div>`).join("")}</div>`;
+  }).join("");
+  pageShell("納品先マスタ","社内の納品先と社外の客先を登録します。出庫先の選択肢に出すかどうかは1件ずつ切り替えられます。",`${okHtml(msg)}${form}${body}`);
+}
+function v194AddDest(){
+  if(!canAdmin())return alert("納品先マスタは管理者のみです");
+  const name=document.getElementById("v194DestName")?.value.trim()||"";
+  if(!name)return alert("納品先名を入力してください");
+  const kind=document.getElementById("v194DestKind")?.value==="外"?"外":"内";
+  const group=document.getElementById("v194DestGroup")?.value.trim()||(kind==="外"?"未分類":"社内");
+  const outbound=!!document.getElementById("v194DestOutbound")?.checked;
+  const rows=v194EnsureDestinations();
+  if(rows.some(r=>r.name===name))return alert("同じ名前の納品先がすでにあります");
+  const formal=document.getElementById("v194DestFormal")?.value.trim()||"";
+  const weight=!!document.getElementById("v194DestWeight")?.checked;
+  rows.push({name,formal,kind,group,outbound,weight,active:true});
+  save();v194SyncOutDestinations();
+  v194DestinationsPage("納品先を追加しました");
+}
+function v194ToggleDestOutbound(i){
+  if(!canAdmin())return alert("納品先マスタは管理者のみです");
+  const rows=v194EnsureDestinations(),row=rows[i];
+  if(!row)return v194DestinationsPage("対象が見つかりません");
+  row.outbound=!row.outbound;
+  save();v194SyncOutDestinations();
+  v194DestinationsPage(`${row.name} を出庫先に${row.outbound?"表示":"非表示に"}しました`);
+}
+function v194RemoveDest(i){
+  if(!canAdmin())return alert("納品先マスタは管理者のみです");
+  const rows=v194EnsureDestinations(),row=rows[i];
+  if(!row)return v194DestinationsPage("対象が見つかりません");
+  if(!confirm(`${row.name} を削除しますか？\n過去の出庫履歴は残ります。`))return;
+  rows.splice(i,1);
+  save();v194SyncOutDestinations();
+  v194DestinationsPage("削除しました");
+}
+function v194CertOptions(v=""){
+  return ['<option value="">なし</option>'].concat(V194_CERTS.map(c=>`<option value="${esc(c)}" ${c===v?"selected":""}>${esc(c)}</option>`)).join("");
+}
+function v194CertField(id="qrCertification",v=""){
+  return `<label class="label">認証（任意）</label><select id="${id}" class="input">${v194CertOptions(v)}</select>`;
+}
+function v194CertValue(id){
+  const el=document.getElementById(id);
+  return el?String(el.value||"").trim()||null:null;
+}
+function v194CertLabel(v){return v?`（${v}）`:""}
+async function v194ApplyCertOnCreate(qrKey){
+  const v=v194CertValue("qrCertification");
+  if(!v||!qrKey)return;
+  try{await qrPatch("qr_lots",`qr_key=eq.${encodeURIComponent(qrKey)}`,{certification:v})}
+  catch(e){alert("ロットは登録できましたが、認証区分だけ保存できませんでした。\nSupabaseのSQL（認証欄の追加）が未適用の可能性があります。")}
+}
+v194SyncOutDestinations();
+
+window.APP_VERSION='v1.194';document.title='SEIKA＋ v1.194 納品先マスタ・認証区分版';
 </script>
 </body>
 </html>
