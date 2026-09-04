@@ -11214,7 +11214,96 @@ trimmingPage=async function(...args){
 };
 window.trimmingPage=trimmingPage;
 
-window.APP_VERSION='v1.195';document.title='SEIKA＋ v1.195 トリミング登録 改善版';
+
+/* ===== v1.196 作業日の保持 / 作業日別の歩留まり原価 ===== */
+let v196TrimWorkDate=todayKey();
+let v196TrimNote='';
+const v196RenderTrimmingBase=v1115RenderTrimming;
+v1115RenderTrimming=function(...args){
+  const r=v196RenderTrimmingBase.apply(this,args);
+  const d=document.getElementById('trimWorkDate');
+  if(d){
+    d.value=v196TrimWorkDate||todayKey();
+    d.addEventListener('change',()=>{v196TrimWorkDate=d.value||todayKey();});
+  }
+  const n=document.getElementById('trimNote');
+  if(n){
+    n.value=v196TrimNote||'';
+    n.addEventListener('input',()=>{v196TrimNote=n.value;});
+  }
+  return r;
+};
+window.v1115RenderTrimming=v1115RenderTrimming;
+
+const v196SaveTrimmingBase=v1115SaveTrimming;
+v1115SaveTrimming=async function(...args){
+  const r=await v196SaveTrimmingBase.apply(this,args);
+  v196TrimNote='';
+  return r;
+};
+window.v1115SaveTrimming=v1115SaveTrimming;
+
+function v196DailyYieldHtml(rows){
+  const map=new Map();
+  for(const row of rows){
+    const j=row.job||row;
+    const date=j.work_date||'（作業日なし）';
+    const item=j.source_item_name||'（品目未設定）';
+    const key=date+'\u0001'+item;
+    const a=map.get(key)||{date,item,input:0,out:0,cost:0,count:0,priced:true};
+    a.input+=Number(j.input_weight_kg||0);
+    a.out+=Number(j.output_weight_kg||0);
+    a.count++;
+    if(j.input_cost_yen===null||j.input_cost_yen===undefined)a.priced=false;
+    else a.cost+=Number(j.input_cost_yen);
+    map.set(key,a);
+  }
+  const list=[...map.values()].sort((x,y)=>x.date===y.date?x.item.localeCompare(y.item,'ja'):(x.date<y.date?1:-1));
+  if(!list.length)return '<tr><td colspan="7" class="small">該当なし</td></tr>';
+  let html='',prev=null;
+  for(const a of list){
+    if(a.date!==prev){
+      const day=list.filter(x=>x.date===a.date);
+      const dIn=day.reduce((s,x)=>s+x.input,0),dOut=day.reduce((s,x)=>s+x.out,0);
+      const dPriced=day.every(x=>x.priced),dCost=day.reduce((s,x)=>s+x.cost,0);
+      html+=`<tr style="background:#eef2f7"><td colspan="2"><b>${esc(a.date)}</b></td>`
+        +`<td><b>${fmtRounded(dIn)}kg</b></td><td><b>${fmtRounded(dOut)}kg</b></td>`
+        +`<td><b>${dIn?fmtRounded(dOut/dIn*100):'-'}%</b></td>`
+        +`<td><b>${dPriced?money(dCost)+'円':'未計算'}</b></td>`
+        +`<td><b>${dOut&&dPriced?money(dCost/dOut)+'円/kg':'未計算'}</b></td></tr>`;
+      prev=a.date;
+    }
+    html+=`<tr><td></td><td>${esc(a.item)}<div class="small">${a.count}件</div></td>`
+      +`<td>${fmtRounded(a.input)}kg</td><td>${fmtRounded(a.out)}kg</td>`
+      +`<td>${a.input?fmtRounded(a.out/a.input*100):'-'}%</td>`
+      +`<td>${a.priced?money(a.cost)+'円':'未計算'}</td>`
+      +`<td>${a.out&&a.priced?money(a.cost/a.out)+'円/kg':'未計算'}</td></tr>`;
+  }
+  return html;
+}
+
+const v196RenderYieldBase=v1115RenderYieldReport;
+v1115RenderYieldReport=function(rows,from,to){
+  const r=v196RenderYieldBase.call(this,rows,from,to);
+  try{
+    const cards=document.querySelectorAll('.card');
+    if(cards.length){
+      const host=cards[cards.length-1].parentNode;
+      const div=document.createElement('div');
+      div.className='card';
+      div.innerHTML='<b>作業日別（品目ごとの平均歩留まり原価）</b>'
+        +'<div class="small" style="margin-top:4px">その作業日時点で採用された単価にもとづく平均です。</div>'
+        +'<table class="table"><thead><tr><th>作業日</th><th>品目</th><th>使用</th><th>出来高</th>'
+        +'<th>歩留まり</th><th>原料費</th><th>歩留まり原価<br>税抜円/kg</th></tr></thead><tbody>'
+        +v196DailyYieldHtml(rows)+'</tbody></table>';
+      host.appendChild(div);
+    }
+  }catch(e){}
+  return r;
+};
+window.v1115RenderYieldReport=v1115RenderYieldReport;
+
+window.APP_VERSION='v1.196';document.title='SEIKA＋ v1.196 作業日別 歩留まり原価';
 </script>
 </body>
 </html>
