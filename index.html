@@ -11303,7 +11303,68 @@ v1115RenderYieldReport=function(rows,from,to){
 };
 window.v1115RenderYieldReport=v1115RenderYieldReport;
 
-window.APP_VERSION='v1.196';document.title='SEIKA＋ v1.196 作業日別 歩留まり原価';
+
+/* ===== v1.197 作業日をアプリ内で修正 ===== */
+function v197LotLabel(lots){
+  if(!lots||!lots.length)return '<span class="small">ロット情報なし</span>';
+  return lots.map(l=>{
+    const no=l.lot_no||l.qr_key||'';
+    const kg=Number(l.used_weight_kg||0);
+    return `<div class="small">${esc(l.item_name||'')}｜${esc(no)}｜${fmtRounded(kg)}kg`
+      +`${l.origin?'｜'+esc(l.origin):''}${l.supplier?'｜'+esc(l.supplier):''}</div>`;
+  }).join('');
+}
+
+async function v197SaveWorkDate(jobId){
+  const el=document.getElementById('v197date_'+jobId);
+  if(!el||!el.value){alert('作業日を選んでください。');return;}
+  if(!confirm(`この日報の作業日を ${el.value} に変更します。\n単価も作業日にあわせて計算し直します。`))return;
+  try{
+    const ans=await callRpc('update_trimming_job_work_date_v1197',{p_job_id:jobId,p_work_date:el.value});
+    if(ans&&ans.ok===false){alert(ans.message||'変更できませんでした。');return;}
+    if(typeof seikaYieldRange==='function')await seikaYieldRange();
+    else location.reload();
+  }catch(e){alert('変更できませんでした。\n'+(e&&e.message?e.message:e));}
+}
+window.v197SaveWorkDate=v197SaveWorkDate;
+
+function v197EditHtml(rows){
+  if(!rows||!rows.length)return '<div class="small">該当する日報がありません。</div>';
+  return rows.map(row=>{
+    const j=row.job||row, lots=row.lots||[];
+    const id=j.id;
+    return `<div style="padding:9px 0;border-top:1px solid #e2e8f0">
+<div><b>${esc(j.source_item_name||'（品目未設定）')}</b>`
+      +`<span class="small"> 使用${fmtRounded(j.input_weight_kg)}kg ／ 出来高${fmtRounded(j.output_weight_kg)}kg</span></div>
+${v197LotLabel(lots)}
+<div class="row" style="margin-top:6px;align-items:flex-end">
+<div><label class="label">作業日</label>`
+      +`<input id="v197date_${esc(id)}" type="date" class="input" value="${esc(j.work_date||'')}"></div>`
+      +`<button class="btn blue" style="padding:8px 12px" ${seikaEventAttrs('click','v197SaveWorkDate',[id])}>この日報を保存</button>`
+      +`</div></div>`;
+  }).join('');
+}
+
+const v197RenderYieldBase=v1115RenderYieldReport;
+v1115RenderYieldReport=function(rows,from,to){
+  const r=v197RenderYieldBase.call(this,rows,from,to);
+  try{
+    const cards=document.querySelectorAll('.card');
+    if(cards.length){
+      const host=cards[cards.length-1].parentNode;
+      const div=document.createElement('div');
+      div.className='card';
+      div.innerHTML='<b>作業日の修正</b>'
+        +'<div class="small" style="margin-top:4px">使用したロットで日報を見分けて、正しい作業日に直してください。保存すると単価も計算し直します。</div>'
+        +v197EditHtml(rows);
+      host.appendChild(div);
+    }
+  }catch(e){}
+  return r;
+};
+window.v1115RenderYieldReport=v1115RenderYieldReport;
+
+window.APP_VERSION='v1.197';document.title='SEIKA＋ v1.197 作業日の修正';
 </script>
 </body>
 </html>
