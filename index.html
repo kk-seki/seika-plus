@@ -10918,6 +10918,7 @@ function v194DefaultDestinations(){
   return rows;
 }
 function v194MigrateDestinations(){
+  if(!db||typeof db!=="object")return;
   if(Number(db.v194DestPresetVersion||0)>=V194_DEST_PRESET_VERSION)return;
   const rows=db.v194Destinations,seed=v194DefaultDestinations().filter(r=>r.kind==="外");
   for(let i=rows.length-1;i>=0;i--)if(rows[i].kind==="外"&&V194_RETIRED_DESTS.includes(rows[i].name))rows.splice(i,1);
@@ -10929,6 +10930,7 @@ function v194MigrateDestinations(){
   db.v194DestPresetVersion=V194_DEST_PRESET_VERSION;
 }
 function v194EnsureDestinations(){
+  if(!db||typeof db!=="object")return [];
   if(!Array.isArray(db.v194Destinations)||!db.v194Destinations.length){db.v194Destinations=v194DefaultDestinations();db.v194DestPresetVersion=V194_DEST_PRESET_VERSION;}
   const rows=db.v194Destinations.filter(r=>r&&r.name);
   for(const r of rows){
