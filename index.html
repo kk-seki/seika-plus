@@ -11389,7 +11389,7 @@ const V198_GUIDE_SECTIONS={
    "契約産地は、品目・産地・仕入先をそろえて「契約価格」として登録します。",
    "税抜の円/kgで入力し、変更した行を保存します。"],
   check:"廃棄単価とトリミングの原料費は、この価格を①市場価格 ②契約価格 ③同一品目の平均 の順で採用します。",
-  caution:"中央園芸・茨城中央園芸・飯山中央市場・中央VFS・市場商事は契約産地です。市場価格ではありません。"},
+  caution:"入荷日の週より後にしか価格が無いと未計算になります。さかのぼって登録してください。"},
  weekly:{title:"週次廃棄レポートを作る",where:"ホーム → 週次廃棄レポート",
   steps:["対象の週を選びます。",
    "テーマを選ぶと、朝礼で伝える3つの行動が自動で入ります。必要なら書き換えます。",
@@ -11469,7 +11469,76 @@ const V198_ROLE_ADD={
   }
 })();
 
-window.APP_VERSION='v1.198';document.title='SEIKA＋ v1.198 操作ガイド追加';
+
+/* ===== v1.199 第1段階：APIをログイン中のユーザートークンで呼ぶ =====
+   これまで Authorization に公開キーを入れていたため、全ての通信が
+   未ログイン(anon)権限で実行されていた。ログイン済みならユーザーの
+   アクセストークンを使う。トークンが無い場合は従来どおり公開キーに
+   落ちるため、この段階では動作は止まらない。 */
+function v199ApiHeaders(extra={}){
+  let token='';
+  try{ token=(typeof authToken==='function'&&authToken())||''; }catch(e){ token=''; }
+  return {apikey:SUPABASE_KEY,
+          Authorization:`Bearer ${token||SUPABASE_KEY}`,
+          "Content-Type":"application/json", ...extra};
+}
+qrApiHeaders=v199ApiHeaders;
+window.qrApiHeaders=v199ApiHeaders;
+
+async function v199EnsureAuth(){
+  try{ if(typeof authEnsure==='function') return await authEnsure(); }catch(e){}
+  return false;
+}
+function v199IsAuthError(e){
+  const m=String((e&&e.message)||e||'');
+  return /401|403|JWT|jwt|PGRST301|token is expired|invalid claim/i.test(m);
+}
+async function v199RetryOnAuth(run){
+  await v199EnsureAuth();
+  try{ return await run(); }
+  catch(e){
+    if(!v199IsAuthError(e))throw e;
+    let ok=false;
+    try{ ok=(typeof v188RefreshAuthOnce==='function')?await v188RefreshAuthOnce():false; }catch(_){}
+    if(!ok)throw e;
+    return await run();
+  }
+}
+window.v199RetryOnAuth=v199RetryOnAuth;
+
+const v199CallRpcBase=callRpc;
+callRpc=async function(name,args){
+  return await v199RetryOnAuth(()=>v199CallRpcBase(name,args));
+};
+window.callRpc=callRpc;
+
+const v199SelectBase=qrSelect;
+qrSelect=async function(...a){ return await v199RetryOnAuth(()=>v199SelectBase.apply(this,a)); };
+window.qrSelect=qrSelect;
+
+const v199InsertBase=qrInsert;
+qrInsert=async function(...a){ return await v199RetryOnAuth(()=>v199InsertBase.apply(this,a)); };
+window.qrInsert=qrInsert;
+
+const v199PatchBase=qrPatch;
+qrPatch=async function(...a){ return await v199RetryOnAuth(()=>v199PatchBase.apply(this,a)); };
+window.qrPatch=qrPatch;
+
+const v199DeleteBase=qrDelete;
+qrDelete=async function(...a){ return await v199RetryOnAuth(()=>v199DeleteBase.apply(this,a)); };
+window.qrDelete=qrDelete;
+
+/* 管理者診断で、いま何の権限で通信しているかを確認できるようにする */
+window.v199AuthDiag=function(){
+  let token='';
+  try{ token=(typeof authToken==='function'&&authToken())||''; }catch(e){}
+  const mode=token?'authenticated（ユーザートークン）':'anon（公開キー）';
+  let exp='-';
+  try{ if(typeof authExpiryMs==='function'&&authExpiryMs()>0) exp=new Date(authExpiryMs()).toLocaleString('ja-JP'); }catch(e){}
+  return {mode,tokenLength:token.length,expiresAt:exp,version:window.APP_VERSION};
+};
+
+window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 認証経路の切り替え';
 </script>
 </body>
 </html>
