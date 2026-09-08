@@ -6189,10 +6189,10 @@ function v1200RenderDailyReport(rows,day,recv){
 <b style="font-size:16px">${esc(j.source_item_name||"（品目未設定）")}</b>
 <span class="small">${esc(j.created_by_name||"")}</span></div>
 <div class="grid" style="margin-top:8px">
+<div class="box">使用原料<b>${fmtRounded(j.input_weight_kg)}kg</b></div>
 <div class="box">出来高<b>${fmtRounded(j.output_weight_kg)}kg</b></div>
 <div class="box">廃棄（ロス）<b>${fmtRounded(j.loss_weight_kg)}kg</b></div>
-<div class="box">歩留まり<b>${fmtRounded(j.yield_percent)}%</b></div>
-<div class="box">使用原料<b>${fmtRounded(j.input_weight_kg)}kg</b></div></div>
+<div class="box">歩留まり<b>${fmtRounded(j.yield_percent)}%</b></div></div>
 <div style="margin-top:10px"><b class="small">使用原料</b>
 <table class="table" style="margin-top:4px"><thead><tr><th>ロット番号</th><th>入荷日</th><th>産地</th><th>仕入先</th><th style="text-align:right">使用</th></tr></thead><tbody>${lotRows}</tbody></table></div>
 <div style="margin-top:10px"><b class="small">出来高（入替品）</b><div style="margin-top:4px">${outHtml}</div></div>
@@ -6205,7 +6205,8 @@ ${j.note?`<div class="notice" style="margin-top:10px">${esc(j.note)}</div>`:""}
 <button class="btn blue" ${seikaEventAttrs('click','v1200DailyRange',[])}>表示</button></div>
 <div class="row" style="margin-top:8px">
 <button class="btn btn2" ${seikaEventAttrs('click','v1200DailyShift',[day,-1])}>← 前日</button>
-<button class="btn btn2" ${seikaEventAttrs('click','v1200DailyShift',[day,1])}>翌日 →</button></div></div>
+<button class="btn btn2" ${seikaEventAttrs('click','v1200DailyShift',[day,1])}>翌日 →</button></div>
+${v1115CanTrimmingEdit()?`<button class="btn homeBtnTrimming" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','trimmingPage',[])}>＋ この日の日報を登録</button>`:""}</div>
 <div class="card"><b>この日の合計</b><div class="grid" style="margin-top:8px">
 <div class="box">使用原料<b>${fmtRounded(total.input)}kg</b></div>
 <div class="box">出来高<b>${fmtRounded(total.output)}kg</b></div>
@@ -6240,6 +6241,15 @@ async function v1200RecalcJobPrice(jobId){
   }catch(e){alert("計算し直せませんでした。\n"+(e&&e.message?e.message:e))}
 }
 
+
+function v1200ProductionHome(){
+  setScreen("v1200ProductionHome",[]);
+  const edit=typeof v1115CanTrimmingEdit==="function"?v1115CanTrimmingEdit():false;
+  const add=edit?`<button class="btn homeBtnTrimming" ${seikaEventAttrs('click','trimmingPage',[])}>日報を登録<br><span style="font-size:15px;font-weight:800">使用原料・出来高を入力</span></button>`:"";
+  pageShell("製造・歩留まり","日報の登録と実績・原価の確認",`<div class="card">${add}
+<button class="btn homeBtnDailyReport" ${seikaEventAttrs('click','v1200DailyReportPage',[])}>製造日報<br><span style="font-size:15px;font-weight:800">使用原料・出来高・廃棄・歩留まり</span></button>
+<button class="btn homeBtnYield" ${seikaEventAttrs('click','yieldReportPage',[])}>歩留まり価格<br><span style="font-size:15px;font-weight:800">採用単価・歩留まり原価</span></button></div>`);
+}
 function v1200UnpricedCard(rows){
   const list=(rows||[]).filter(row=>{const j=row.job||row;return j.purchase_price_yen_per_kg==null});
   if(!list.length)return "";
@@ -6327,8 +6337,7 @@ p_lots:lots,p_outputs:outputs,p_note:document.getElementById("trimNote")?.value.
 ;pageShell("トリミング登録完了","保存済み",`<div class="ok">トリミングを登録しました。</div><button class="btn blue" style="width:100%" data-seika-click-action="trimmingPage" data-seika-click-args="%5B%5D">続けて登録</button><button class="btn btn2" style="width:100%;margin-top:8px" data-seika-click-action="home" data-seika-click-args="%5B%5D">ホームへ</button>`)
 }catch(e){alert(e.message||"トリミングを登録できませんでした")}}function v1115AddHomeButtons(){const menu=document.querySelector(".homePrimary, .homeGrid, .menu")
 ;if(!menu)return
-;if(v1115CanTrimmingEdit()&&!document.getElementById("v1115TrimHome"))menu.insertAdjacentHTML("beforeend",'<button id="v1115TrimHome" class="btn homeBtnTrimming" data-seika-click-action="trimmingPage" data-seika-click-args="%5B%5D">トリミング・歩留まり登録</button>')
-;if(!document.getElementById("v1115YieldHome"))menu.insertAdjacentHTML("beforeend",`<button id="v1200DailyHome" class="btn homeBtnDailyReport" data-seika-click-action="v1200DailyReportPage" data-seika-click-args="%5B%5D">製造日報</button><button id="v1115YieldHome" class="btn homeBtnYield" data-seika-click-action="yieldReportPage" data-seika-click-args="%5B%5D">歩留まり価格</button><button id="v1115PriceHome" class="btn homeBtnPurchasePrice" data-seika-click-action="purchasePricesPage" data-seika-click-args="%5B%5D">仕入れ価格表</button>`)
+;if(!document.getElementById("v1115YieldHome"))menu.insertAdjacentHTML("beforeend",`<button id="v1200ProdHome" class="btn homeBtnDailyReport" data-seika-click-action="v1200ProductionHome" data-seika-click-args="%5B%5D">製造・歩留まり</button><button id="v1115YieldHome" class="btn homeBtnPurchasePrice" data-seika-click-action="purchasePricesPage" data-seika-click-args="%5B%5D">仕入れ価格表</button>`)
 ;if(canInventoryCountView()&&!document.getElementById("v1118CountHome"))menu.insertAdjacentHTML("beforeend",'<button id="v1118CountHome" class="btn homeBtnCount" data-seika-click-action="inventoryCountHome" data-seika-click-args="%5B%5D">棚卸しモード</button>')
 }const v1115HomeBase=home;home=function(){v1115HomeBase();v1115AddHomeButtons()};
 /* ===== v1.115 LINE在庫報告：通常在庫＋QR在庫 ===== */
@@ -11455,7 +11464,7 @@ window.v1115RenderYieldReport=v1115RenderYieldReport;
 
 /* ===== v1.198 操作ガイドに未掲載の機能を追加 ===== */
 const V198_GUIDE_SECTIONS={
- trimming:{title:"トリミングを登録する",where:"ホーム → トリミング・歩留まり登録",
+ trimming:{title:"トリミングを登録する",where:"ホーム → 製造・歩留まり → 日報を登録",
   steps:["作業日を選びます。前の日の分を入力するときは、必ずここを実際の作業日に変えてください。",
    "「使用原料」でロットを追加します。品名・ロット番号・入荷日・在庫の有無で絞り込めます。",
    "使った数量または重量を入力します。ケース品は量目から自動で重量に換算されます。",
@@ -11463,14 +11472,14 @@ const V198_GUIDE_SECTIONS={
    "使用重量・ロス・歩留まりを確認し、必要ならメモを入れて登録します。"],
   check:"登録後は「製造日報」で使用原料・出来高・歩留まりを、「歩留まり価格」で採用単価を確認できます。",
   caution:"通常在庫・QR在庫・QR操作履歴は変更されません。日報の実績だけを保存します。歩留まりが0%になるときは使用原料が入っていません。"},
- dailyReport:{title:"製造日報を見る",where:"ホーム → 製造日報",
+ dailyReport:{title:"製造日報を見る",where:"ホーム → 製造・歩留まり → 製造日報",
   steps:["作業日を選んで「表示」を押します。前日・翌日のボタンでも移動できます。",
    "登録ごとにカードが並びます。使用原料はロット番号・入荷日・産地・仕入先つきで確認できます。",
    "出来高は入替品ごとの重量が出ます。数量と1個あたりの重量から登録した場合はその内訳も表示されます。",
    "廃棄（ロス）と歩留まりを確認します。"],
   check:"上部の「この日の合計」で、その日の使用原料・出来高・廃棄・歩留まりをまとめて確認できます。",
   caution:"ここでいう廃棄は、使用原料から出来高を引いた計算上のロスです。廃棄一覧に登録した数量は含みません。価格は表示しません。単価は「歩留まり価格」で確認してください。"},
- yield:{title:"歩留まり価格を見る・作業日を直す",where:"ホーム → 歩留まり価格",
+ yield:{title:"歩留まり価格を見る・作業日を直す",where:"ホーム → 製造・歩留まり → 歩留まり価格",
   steps:["開始日と終了日を選び「絞り込む」を押します。",
    "「品目別集計」で、品目ごとの使用・出来高・歩留まり・原料費・歩留まり原価を確認します。",
    "「作業日別」で、その作業日時点の品目ごとの平均歩留まり原価を確認します。",
