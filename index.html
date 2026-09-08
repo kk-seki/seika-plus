@@ -2875,7 +2875,8 @@ n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>
 <style id="v1143-quality-task-style">
 .homePrimary .btn.homeBtnQuality,.viewerHome .btn.homeBtnQuality{background:linear-gradient(90deg,#5b21b6 0%,#7e22ce 52%,#a855f7 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.28) !important;box-shadow:0 7px 16px rgba(88,28,135,.24) !important;border-color:transparent !important}
    .homeBtnWeeklyReport{background:linear-gradient(90deg,#0e6f5c 0%,#159e86 48%,#7fd8c6 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.25) !important;border-color:transparent !important;}
-.homeBtnDailyReport{background:linear-gradient(135deg,#7b4bd6,#a06ae8);color:#fff}
+.homeBtnProduction{background:linear-gradient(90deg,#2f3aa3 0%,#5566e6 48%,#a5b4fc 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.18) !important;border-color:transparent !important}
+.homeBtnDailyReport{background:linear-gradient(90deg,#0b6f86 0%,#17a2c4 48%,#7fd6ea 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.18) !important;border-color:transparent !important}
 
    .homeBtnDest{background:linear-gradient(90deg,#155e75 0%,#0891b2 52%,#22d3ee 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.25) !important;border-color:transparent !important;}
 .homePrimary .btn.homeBtnQuality:hover,.viewerHome .btn.homeBtnQuality:hover{filter:brightness(1.06)}
@@ -6246,7 +6247,7 @@ function v1200ProductionHome(){
   setScreen("v1200ProductionHome",[]);
   const edit=typeof v1115CanTrimmingEdit==="function"?v1115CanTrimmingEdit():false;
   const add=edit?`<button class="btn homeBtnTrimming" ${seikaEventAttrs('click','trimmingPage',[])}>日報を登録<br><span style="font-size:15px;font-weight:800">使用原料・出来高を入力</span></button>`:"";
-  pageShell("製造・歩留まり","日報の登録と実績・原価の確認",`<div class="card">${add}
+  pageShell("製造・歩留まり","日報の登録と実績・原価の確認",`<div class="homePrimary">${add}
 <button class="btn homeBtnDailyReport" ${seikaEventAttrs('click','v1200DailyReportPage',[])}>製造日報<br><span style="font-size:15px;font-weight:800">使用原料・出来高・廃棄・歩留まり</span></button>
 <button class="btn homeBtnYield" ${seikaEventAttrs('click','yieldReportPage',[])}>歩留まり価格<br><span style="font-size:15px;font-weight:800">採用単価・歩留まり原価</span></button></div>`);
 }
@@ -6337,7 +6338,7 @@ p_lots:lots,p_outputs:outputs,p_note:document.getElementById("trimNote")?.value.
 ;pageShell("トリミング登録完了","保存済み",`<div class="ok">トリミングを登録しました。</div><button class="btn blue" style="width:100%" data-seika-click-action="trimmingPage" data-seika-click-args="%5B%5D">続けて登録</button><button class="btn btn2" style="width:100%;margin-top:8px" data-seika-click-action="home" data-seika-click-args="%5B%5D">ホームへ</button>`)
 }catch(e){alert(e.message||"トリミングを登録できませんでした")}}function v1115AddHomeButtons(){const menu=document.querySelector(".homePrimary, .homeGrid, .menu")
 ;if(!menu)return
-;if(!document.getElementById("v1115YieldHome"))menu.insertAdjacentHTML("beforeend",`<button id="v1200ProdHome" class="btn homeBtnDailyReport" data-seika-click-action="v1200ProductionHome" data-seika-click-args="%5B%5D">製造・歩留まり</button><button id="v1115YieldHome" class="btn homeBtnPurchasePrice" data-seika-click-action="purchasePricesPage" data-seika-click-args="%5B%5D">仕入れ価格表</button>`)
+;if(!document.getElementById("v1115YieldHome"))menu.insertAdjacentHTML("beforeend",`<button id="v1200ProdHome" class="btn homeBtnProduction" data-seika-click-action="v1200ProductionHome" data-seika-click-args="%5B%5D">製造・歩留まり</button><button id="v1115YieldHome" class="btn homeBtnPurchasePrice" data-seika-click-action="purchasePricesPage" data-seika-click-args="%5B%5D">仕入れ価格表</button>`)
 ;if(canInventoryCountView()&&!document.getElementById("v1118CountHome"))menu.insertAdjacentHTML("beforeend",'<button id="v1118CountHome" class="btn homeBtnCount" data-seika-click-action="inventoryCountHome" data-seika-click-args="%5B%5D">棚卸しモード</button>')
 }const v1115HomeBase=home;home=function(){v1115HomeBase();v1115AddHomeButtons()};
 /* ===== v1.115 LINE在庫報告：通常在庫＋QR在庫 ===== */
@@ -11645,8 +11646,18 @@ window.v199AuthDiag=function(){
   return {mode,tokenLength:token.length,expiresAt:exp,version:window.APP_VERSION};
 };
 
+const v1200GoBackBase=goBack;
+goBack=function(){
+  const s=currentScreen;
+  if(s==="v1200DailyReport"||s==="yieldReport"||s==="v1200Trimming")return v1200ProductionHome();
+  return v1200GoBackBase();
+};
+window.goBack=goBack;
+const v1200TrimmingBase=trimmingPage;
+trimmingPage=function(...a){const r=v1200TrimmingBase(...a);try{setScreen("v1200Trimming",[])}catch(e){}return r};
+window.trimmingPage=trimmingPage;
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 認証経路の切り替え';
 </script>
 </body>
 </html>
-
