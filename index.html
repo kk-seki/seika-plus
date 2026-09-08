@@ -2875,6 +2875,8 @@ n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>
 <style id="v1143-quality-task-style">
 .homePrimary .btn.homeBtnQuality,.viewerHome .btn.homeBtnQuality{background:linear-gradient(90deg,#5b21b6 0%,#7e22ce 52%,#a855f7 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.28) !important;box-shadow:0 7px 16px rgba(88,28,135,.24) !important;border-color:transparent !important}
    .homeBtnWeeklyReport{background:linear-gradient(90deg,#0e6f5c 0%,#159e86 48%,#7fd8c6 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.25) !important;border-color:transparent !important;}
+.homeBtnDailyReport{background:linear-gradient(135deg,#7b4bd6,#a06ae8);color:#fff}
+
    .homeBtnDest{background:linear-gradient(90deg,#155e75 0%,#0891b2 52%,#22d3ee 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.25) !important;border-color:transparent !important;}
 .homePrimary .btn.homeBtnQuality:hover,.viewerHome .btn.homeBtnQuality:hover{filter:brightness(1.06)}
 .homePrimary .btn.homeBtnQuality:focus-visible,.viewerHome .btn.homeBtnQuality:focus-visible{outline:3px solid rgba(168,85,247,.55);outline-offset:3px}
@@ -6171,11 +6173,87 @@ async function yieldReportPage(from="",to=""){
 setScreen("yieldReport",[from,to]);pageShell("品目別歩留まり表","読み込み中",'<div class="card"><div class="notice">トリミング履歴を読み込んでいます。</div></div>');try{
 const rows=await callRpc("get_trimming_jobs",{p_from:from||null,p_to:to||null});v1115RenderYieldReport(Array.isArray(rows)?rows:[],from,to)}catch(e){
 pageShell("品目別歩留まり表","読み込みエラー",`<div class="err">${esc(v161ErrorText(e))}</div><button class="btn blue" data-seika-click-action="yieldReportPage" data-seika-click-args="%5B%5D">再読み込み</button>`)}}
+
+function v1200LotReceived(lotNo,map){const v=map&&map[lotNo];if(v)return v;const m=String(lotNo||"").match(/^(\d{4})(\d{2})(\d{2})/);return m?`${m[1]}-${m[2]}-${m[3]}`:""}
+function v1200OutputLabel(o){const w=Number(o.output_weight_kg||0),q=Number(o.output_qty||0),u=Number(o.unit_weight_kg||0);const name=esc(o.item_name||"入替品");let sub="";if(q>0&&u>0)sub=`<span class="small">（${fmtRounded(q)}個 × ${u}kg）</span>`;return `<div style="padding:4px 0"><b>${name}</b> ${fmtRounded(w)}kg ${sub}</div>`}
+function v1200DailyShift(day,diff){const d=new Date(`${day}T00:00:00+09:00`);d.setDate(d.getDate()+Number(diff||0));return v1200DailyReportPage(ymdKey(d))}
+function v1200DailyRange(){return v1200DailyReportPage(document.getElementById("v1200DailyDate")?.value||todayKey())}
+function v1200RenderDailyReport(rows,day,recv){
+  const total=rows.reduce((a,row)=>{const j=row.job||row;a.input+=Number(j.input_weight_kg||0);a.output+=Number(j.output_weight_kg||0);a.loss+=Number(j.loss_weight_kg||0);a.count++;return a},{input:0,output:0,loss:0,count:0});
+  const cards=rows.map(row=>{
+    const j=row.job||row,lots=row.lots||[],outputs=row.outputs||[];
+    const lotRows=lots.length?lots.map(l=>`<tr><td>${esc(l.lot_no||l.qr_key||"")}</td><td>${esc(v1200LotReceived(l.lot_no,recv))}</td><td>${esc(l.origin||"")}</td><td>${esc(l.supplier||"")}</td><td style="text-align:right">${fmtRounded(l.used_weight_kg)}kg</td></tr>`).join(""):'<tr><td colspan="5" class="small">使用原料の記録がありません。</td></tr>';
+    const outHtml=outputs.length?outputs.map(v1200OutputLabel).join(""):'<div class="small">出来高の記録がありません。</div>';
+    return `<div class="card">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+<b style="font-size:16px">${esc(j.source_item_name||"（品目未設定）")}</b>
+<span class="small">${esc(j.created_by_name||"")}</span></div>
+<div class="grid" style="margin-top:8px">
+<div class="box">出来高<b>${fmtRounded(j.output_weight_kg)}kg</b></div>
+<div class="box">廃棄（ロス）<b>${fmtRounded(j.loss_weight_kg)}kg</b></div>
+<div class="box">歩留まり<b>${fmtRounded(j.yield_percent)}%</b></div>
+<div class="box">使用原料<b>${fmtRounded(j.input_weight_kg)}kg</b></div></div>
+<div style="margin-top:10px"><b class="small">使用原料</b>
+<table class="table" style="margin-top:4px"><thead><tr><th>ロット番号</th><th>入荷日</th><th>産地</th><th>仕入先</th><th style="text-align:right">使用</th></tr></thead><tbody>${lotRows}</tbody></table></div>
+<div style="margin-top:10px"><b class="small">出来高（入替品）</b><div style="margin-top:4px">${outHtml}</div></div>
+${j.note?`<div class="notice" style="margin-top:10px">${esc(j.note)}</div>`:""}
+</div>`;
+  }).join("")||'<div class="card"><div class="notice">この日の製造日報はありません。</div></div>';
+  pageShell("製造日報",`${esc(day)} ／ ${total.count}件`,`
+<div class="card"><div class="row" style="align-items:flex-end">
+<div><label class="label">作業日</label><input id="v1200DailyDate" type="date" class="input" value="${esc(day)}"></div>
+<button class="btn blue" ${seikaEventAttrs('click','v1200DailyRange',[])}>表示</button></div>
+<div class="row" style="margin-top:8px">
+<button class="btn btn2" ${seikaEventAttrs('click','v1200DailyShift',[day,-1])}>← 前日</button>
+<button class="btn btn2" ${seikaEventAttrs('click','v1200DailyShift',[day,1])}>翌日 →</button></div></div>
+<div class="card"><b>この日の合計</b><div class="grid" style="margin-top:8px">
+<div class="box">使用原料<b>${fmtRounded(total.input)}kg</b></div>
+<div class="box">出来高<b>${fmtRounded(total.output)}kg</b></div>
+<div class="box">廃棄（ロス）<b>${fmtRounded(total.loss)}kg</b></div>
+<div class="box">歩留まり<b>${total.input?fmtRounded(total.output/total.input*100):"-"}%</b></div></div>
+<div class="small" style="margin-top:6px">廃棄は使用原料−出来高で計算したロスです。廃棄一覧の登録数量は含みません。</div></div>
+${cards}`);
+}
+async function v1200DailyReportPage(date=""){
+  const day=date||todayKey();
+  setScreen("v1200DailyReport",[day]);
+  pageShell("製造日報","読み込み中",'<div class="card"><div class="notice">製造日報を読み込んでいます。</div></div>');
+  try{
+    const rows=await callRpc("get_trimming_jobs",{p_from:day,p_to:day}),list=Array.isArray(rows)?rows:[];
+    const lotNos=[...new Set(list.flatMap(r=>(r.lots||[]).map(l=>l.lot_no).filter(Boolean)))];
+    const recv={};
+    if(lotNos.length){try{
+      const q=lotNos.map(n=>'"'+String(n).replace(/"/g,"")+'"').join(",");
+      const got=await qrSelect("qr_lots",`select=lot_no,received_date&lot_no=in.(${encodeURIComponent(q)})&limit=500`);
+      for(const r of got||[])recv[r.lot_no]=r.received_date||"";
+    }catch(e){}}
+    v1200RenderDailyReport(list,day,recv);
+  }catch(e){
+    pageShell("製造日報","読み込みエラー",`<div class="err">${esc(v161ErrorText(e))}</div><button class="btn blue" ${seikaEventAttrs('click','v1200DailyReportPage',[])}>再読み込み</button>`);
+  }
+}
+async function v1200RecalcJobPrice(jobId){
+  if(!confirm("この日報の単価を計算し直します。"))return;
+  try{
+    await callRpc("recalc_trimming_job_price_v1195",{p_job_id:jobId});
+    if(typeof seikaYieldRange==="function")await seikaYieldRange();else location.reload();
+  }catch(e){alert("計算し直せませんでした。\n"+(e&&e.message?e.message:e))}
+}
+
+function v1200UnpricedCard(rows){
+  const list=(rows||[]).filter(row=>{const j=row.job||row;return j.purchase_price_yen_per_kg==null});
+  if(!list.length)return "";
+  const items=list.map(row=>{const j=row.job||row;
+    return `<div style="padding:8px 0;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+<div><b>${esc(j.source_item_name||"（品目未設定）")}</b><span class="small"> ${esc(j.work_date||"")}</span></div>
+<button class="btn blue" style="padding:8px 12px" ${seikaEventAttrs('click','v1200RecalcJobPrice',[j.id])}>価格を再計算</button></div>`}).join("");
+  return `<div class="card"><b>未計算の日報（${list.length}件）</b><div class="small" style="margin-top:4px">仕入価格を登録した後にここで計算し直せます。</div>${items}</div>`;
+}
 function v1200PriceBadgeLabel(t){const x=String(t||"").trim();if(!x)return["未計算","gray"];if(x.includes("未計算"))return["未計算","red"];if(x.includes("登録前"))return["最古","purple"];if(x.includes("市場"))return["市場","blue"];if(x.includes("契約"))return["契約","green"];if(x.includes("平均"))return["平均","amber"];return[x,"gray"]}
 function v1200PriceBadges(text){const COL={green:["#0f7b3d","#e6f4ec"],blue:["#0b5aa6","#e6f0fa"],amber:["#8a5a00","#fdf1dc"],purple:["#5b3fa8","#eee9fb"],red:["#a11a1a","#fbe9e9"],gray:["#4a5568","#edf0f4"]};const parts=String(text||"").split(/[\/・、]+/).map(x=>x.trim()).filter(Boolean);const list=parts.length?parts:["未計算"];return list.map(t=>{const[label,key]=v1200PriceBadgeLabel(t),[fg,bg]=COL[key]||COL.gray;return`<span title="${esc(t)}" style="display:inline-block;padding:2px 9px;margin:1px 3px 1px 0;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;color:${fg};background:${bg};border:1px solid ${fg}33">${esc(label)}</span>`}).join("")}
 function v1117MatchText(lots){const parts=[...new Set((lots||[]).map(l=>l.price_match_type||"未計算"))];return parts.join("・")||"未計算"}
 function v1117MatchDetail(lots){return(lots||[]).map(l=>`${l.lot_no||l.qr_key||"ロット"}：${l.price_match_type||"未計算"}${l.price_match_reason?`（${l.price_match_reason}）`:""}`).join(" / ")||"価格照合情報なし"}
-function v1115RenderYieldReport(rows,from,to){const group=new Map;for(const row of rows){const j=row.job||row,key=j.source_item_name||"（品目未設定）",a=group.get(key)||{input:0,out:0,cost:0,count:0,priced:true};a.input+=Number(j.input_weight_kg||0);a.out+=Number(j.output_weight_kg||0);a.priced&&=j.input_cost_yen!==null&&j.input_cost_yen!==undefined;if(j.input_cost_yen!==null&&j.input_cost_yen!==undefined)a.cost+=Number(j.input_cost_yen);a.count++;group.set(key,a)}const table=[...group.entries()].map(([name,a])=>`<tr><td>${esc(name)}</td><td>${a.count}件</td><td>${fmtRounded(a.input)}kg</td><td>${fmtRounded(a.out)}kg</td><td>${a.input?fmtRounded(a.out/a.input*100):"-"}%</td><td>${a.priced?money(a.cost)+"円":"未計算（価格未登録）"}</td><td>${a.out&&a.priced?money(a.cost/a.out)+"円/kg":"未計算"}</td></tr>`).join("")||'<tr><td colspan="7" class="small">該当するトリミング記録はありません。</td></tr>';const detail=rows.map(row=>{const j=row.job||row,lots=row.lots||[],price=j.purchase_price_yen_per_kg!=null?`${money(j.purchase_price_yen_per_kg)}円/kg` :"未計算（価格未登録）",yieldCost=j.input_cost_yen!=null&&Number(j.output_weight_kg)>0?`${money(Number(j.input_cost_yen)/Number(j.output_weight_kg))}円/kg`:"未計算";return`<tr><td>${esc(j.work_date||"")}</td><td>${esc(j.source_item_name||"")}</td><td>${fmtRounded(j.input_weight_kg)}kg</td><td>${fmtRounded(j.output_weight_kg)}kg</td><td>${fmtRounded(j.yield_percent)}%</td><td>${price}</td><td style="min-width:104px">${v1200PriceBadges(j.price_match_summary||v1117MatchText(lots))}<details class="small" style="margin-top:3px"><summary style="cursor:pointer;color:#0b5aa6">根拠</summary><div style="margin-top:3px;white-space:normal;line-height:1.5">${esc(v1117MatchDetail(lots))}</div></details></td><td>${j.input_cost_yen!=null?money(j.input_cost_yen)+"円":"未計算"}</td><td>${yieldCost}</td></tr>`}).join("")||'<tr><td colspan="9" class="small">該当なし</td></tr>';pageShell("品目別歩留まり表","市場価格・契約価格・同一品目平均の採用根拠を表示",`<div class="notice"><b>価格の採用順</b><div class="small">①市場4社は「市場価格」 ②その他は同じ品目・産地・仕入先の「契約価格」 ③該当なしは同一品目の有効価格平均（四捨五入）</div></div><div class="card"><div class="row"><div><label class="label">開始日</label><input id="yieldFrom" type="date" class="input" value="${esc(from)}"></div><div><label class="label">終了日</label><input id="yieldTo" type="date" class="input" value="${esc(to)}"></div></div><button class="btn blue" style="width:100%;margin-top:9px" ${seikaEventAttrs('click','seikaYieldRange',[])}>絞り込む</button></div><div class="card"><b>品目別集計</b><table class="table"><thead><tr><th>品目</th><th>件数</th><th>使用</th><th>出来高</th><th>歩留まり</th><th>原料費合計</th><th>歩留まり原価<br>税抜円/kg</th></tr></thead><tbody>${table}</tbody></table></div><div class="card"><b>明細</b><table class="table"><thead><tr><th>作業日</th><th>品目</th><th>使用</th><th>出来高</th><th>歩留まり</th><th>採用単価</th><th>採用区分</th><th>原料費</th><th>歩留まり原価<br>税抜円/kg</th></tr></thead><tbody>${detail}</tbody></table></div>`)}
+function v1115RenderYieldReport(rows,from,to){const group=new Map;for(const row of rows){const j=row.job||row,key=j.source_item_name||"（品目未設定）",a=group.get(key)||{input:0,out:0,cost:0,count:0,priced:true};a.input+=Number(j.input_weight_kg||0);a.out+=Number(j.output_weight_kg||0);a.priced&&=j.input_cost_yen!==null&&j.input_cost_yen!==undefined;if(j.input_cost_yen!==null&&j.input_cost_yen!==undefined)a.cost+=Number(j.input_cost_yen);a.count++;group.set(key,a)}const table=[...group.entries()].map(([name,a])=>`<tr><td>${esc(name)}</td><td>${a.count}件</td><td>${fmtRounded(a.input)}kg</td><td>${fmtRounded(a.out)}kg</td><td>${a.input?fmtRounded(a.out/a.input*100):"-"}%</td><td>${a.priced?money(a.cost)+"円":"未計算（価格未登録）"}</td><td>${a.out&&a.priced?money(a.cost/a.out)+"円/kg":"未計算"}</td></tr>`).join("")||'<tr><td colspan="7" class="small">該当するトリミング記録はありません。</td></tr>';const detail=rows.map(row=>{const j=row.job||row,lots=row.lots||[],price=j.purchase_price_yen_per_kg!=null?`${money(j.purchase_price_yen_per_kg)}円/kg` :"未計算（価格未登録）",yieldCost=j.input_cost_yen!=null&&Number(j.output_weight_kg)>0?`${money(Number(j.input_cost_yen)/Number(j.output_weight_kg))}円/kg`:"未計算";return`<tr><td>${esc(j.work_date||"")}</td><td>${esc(j.source_item_name||"")}</td><td>${price}</td><td style="min-width:104px">${v1200PriceBadges(j.price_match_summary||v1117MatchText(lots))}<details class="small" style="margin-top:3px"><summary style="cursor:pointer;color:#0b5aa6">根拠</summary><div style="margin-top:3px;white-space:normal;line-height:1.5">${esc(v1117MatchDetail(lots))}</div></details></td><td>${j.input_cost_yen!=null?money(j.input_cost_yen)+"円":"未計算"}</td><td>${yieldCost}</td></tr>`}).join("")||'<tr><td colspan="6" class="small">該当なし</td></tr>';pageShell("歩留まり価格","採用単価と歩留まり原価を確認します",`<div class="card"><button class="btn homeBtnDailyReport" style="width:100%" ${seikaEventAttrs('click','v1200DailyReportPage',[])}>製造日報を開く（使用原料・出来高・歩留まり）</button></div>${v1200UnpricedCard(rows)}<div class="notice"><b>価格の採用順</b><div class="small">①市場4社は「市場価格」 ②その他は同じ品目・産地・仕入先の「契約価格」 ③該当なしは同一品目の有効価格平均（四捨五入）</div></div><div class="card"><div class="row"><div><label class="label">開始日</label><input id="yieldFrom" type="date" class="input" value="${esc(from)}"></div><div><label class="label">終了日</label><input id="yieldTo" type="date" class="input" value="${esc(to)}"></div></div><button class="btn blue" style="width:100%;margin-top:9px" ${seikaEventAttrs('click','seikaYieldRange',[])}>絞り込む</button></div><div class="card"><b>品目別集計</b><table class="table"><thead><tr><th>品目</th><th>件数</th><th>使用</th><th>出来高</th><th>歩留まり</th><th>原料費合計</th><th>歩留まり原価<br>税抜円/kg</th></tr></thead><tbody>${table}</tbody></table></div><div class="card"><b>明細</b><table class="table"><thead><tr><th>作業日</th><th>品目</th><th>採用単価</th><th>採用区分</th><th>原料費</th><th>歩留まり原価<br>税抜円/kg</th></tr></thead><tbody>${detail}</tbody></table></div>`)}
 function v1116TrimmingGroup(rows){const group=new Map;for(const row of rows){
 const j=row.job||row,key=j.source_item_name||"（品目未設定）",a=group.get(key)||{count:0,input:0,output:0,loss:0,cost:0,priced:true};a.count++
 ;a.input+=Number(j.input_weight_kg||0);a.output+=Number(j.output_weight_kg||0);a.loss+=Number(j.loss_weight_kg||0)
@@ -6250,7 +6328,7 @@ p_lots:lots,p_outputs:outputs,p_note:document.getElementById("trimNote")?.value.
 }catch(e){alert(e.message||"トリミングを登録できませんでした")}}function v1115AddHomeButtons(){const menu=document.querySelector(".homePrimary, .homeGrid, .menu")
 ;if(!menu)return
 ;if(v1115CanTrimmingEdit()&&!document.getElementById("v1115TrimHome"))menu.insertAdjacentHTML("beforeend",'<button id="v1115TrimHome" class="btn homeBtnTrimming" data-seika-click-action="trimmingPage" data-seika-click-args="%5B%5D">トリミング・歩留まり登録</button>')
-;if(!document.getElementById("v1115YieldHome"))menu.insertAdjacentHTML("beforeend",`<button id="v1115YieldHome" class="btn homeBtnYield" data-seika-click-action="yieldReportPage" data-seika-click-args="%5B%5D">品目別歩留まり表</button><button id="v1115PriceHome" class="btn homeBtnPurchasePrice" data-seika-click-action="purchasePricesPage" data-seika-click-args="%5B%5D">仕入れ価格表</button>`)
+;if(!document.getElementById("v1115YieldHome"))menu.insertAdjacentHTML("beforeend",`<button id="v1200DailyHome" class="btn homeBtnDailyReport" data-seika-click-action="v1200DailyReportPage" data-seika-click-args="%5B%5D">製造日報</button><button id="v1115YieldHome" class="btn homeBtnYield" data-seika-click-action="yieldReportPage" data-seika-click-args="%5B%5D">歩留まり価格</button><button id="v1115PriceHome" class="btn homeBtnPurchasePrice" data-seika-click-action="purchasePricesPage" data-seika-click-args="%5B%5D">仕入れ価格表</button>`)
 ;if(canInventoryCountView()&&!document.getElementById("v1118CountHome"))menu.insertAdjacentHTML("beforeend",'<button id="v1118CountHome" class="btn homeBtnCount" data-seika-click-action="inventoryCountHome" data-seika-click-args="%5B%5D">棚卸しモード</button>')
 }const v1115HomeBase=home;home=function(){v1115HomeBase();v1115AddHomeButtons()};
 /* ===== v1.115 LINE在庫報告：通常在庫＋QR在庫 ===== */
@@ -11383,13 +11461,23 @@ const V198_GUIDE_SECTIONS={
    "使った数量または重量を入力します。ケース品は量目から自動で重量に換算されます。",
    "「出来高」に入替品を追加し、重量kgを入力します。数量と1個あたりの重量からでも計算できます。",
    "使用重量・ロス・歩留まりを確認し、必要ならメモを入れて登録します。"],
-  check:"登録後は「品目別歩留まり表」に作業日・歩留まり・採用単価が表示されます。",
+  check:"登録後は「製造日報」で使用原料・出来高・歩留まりを、「歩留まり価格」で採用単価を確認できます。",
   caution:"通常在庫・QR在庫・QR操作履歴は変更されません。日報の実績だけを保存します。歩留まりが0%になるときは使用原料が入っていません。"},
- yield:{title:"品目別歩留まり表を見る・作業日を直す",where:"ホーム → 品目別歩留まり表",
+ dailyReport:{title:"製造日報を見る",where:"ホーム → 製造日報",
+  steps:["作業日を選んで「表示」を押します。前日・翌日のボタンでも移動できます。",
+   "登録ごとにカードが並びます。使用原料はロット番号・入荷日・産地・仕入先つきで確認できます。",
+   "出来高は入替品ごとの重量が出ます。数量と1個あたりの重量から登録した場合はその内訳も表示されます。",
+   "廃棄（ロス）と歩留まりを確認します。"],
+  check:"上部の「この日の合計」で、その日の使用原料・出来高・廃棄・歩留まりをまとめて確認できます。",
+  caution:"ここでいう廃棄は、使用原料から出来高を引いた計算上のロスです。廃棄一覧に登録した数量は含みません。価格は表示しません。単価は「歩留まり価格」で確認してください。"},
+ yield:{title:"歩留まり価格を見る・作業日を直す",where:"ホーム → 歩留まり価格",
   steps:["開始日と終了日を選び「絞り込む」を押します。",
    "「品目別集計」で、品目ごとの使用・出来高・歩留まり・原料費・歩留まり原価を確認します。",
    "「作業日別」で、その作業日時点の品目ごとの平均歩留まり原価を確認します。",
-   "「明細」で1件ずつの採用単価と、価格の採用区分・根拠を確認します。",
+   "「明細」で1件ずつの採用単価と採用区分を確認します。区分は色付きのバッジで、詳しい理由は「根拠」を開くと読めます。",
+   "「未計算の日報」がある場合は、仕入価格を登録してから「価格を再計算」を押します。",
+   "使用原料や出来高の内訳は「製造日報」で確認します。",
+
    "作業日を間違えた日報は「作業日の修正」で直します。使ったロットが品名・ロット番号・産地・仕入先つきで出るので、それで日報を見分けて日付を直し保存します。"],
   check:"作業日を保存すると、その日付にあわせて単価も計算し直されます。",
   caution:"「未計算（価格未登録）」は、その品目の仕入価格が無いか、入荷日の週より後にしか価格が無い場合です。仕入れ価格表を確認してください。"},
@@ -11458,13 +11546,13 @@ const V198_GUIDE_SECTIONS={
   caution:"運用中の品目を外すと、通常在庫との二重管理になります。変更前に確認してください。"}
 };
 const V198_ROLE_ADD={
- admin:["trimming","yield","price","weekly","dest","outbound","batch","count","analysis","adminops","pwa","qritems"],
- worker:["trimming","yield","weekly","outbound","batch","count","analysis","pwa","qritems"],
- buyer:["yield","price","outbound","analysis","pwa"],
- sales:["yield","price","weekly","outbound","analysis","pwa"],
- clerk:["yield","price","weekly","outbound","pwa"],
- viewer:["yield","outbound","pwa"],
- office_viewer:["yield","outbound","pwa"]
+ admin:["trimming","dailyReport","yield","price","weekly","dest","outbound","batch","count","analysis","adminops","pwa","qritems"],
+ worker:["trimming","dailyReport","yield","weekly","outbound","batch","count","analysis","pwa","qritems"],
+ buyer:["dailyReport","yield","price","outbound","analysis","pwa"],
+ sales:["dailyReport","yield","price","weekly","outbound","analysis","pwa"],
+ clerk:["dailyReport","yield","price","weekly","outbound","pwa"],
+ viewer:["dailyReport","yield","outbound","pwa"],
+ office_viewer:["dailyReport","yield","outbound","pwa"]
 };
 (function v198ApplyGuides(){
   for(const [role,keys] of Object.entries(V198_ROLE_ADD)){
