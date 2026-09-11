@@ -5317,7 +5317,7 @@ const np=document.getElementById("newPass")?.value,np2=document.getElementById("
 const done=await fetch(`${SUPABASE_URL}/functions/v1/${V188_USER_ADMIN_FUNCTION}`,{method:"POST",headers:{apikey:SUPABASE_KEY,
 Authorization:"Bearer "+authToken(),"Content-Type":"application/json"},body:JSON.stringify({action:"change_password",password:np})
 }),text=await done.text();let ans=null;try{ans=text?JSON.parse(text):null}catch(e){}
-if(!done.ok||ans?.ok===false)throw new Error(ans?.message||"変更できませんでした");authProfile.must_change_password=false
+if(!done.ok||ans?.ok===false)throw new Error(ans?.message||"変更できませんでした");try{await fetch(SUPABASE_URL+"/rest/v1/rpc/seika_mark_password_changed_v1202",{method:"POST",headers:qrApiHeaders(),body:"{}"})}catch(e){}try{await authProfileLoad()}catch(e){}authProfile.must_change_password=false
 ;authProfile.password_changed_at=(new Date).toISOString();alert("パスワードを変更しました");home()}catch(e){alert(e.message)}}
 ;const V188_USER_ADMIN_FUNCTION="seika-user-admin";let v188AdminUsers=[];const V188_FULL_NAMES={hirata:"平田 祐希",yokosuka_ryo:"横須賀 良太",hitomi:"人見 和之",
 kurosawa:"黒澤 正行",yokosuka_ru:"横須賀 瑠河",saito_yuji:"斎藤 雄二",furenki:"フレンキ",hiep:"ヒェップ",seki_hiroshi:"関 宏世",araki:"荒木 貴裕",saito_dai:"斎藤 大明",yoshida:"吉田 智彦",sakamoto:"坂本 美穂",
@@ -11751,7 +11751,97 @@ v138T=function(value){const lang=v201Lang();const t=String(value==null?"":value)
 v138RestoreLanguage=function(){document.documentElement.lang=v201Lang()||"ja"};
 v138RestoreLanguage();
 
-window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 多言語・ふりがな';
+
+/* ===== v1.199-c2 翻訳を「一部翻訳」へ戻す（QR入庫のフリーズ対策） =====
+   全文置換方式は品名を「訳 / 和名」へ展開するが、その結果が MutationObserver で
+   再び翻訳対象になり「訳 / 訳 / 和名」と際限なく伸び続けるため画面が固まる。
+   適用範囲を v1.138 相当の限定セレクタへ戻し、ふりがなと品名の併記は行わない。
+   ヒェップ（ベトナム語）もフレンキ（インドネシア語）と同じ範囲にそろえる。 */
+const V202_VI={"ログイン": "Đăng nhập", "安全なログイン": "Đăng nhập an toàn", "名前を選択してください": "Vui lòng chọn tên của bạn", "パスワード": "Mật khẩu", "確認中...": "Đang kiểm tra...", "名前を選んで、パスワードを入力してください。": "Hãy chọn tên của bạn, sau đó nhập mật khẩu.", "現場オペレーション管理": "Quản lý vận hành tại hiện trường", "入庫から在庫、廃棄、出庫まで。": "Từ nhập hàng, tồn kho, loại bỏ đến xuất hàng.", "青果センターの毎日をひとつに。": "Gộp mọi công việc hằng ngày của trung tâm rau quả vào một hệ thống.", "戻る": "Quay lại", "ホーム": "Trang chủ", "再読込": "Tải lại", "メニュー": "Menu", "閉じる": "Đóng", "次へ": "Tiếp theo", "保存": "Lưu", "登録": "Lưu", "保存中...": "Đang lưu...", "登録中...": "Đang lưu...", "読み込み中...": "Đang tải...", "エラー": "Lỗi", "権限がありません": "Bạn không có quyền.", "在庫管理": "Quản lý tồn kho", "QR在庫管理": "Quản lý tồn kho QR", "在庫報告コピー": "Sao chép báo cáo tồn kho", "品目設定": "Cài đặt mặt hàng", "適正在庫設定": "Cài đặt tồn kho hợp lý", "産地状況・市場動向メモ": "Ghi chú tình hình vùng trồng và thị trường", "網コンテナ在庫": "Tồn kho thùng lưới", "廃棄管理": "Quản lý hàng loại bỏ", "分析・判断支援": "Phân tích và hỗ trợ quyết định", "本日入力済み": "Đã nhập hôm nay", "本日未入力": "Chưa nhập hôm nay", "発注候補": "Mặt hàng nên đặt thêm", "過多品目": "Mặt hàng tồn nhiều", "担当品目": "Mặt hàng phụ trách", "最終入力": "Lần nhập gần nhất", "記録なし": "Chưa có dữ liệu", "最新の情報を確認する場合は、再読込を押してください。": "Nhấn “Tải lại” để xem thông tin mới nhất.", "QR入庫": "Nhập hàng QR", "品目と数量を入力して登録します": "Nhập tên mặt hàng và số lượng rồi lưu", "入庫する品目": "Mặt hàng nhập vào", "入庫日": "Ngày nhập hàng", "品目": "Mặt hàng", "マスターから選択してください": "Hãy chọn từ danh sách", "通常品目の後に、じゃがいも品種をまとめて表示します。": "Sau các mặt hàng thường sẽ hiển thị chung các giống khoai tây.", "担当者": "Người phụ trách", "仕入れ担当者": "Người phụ trách thu mua", "荷受け担当者": "Người nhận hàng", "品目から自動入力": "Tự động điền theo mặt hàng", "品目選択後に自動入力": "Tự động điền sau khi chọn mặt hàng", "荷姿と数量": "Quy cách đóng gói và số lượng", "荷姿": "Quy cách đóng gói", "仕入先・保管場所": "Nhà cung cấp và nơi bảo quản", "仕入先": "Nhà cung cấp", "産地": "Vùng sản xuất", "規格など（任意）": "Quy cách và thông tin khác (không bắt buộc)", "保管場所": "Nơi bảo quản", "登録してQR貼り紙PDFへ": "Lưu và mở PDF giấy dán QR", "PDFを開く・印刷": "Mở và in PDF", "必須": "Bắt buộc", "任意": "Không bắt buộc", "未設定": "Chưa thiết lập", "未確定": "Chưa xác định", "確定": "Đã xác định", "品質評価": "Đánh giá chất lượng", "QR品質評価": "Đánh giá chất lượng QR", "品質評価を訂正": "Sửa đánh giá chất lượng", "在庫数量は変わりません": "Số lượng tồn kho không thay đổi", "品質状態だけをロットへ記録します。不良品を在庫から減らす場合は、評価後にQR廃棄を登録してください。": "Chỉ tình trạng chất lượng được ghi vào lô hàng. Nếu muốn trừ hàng hỏng khỏi tồn kho, hãy đăng ký loại bỏ QR sau khi đánh giá.", "総合判定": "Kết quả tổng thể", "良好": "Tốt", "要確認": "Cần kiểm tra", "不良": "Không đạt", "確認された状態（複数選択可）": "Tình trạng phát hiện (có thể chọn nhiều)", "写真（任意・最大3枚）": "Ảnh (không bắt buộc, tối đa 3 ảnh)", "問題時のみ登録します。長辺1280px、1枚350KB以下へ自動圧縮します。": "Chỉ thêm ảnh khi có vấn đề.", "写真ライブラリから選択": "Chọn từ thư viện ảnh", "メモ（任意）": "Ghi chú (không bắt buộc)", "訂正理由": "Lý do sửa", "品質評価を登録": "Lưu đánh giá chất lượng", "品質評価を保存しています": "Đang lưu đánh giá chất lượng", "品質評価の確認": "Xác nhận đánh giá chất lượng", "訂正した評価を登録": "Lưu đánh giá đã sửa", "傷み": "Hư hỏng", "変色": "Đổi màu", "腐敗": "Thối", "カビ": "Mốc", "打撲・傷": "Dập hoặc trầy xước", "しおれ": "Héo", "異臭": "Mùi lạ", "規格外": "Không đạt quy cách", "温度異常": "Nhiệt độ bất thường", "その他": "Khác", "仕入先を入力": "Nhập nhà cung cấp", "例：茨城 → 茨城県産": "Ví dụ: Ibaraki → sản xuất tại tỉnh Ibaraki", "例：3L、秀品、フジ用": "Ví dụ: 3L, hàng loại tốt, dùng cho Fuji", "品質状態や確認内容": "Tình trạng chất lượng hoặc nội dung kiểm tra", "例：判定項目の選択間違い": "Ví dụ: chọn sai mục đánh giá", "パスワードを入力してください。": "Vui lòng nhập mật khẩu.", "再ログインしてください。": "Vui lòng đăng nhập lại.", "通信状況を確認してください。": "Vui lòng kiểm tra kết nối mạng.", "登録後も在庫数量は変わりません。": "Sau khi lưu, số lượng tồn kho vẫn không thay đổi.", "なし": "Không có", "写真": "Ảnh", "状態": "Tình trạng", "判定": "Kết quả"};
+const V202_MSG={"入庫日を入力してください。": {"id": "Pilih tanggal penerimaan.", "vi": "Hãy chọn ngày nhập hàng."}, "品目を選択してください。": {"id": "Pilih nama barang.", "vi": "Hãy chọn mặt hàng."}, "仕入れ担当者を入力してください。": {"id": "Masukkan petugas pembelian.", "vi": "Hãy nhập người phụ trách thu mua."}, "荷姿を選択してください。": {"id": "Pilih jenis kemasan.", "vi": "Hãy chọn quy cách đóng gói."}, "数量を入力してください。": {"id": "Masukkan jumlah.", "vi": "Hãy nhập số lượng."}, "仕入先を入力してください。": {"id": "Masukkan pemasok.", "vi": "Hãy nhập nhà cung cấp."}, "産地を入力してください。": {"id": "Masukkan daerah asal.", "vi": "Hãy nhập vùng sản xuất."}, "保管場所を選択してください。": {"id": "Pilih lokasi penyimpanan.", "vi": "Hãy chọn nơi bảo quản."}, "総合判定を選択してください。": {"id": "Pilih hasil keseluruhan.", "vi": "Hãy chọn kết quả tổng thể."}, "「良好」のときは状態と写真を登録できません。": {"id": "Jika hasilnya “Baik”, kondisi masalah dan foto tidak dapat ditambahkan.", "vi": "Khi kết quả là “Tốt” thì không thể thêm tình trạng và ảnh."}, "「要確認」「不良」のときは状態を1つ以上選んでください。": {"id": "Untuk “Perlu diperiksa” atau “Buruk”, pilih minimal satu kondisi.", "vi": "Với “Cần kiểm tra” hoặc “Không đạt”, hãy chọn ít nhất một tình trạng."}, "「その他」の内容をメモに入力してください。": {"id": "Masukkan rincian “Lainnya” pada catatan.", "vi": "Hãy ghi nội dung của “Khác” vào phần ghi chú."}, "訂正理由を入力してください。": {"id": "Masukkan alasan koreksi.", "vi": "Hãy nhập lý do sửa."}, "メモは日本語で入力してください（必要なら日本人スタッフに聞いてください）。": {"id": "Tulis dalam bahasa Jepang (jika perlu, tanyakan kepada petugas Jepang).", "vi": "Hãy ghi bằng tiếng Nhật (nếu cần, hãy hỏi nhân viên người Nhật)."}};
+const V202_DICTS={id:V138_ID,vi:V202_VI};
+const V202_USER_LANGS={furenki:"id",hiep:"vi"};
+const V202_SCREENS=["login","home","qrHome","qrCreatePage","v1102QualityPage"];
+const V202_SELECTORS=".opsLoginScreen h1,.opsLoginScreen h2,.opsLoginScreen .small,.opsLoginScreen .opsLogoSub,.homeSummary .summaryLabel,.homePrimary button,.qrCreateForm h2,.qrCreateForm .label,.qrCreateForm .small,.qrCreateForm button,.qrCreateForm .qrReadOnlyField,.qrCreateForm .notice,#v1102ProblemFields,.wrap > .notice,.wrap > .card > .label,.wrap > .card > .small,.wrap > .card > button,.wrap > .card > .grid label,.wrap > .card > .grid .box";
+let v202Busy=false,v202Timer=null,v202Observer=null;
+function v202Lang(){const uid=(db&&db.role==="worker")?db.userId:"";const a=V202_USER_LANGS[uid];if(a)return a;
+ if(currentScreen==="login"){const s=document.getElementById("loginUser")?.value||"";return V202_USER_LANGS[s]||""}return""}
+function v202Dict(){return V202_DICTS[v202Lang()]||null}
+function v202T(value){const d=v202Dict(),t=String(value==null?"":value);return(d&&d[t])||t}
+function v202Msg(ja){const lang=v202Lang(),m=V202_MSG[ja];return(lang&&m&&m[lang])||ja}
+function v202Element(el,dict){if(!el)return;const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),ns=[];
+ while(w.nextNode())ns.push(w.currentNode);
+ ns.forEach(n=>{const parent=n.parentNode;if(!parent)return;const tag=parent.nodeName;
+  if(tag==="SCRIPT"||tag==="STYLE"||tag==="TEXTAREA")return;
+  const src=n.nodeValue,trimmed=src.trim();if(!trimmed)return;
+  const hit=dict[trimmed];if(hit&&hit!==trimmed)n.nodeValue=src.replace(trimmed,hit)})}
+function v202TranslateScreen(){const dict=v202Dict();document.documentElement.lang=v202Lang()||"ja";
+ if(!dict||v202Busy)return;v202Busy=true;
+ try{document.querySelectorAll(".headAction,.title,.head .sub,#syncInfo").forEach(el=>v202Element(el,dict));
+  if(V202_SCREENS.includes(currentScreen)){
+   document.querySelectorAll(V202_SELECTORS).forEach(el=>v202Element(el,dict));
+   document.querySelectorAll(".qrCreateForm input[placeholder],.qrCreateForm textarea[placeholder],#v1102QualityMemo,#v1102CorrectionReason").forEach(el=>{
+    const ph=el.getAttribute("placeholder"),hit=ph&&dict[ph];if(hit)el.setAttribute("placeholder",hit)});
+   if(currentScreen==="v1102QualityPage"){const memo=document.getElementById("v1102QualityMemo");
+    if(memo){const note=v202Msg("メモは日本語で入力してください（必要なら日本人スタッフに聞いてください）。");
+     memo.setAttribute("placeholder",note);let box=document.getElementById("v202JapaneseMemoNote");
+     if(!box){box=document.createElement("div");box.id="v202JapaneseMemoNote";box.className="small";
+      memo.insertAdjacentElement("beforebegin",box)}box.textContent=note}}}}catch(e){}
+ v202Busy=false}
+function v202Watch(){if(v202Observer)return;const host=document.getElementById("app")||document.body;if(!host)return;
+ try{v202Observer=new MutationObserver(()=>{if(v202Busy||!v202Dict())return;
+  if(v202Timer)clearTimeout(v202Timer);v202Timer=setTimeout(()=>{v202Timer=null;v202TranslateScreen()},80)});
+  v202Observer.observe(host,{childList:true,subtree:true})}catch(e){}}
+/* v1.201 の全文置換・ふりがなを停止する */
+try{if(v201Observer)v201Observer.disconnect()}catch(e){}
+v201Observer=null;
+v201Apply=function(){document.documentElement.lang=v202Lang()||"ja"};
+v201Watch=function(){};
+v201Text=function(){return null};
+v201RubyBar=function(){document.querySelector(".v201RubyBar")?.remove()};
+window.v201Apply=v201Apply;
+document.querySelector(".v201RubyBar")?.remove();
+/* v1.138/v1.139 の言語切替UIと全文走査は使わず、担当者ごとに自動で言語を決める */
+v138Language="ja";
+v138T=function(value){return v202T(value)};
+v138TextNode=function(){};
+v138TranslateElement=function(){};
+v138TranslateScreen=function(){v202TranslateScreen()};
+v138RestoreLanguage=function(){document.documentElement.lang=v202Lang()||"ja"};
+v138LanguageSwitchHtml=function(){return""};
+v138SetLanguage=function(){};
+const v202ShellBase=pageShell;
+pageShell=function(title,sub,body,opts={}){const r=v202ShellBase(title,sub,body,opts);
+ document.querySelector(".v201RubyBar")?.remove();
+ if(opts&&opts.login){const select=document.getElementById("loginUser");
+  if(select)select.onchange=function(){const s=this.value;login();
+   const rep=document.getElementById("loginUser");if(rep)rep.value=s;v202TranslateScreen()}}
+ v202TranslateScreen();v202Watch();return r};
+window.pageShell=pageShell;
+const v202QrSaveLotBase=qrSaveLot;
+qrSaveLot=async function(){if(v202Dict()){
+  const checks=[["qrReceivedDate","入庫日を入力してください。"],["qrItemName","品目を選択してください。"],
+   ["qrPurchaseStaff","仕入れ担当者を入力してください。"],["qrContainerType","荷姿を選択してください。"],
+   ["qrQty","数量を入力してください。"],["qrSupplier","仕入先を入力してください。"],
+   ["qrOrigin","産地を入力してください。"],["qrLoc","保管場所を選択してください。"]];
+  for(const [id,message] of checks){const el=document.getElementById(id);
+   if(el&&!String(el.value||"").trim()){alert(v202Msg(message));el.focus();return}}}
+ return v202QrSaveLotBase()};
+const v202SaveQualityBase=v1102SaveQuality;
+v1102SaveQuality=async function(q,supersedesId=""){if(v202Dict()){
+  const grade=document.querySelector('input[name="v1102Grade"]:checked')?.value||"",
+   issues=[...document.querySelectorAll('input[name="v1102Issue"]:checked')],
+   memo=document.getElementById("v1102QualityMemo")?.value.trim()||"",
+   correction=document.getElementById("v1102CorrectionReason")?.value.trim()||"";
+  if(!grade)return alert(v202Msg("総合判定を選択してください。"));
+  if(grade==="good"&&(issues.length||v1102QualityPhotos.length))return alert(v202Msg("「良好」のときは状態と写真を登録できません。"));
+  if((grade==="review"||grade==="bad")&&!issues.length)return alert(v202Msg("「要確認」「不良」のときは状態を1つ以上選んでください。"));
+  if(issues.some(x=>x.value==="その他")&&!memo)return alert(v202Msg("「その他」の内容をメモに入力してください。"));
+  if(supersedesId&&!correction)return alert(v202Msg("訂正理由を入力してください。"))}
+ return v202SaveQualityBase(q,supersedesId)};
+v202Watch();v202TranslateScreen();
+
+window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
 </html>
