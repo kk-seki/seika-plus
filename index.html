@@ -11932,6 +11932,104 @@ v1113DeleteWasteHistoryRow=async function(id){
  window.deleteHistoryRows=deleteHistoryRows;
 })();
 
+
+/* ===== v1.199-c6 同期診断パネル =====
+   端末側の実際の認証状態とサーバー応答を画面に出す。
+   iPadでは開発者コンソールが見られないため、失敗時に自動表示する。 */
+(function(){
+ function v1206Mask(t){ if(!t)return "(なし)"; return t.slice(0,12)+"…"+t.slice(-8)+"（長さ"+t.length+"）"; }
+ function v1206Jwt(t){
+   try{
+     const b=t.split(".")[1].replace(/-/g,"+").replace(/_/g,"/");
+     const j=JSON.parse(decodeURIComponent(escape(atob(b+"===".slice((b.length+3)%4)))));
+     return j;
+   }catch(e){ return null; }
+ }
+ async function v1206Http(label,url,opt){
+   try{
+     const res=await fetch(url,opt);
+     const body=await res.text();
+     return label+" → HTTP "+res.status+" "+(res.ok?"OK":"NG")+"\n    "+(body?body.slice(0,300):"(本文なし)");
+   }catch(e){ return label+" → 通信エラー: "+String(e&&e.message||e); }
+ }
+ async function v1206Diag(){
+   const L=[];
+   const now=Date.now();
+   L.push("■ 利用者");
+   L.push("  名前 / 役割 : "+((db&&db.user)||"?")+" / "+((db&&db.role)||"?"));
+   L.push("");
+   L.push("■ ログインセッション");
+   let sess=null;
+   try{ sess=authReadSession(); }catch(e){}
+   L.push("  セッション : "+(sess?"あり":"なし"));
+   const tok=(typeof authToken==="function"&&authToken())||"";
+   L.push("  トークン   : "+v1206Mask(tok));
+   let expMs=0;
+   try{ expMs=authExpiryMs(); }catch(e){}
+   if(expMs){
+     const min=Math.round((expMs-now)/60000);
+     L.push("  有効期限   : "+new Date(expMs).toLocaleString("ja-JP")+"（残り "+min+" 分）"+(expMs<=now?" ★期限切れ":""));
+   }else{ L.push("  有効期限   : 不明"); }
+   const pay=tok?v1206Jwt(tok):null;
+   if(pay){
+     L.push("  JWTのrole  : "+(pay.role||"(なし)"));
+     L.push("  JWTのemail : "+(pay.email||"(なし)"));
+     L.push("  JWTのsub   : "+(pay.sub||"(なし)"));
+   }else if(tok){ L.push("  JWT解析    : 失敗（形式が不正）"); }
+   L.push("");
+   L.push("■ セッション更新");
+   let ens=null;
+   try{ ens=await authEnsure(); }catch(e){ ens="例外: "+String(e&&e.message||e); }
+   L.push("  authEnsure : "+ens);
+   const tok2=(typeof authToken==="function"&&authToken())||"";
+   L.push("  更新後token: "+v1206Mask(tok2));
+   L.push("");
+   L.push("■ サーバー応答");
+   const H={apikey:SUPABASE_KEY,Authorization:"Bearer "+(tok2||SUPABASE_KEY),"Content-Type":"application/json"};
+   L.push(await v1206Http("  RPC current_app_role", SUPABASE_URL+"/rest/v1/rpc/current_app_role",{method:"POST",headers:H,body:"{}"}));
+   L.push(await v1206Http("  GET waste_records", SUPABASE_URL+"/rest/v1/waste_records?select=id&limit=1",{headers:H}));
+   const wr=(db&&db.wasteRecords&&db.wasteRecords.length)?db.wasteRecords[db.wasteRecords.length-1]:null;
+   if(wr&&typeof wasteRecordTableRow==="function"){
+     L.push(await v1206Http("  POST waste_records（1件）", SUPABASE_URL+"/rest/v1/waste_records",
+       {method:"POST",headers:{...H,Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify([wasteRecordTableRow(wr)])}));
+   }else{ L.push("  POST waste_records → 端末に廃棄記録がないため未実施"); }
+   L.push("");
+   L.push("■ 直近の履歴テーブルエラー");
+   L.push("  "+(window.v1205LastHistoryError||"(記録なし)"));
+   v1206Show(L.join("\n"));
+ }
+ function v1206Show(text){
+   let o=document.getElementById("v1206Panel");
+   if(o)o.remove();
+   o=document.createElement("div");
+   o.id="v1206Panel";
+   o.setAttribute("style","position:fixed;inset:0;z-index:99999;background:#fff;color:#111;overflow:auto;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;-webkit-user-select:text;user-select:text");
+   const b=document.createElement("button");
+   b.textContent="閉じる";
+   b.setAttribute("style","position:sticky;top:0;float:right;padding:8px 16px;font-size:14px;border:0;border-radius:8px;background:#334155;color:#fff");
+   b.onclick=()=>o.remove();
+   const h=document.createElement("div");
+   h.textContent="同期診断（この画面を撮影して送ってください）";
+   h.setAttribute("style","font-size:14px;font-weight:700;margin-bottom:8px");
+   const pre=document.createElement("pre");
+   pre.textContent=text;
+   pre.setAttribute("style","white-space:pre-wrap;word-break:break-all;margin:0");
+   o.appendChild(b); o.appendChild(h); o.appendChild(pre);
+   document.body.appendChild(o);
+ }
+ window.v1206Diag=v1206Diag;
+
+ let v1206Auto=false;
+ const v1206Timer=setInterval(()=>{
+   if(v1206Auto)return;
+   const bad=(typeof historyTablesReady!=="undefined"&&!historyTablesReady)||!!window.v1205LastHistoryError;
+   if(bad&&db&&db.role==="admin"&&document.body){
+     v1206Auto=true; clearInterval(v1206Timer);
+     setTimeout(()=>{ v1206Diag().catch(e=>v1206Show("診断中にエラー: "+String(e&&e.message||e))); },1500);
+   }
+ },3000);
+})();
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
