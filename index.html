@@ -11841,6 +11841,19 @@ v1102SaveQuality=async function(q,supersedesId=""){if(v202Dict()){
  return v202SaveQualityBase(q,supersedesId)};
 v202Watch();v202TranslateScreen();
 
+
+/* ===== v1.199-c3 廃棄記録の削除：クラウド未登録の記録にも対応 ===== */
+v1113DeleteWasteHistoryRow=async function(id){
+ const key=encodeURIComponent(String(id)),base=`${SUPABASE_URL}/rest/v1/${HISTORY_TABLES.wasteRecords}`
+ ;const response=await fetch(`${base}?id=eq.${key}&select=id`,{method:"DELETE",headers:historyApiHeaders({Prefer:"return=representation"})})
+ ;if(!response.ok)throw new Error(await response.text()||"廃棄履歴を削除できませんでした")
+ ;const deleted=await response.json()
+ ;if(Array.isArray(deleted)&&deleted.some(row=>String(row?.id||"")===String(id)))return
+ ;const check=await fetch(`${base}?id=eq.${key}&select=id`,{headers:historyApiHeaders()})
+ ;if(!check.ok)throw new Error("クラウド上の廃棄記録を削除できませんでした。権限を確認してください")
+ ;const rows=await check.json()
+ ;if(Array.isArray(rows)&&rows.length)throw new Error("クラウド上の廃棄記録を削除できませんでした。権限を確認してください")};
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
