@@ -11995,7 +11995,8 @@ v1113DeleteWasteHistoryRow=async function(id){
    }else{ L.push("  POST waste_records → 端末に廃棄記録がないため未実施"); }
    L.push("");
    L.push("■ 直近の履歴テーブルエラー");
-   L.push("  "+(window.v1205LastHistoryError||"(記録なし)"));
+   L.push("  REST側 : "+(window.v1205LastHistoryError||"(記録なし)"));
+   L.push("  RPC側  : "+(window.v1207LastRpcError||"(記録なし)"));
    v1206Show(L.join("\n"));
  }
  function v1206Show(text){
@@ -12028,6 +12029,65 @@ v1113DeleteWasteHistoryRow=async function(id){
      setTimeout(()=>{ v1206Diag().catch(e=>v1206Show("診断中にエラー: "+String(e&&e.message||e))); },1500);
    }
  },3000);
+})();
+
+
+/* ===== v1.199-c7 履歴保存をRPC失敗時にREST直書きへ退避 =====
+   真の保存経路は RPC save_history_records_v188。これが失敗すると
+   loadHistoryTablesToDb の同じ try の中で例外になり、直前に true にした
+   historyTablesReady が false へ戻る。その結果、以後の保存が丸ごと
+   スキップされ続けていた。読み込み成功と保存を切り離し、RPCが駄目なら
+   実地検証で 201 を確認済みの REST 直書きへ退避する。            */
+(function(){
+ window.v1207LastRpcError="";
+ const v1207RpcSave=saveHistoryTablesNow;
+
+ async function v1207RestSave(){
+   const role=db&&db.role;
+   if(["admin","worker"].includes(role)){
+     await upsertHistoryTable(HISTORY_TABLES.records,db.records||[],inventoryRecordTableRow);
+     await upsertHistoryTable(HISTORY_TABLES.movements,db.movements||[],movementTableRow);
+   }
+   if(["admin","worker","sales","clerk"].includes(role)){
+     await upsertHistoryTable(HISTORY_TABLES.wasteRecords,db.wasteRecords||[],wasteRecordTableRow);
+   }
+ }
+
+ saveHistoryTablesNow=async function(){
+   try{
+     await v1207RpcSave();
+     window.v1207LastRpcError="";
+     return;
+   }catch(e){
+     const msg=String((e&&e.message)||e||"");
+     window.v1207LastRpcError=msg;
+     console.error("[履歴RPC失敗→REST退避]",msg);
+     await v1207RestSave();
+     try{ setSyncState("保存済み","履歴を直接保存（RPCは失敗）"); }catch(_){}
+   }
+ };
+ window.saveHistoryTablesNow=saveHistoryTablesNow;
+
+ loadHistoryTablesToDb=async function(){
+   try{
+     const [records,wasteRecords,movements]=await Promise.all([
+       fetchHistoryTable(HISTORY_TABLES.records),
+       fetchHistoryTable(HISTORY_TABLES.wasteRecords),
+       fetchHistoryTable(HISTORY_TABLES.movements)]);
+     db.records=mergeHistoryById(db.records,records).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0));
+     db.wasteRecords=mergeHistoryById(db.wasteRecords,wasteRecords).sort((a,b)=>new Date(a.date||a.createdAt||0)-new Date(b.date||b.createdAt||0));
+     db.movements=mergeHistoryById(db.movements,movements).sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0));
+     historyTablesReady=true;
+   }catch(e){
+     historyTablesReady=false;
+     if(typeof v1205Report==="function")v1205Report("履歴の読み込み",e);
+     return;
+   }
+   try{ await saveHistoryTablesNow(); }
+   catch(e){ if(typeof v1205Report==="function")v1205Report("履歴の保存",e); }
+   try{ v188PersistDb(); }catch(e){}
+ };
+ window.loadHistoryTablesToDb=loadHistoryTablesToDb;
 })();
 
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
