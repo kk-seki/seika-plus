@@ -11883,6 +11883,55 @@ v1113DeleteWasteHistoryRow=async function(id){
  window.v1204HealHistorySync=v1204HealHistorySync;
 })();
 
+
+/* ===== v1.199-c5 履歴テーブル保存の認証対応とエラーの可視化 =====
+   v1.199の認証改修は callRpc / qrSelect / qrInsert / qrApiHeaders だけを
+   JWT対応にしており、履歴テーブル(inventory_records / waste_records /
+   inventory_movements)の経路が漏れていた。加えて upsertHistoryTable の
+   失敗は呼び出し側で握りつぶされるため、画面は「保存済み」のまま
+   サーバーには1行も入らない状態になっていた。                     */
+(function(){
+ if(typeof v199ApiHeaders==="function"){
+   historyApiHeaders=v199ApiHeaders;
+   window.historyApiHeaders=v199ApiHeaders;
+ }
+ window.v1205LastHistoryError="";
+ let v1205Alerted=false;
+ function v1205Report(where,e){
+   const msg=String((e&&e.message)||e||"");
+   window.v1205LastHistoryError=where+" / "+msg;
+   console.error("[履歴テーブル]",where,msg);
+   try{ setSyncState("失敗","履歴テーブル："+msg.slice(0,120)); }catch(_){}
+   if(!v1205Alerted&&db&&db.role==="admin"){
+     v1205Alerted=true;
+     try{ alert("履歴テーブルへの保存に失敗しました。\n\n【場所】"+where+"\n\n【サーバーの応答】\n"+msg); }catch(_){}
+   }
+ }
+ window.v1205Report=v1205Report;
+
+ const v1205UpsertBase=upsertHistoryTable;
+ upsertHistoryTable=async function(table,rows,mapper){
+   try{
+     return await v199RetryOnAuth(()=>v1205UpsertBase(table,rows,mapper));
+   }catch(e){ v1205Report("保存 "+table,e); throw e; }
+ };
+ window.upsertHistoryTable=upsertHistoryTable;
+
+ const v1205FetchBase=fetchHistoryTable;
+ fetchHistoryTable=async function(table){
+   try{
+     return await v199RetryOnAuth(()=>v1205FetchBase(table));
+   }catch(e){ v1205Report("読み込み "+table,e); throw e; }
+ };
+ window.fetchHistoryTable=fetchHistoryTable;
+
+ const v1205DeleteBase=deleteHistoryRows;
+ deleteHistoryRows=async function(table,ids){
+   return await v199RetryOnAuth(()=>v1205DeleteBase(table,ids));
+ };
+ window.deleteHistoryRows=deleteHistoryRows;
+})();
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
