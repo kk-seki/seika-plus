@@ -11854,6 +11854,35 @@ v1113DeleteWasteHistoryRow=async function(id){
  ;const rows=await check.json()
  ;if(Array.isArray(rows)&&rows.length)throw new Error("クラウド上の廃棄記録を削除できませんでした。権限を確認してください")};
 
+
+/* ===== v1.199-c4 履歴テーブル同期の自己修復 =====
+   historyTablesReady は起動時に一度失敗すると再読み込みまで false のままで、
+   保存処理が丸ごと飛ばされ続ける。しかも画面には何も出ない。
+   定期的に復旧を試み、駄目なら管理者に見えるようにする。        */
+(function(){
+ let v1204Busy=false,v1204Warned=false;
+ async function v1204HealHistorySync(){
+  if(v1204Busy)return;
+  if(typeof cloudReady==="undefined"||!cloudReady)return;
+  if(historyTablesReady)return;
+  v1204Busy=true;
+  try{
+   await loadHistoryTablesToDb();
+   if(historyTablesReady){
+    v1204Warned=false;
+    setSyncState("保存済み","履歴テーブルの同期を復旧しました");
+   }else if(!v1204Warned&&db&&db.role==="admin"){
+    v1204Warned=true;
+    setSyncState("失敗","履歴テーブルへ保存できていません");
+   }
+  }catch(e){console.warn("history sync heal failed",e)}
+  finally{v1204Busy=false}
+ }
+ setTimeout(v1204HealHistorySync,5000);
+ setInterval(v1204HealHistorySync,60000);
+ window.v1204HealHistorySync=v1204HealHistorySync;
+})();
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
