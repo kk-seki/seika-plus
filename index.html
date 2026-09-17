@@ -12024,7 +12024,7 @@ v1113DeleteWasteHistoryRow=async function(id){
  const v1206Timer=setInterval(()=>{
    if(v1206Auto)return;
    const bad=(typeof historyTablesReady!=="undefined"&&!historyTablesReady)||!!window.v1205LastHistoryError;
-   if(bad&&db&&db.role==="admin"&&document.body){
+   if(false&&bad&&db&&db.role==="admin"&&document.body){
      v1206Auto=true; clearInterval(v1206Timer);
      setTimeout(()=>{ v1206Diag().catch(e=>v1206Show("診断中にエラー: "+String(e&&e.message||e))); },1500);
    }
@@ -12090,6 +12090,262 @@ v1113DeleteWasteHistoryRow=async function(id){
  window.loadHistoryTablesToDb=loadHistoryTablesToDb;
 })();
 
+
+/* ===== v1.199-c8 =====
+   ① 同期診断の自動表示を停止（調査用の足場だったため）
+   ② Android IMEで仕入先の1文字目が確定してしまう不具合の修正
+   ③ 仕入先・単協名の候補を編集できるようにする
+   ④ 戻るボタンを1つ前の画面へ戻す（履歴スタック）        */
+(function(){
+
+ /* ---------- ② IME中はdatalistを書き換えない ---------- */
+ let v1208Composing=false, v1208Timer=null;
+ document.addEventListener("compositionstart",()=>{v1208Composing=true},true);
+ document.addEventListener("compositionend",e=>{
+   v1208Composing=false;
+   const id=e&&e.target&&e.target.id;
+   if(id==="qrSupplier")v1208Later(v1208SupplierBase);
+   else if(id==="qrCooperativeName"||id==="qrEditCooperativeName")v1208Later(v1208CoopBase);
+ },true);
+ function v1208Later(fn){
+   if(!fn)return;
+   clearTimeout(v1208Timer);
+   v1208Timer=setTimeout(()=>{try{fn()}catch(e){}},220);
+ }
+ const v1208SupplierBase=typeof qrFillSupplierDatalist==="function"?qrFillSupplierDatalist:null;
+ const v1208CoopBase=typeof qrUpdateCooperativeSuggestions==="function"?qrUpdateCooperativeSuggestions:null;
+ if(v1208SupplierBase){
+   qrFillSupplierDatalist=function(){ if(v1208Composing)return; return v1208Later(v1208SupplierBase); };
+   window.qrFillSupplierDatalist=qrFillSupplierDatalist;
+ }
+ if(v1208CoopBase){
+   qrUpdateCooperativeSuggestions=function(){ if(v1208Composing)return; return v1208Later(v1208CoopBase); };
+   window.qrUpdateCooperativeSuggestions=qrUpdateCooperativeSuggestions;
+ }
+
+ /* ---------- ③ 候補の非表示リスト ---------- */
+ const v1208MastersBase=qrEnsureMasters;
+ qrEnsureMasters=function(){
+   v1208MastersBase();
+   db.qrSupplierHidden=Array.isArray(db.qrSupplierHidden)?db.qrSupplierHidden:[];
+   db.qrCooperativeHidden=Array.isArray(db.qrCooperativeHidden)?db.qrCooperativeHidden:[];
+ };
+ window.qrEnsureMasters=qrEnsureMasters;
+
+ function v1208Hidden(kind){
+   qrEnsureMasters();
+   const a=kind==="supplier"?db.qrSupplierHidden:db.qrCooperativeHidden;
+   return new Set(a.map(v=>qrNormalizeName(v)));
+ }
+ window.v1208IsHidden=(kind,name)=>v1208Hidden(kind).has(qrNormalizeName(name));
+
+ const v1208SupListBase=qrSupplierList;
+ qrSupplierList=async function(){
+   const arr=await v1208SupListBase();
+   const h=v1208Hidden("supplier");
+   return arr.filter(n=>!h.has(qrNormalizeName(n)));
+ };
+ window.qrSupplierList=qrSupplierList;
+
+ const v1208CoopListBase=qrCooperativeList;
+ qrCooperativeList=async function(){
+   const arr=await v1208CoopListBase();
+   const h=v1208Hidden("cooperative");
+   return arr.filter(n=>!h.has(qrNormalizeName(n)));
+ };
+ window.qrCooperativeList=qrCooperativeList;
+})();
+
+
+/* ===== v1.199-c8 後半：候補の編集画面と「戻る」の履歴スタック ===== */
+async function v1208CandidatePage(kind="supplier",msg=""){
+  setScreen("v1208CandidatePage",[kind,msg]);
+  if(!canQrOperate()){alert("仕入先・単協名の候補を編集できる権限がありません");return qrHome()}
+  qrEnsureMasters();
+  const isSup=kind!=="cooperative";
+  const label=isSup?"仕入先":"単協名";
+  const master=isSup?db.qrSuppliers:db.qrCooperatives;
+  const hidden=isSup?db.qrSupplierHidden:db.qrCooperativeHidden;
+  let all=[];
+  try{ all=isSup?await v1208AllSuppliers():await v1208AllCooperatives(); }catch(e){ all=[...master]; }
+  const hset=new Set(hidden.map(v=>qrNormalizeName(v)));
+  const mset=new Set(master.map(v=>qrNormalizeName(v)));
+  const shown=all.filter(n=>!hset.has(qrNormalizeName(n)));
+  const hid=all.filter(n=>hset.has(qrNormalizeName(n)));
+
+  const tabs=`<div class="card"><div class="row">
+    <button class="btn ${isSup?"":"gray"}" ${seikaEventAttrs('click','v1208CandidatePage',["supplier",""])}>仕入先</button>
+    <button class="btn ${isSup?"gray":""}" ${seikaEventAttrs('click','v1208CandidatePage',["cooperative",""])}>単協名</button>
+  </div></div>`;
+
+  const add=`<div class="card"><b>${label}を追加</b>
+    <div class="small">正しい名称を登録すると、入力時の候補に必ず出るようになります。</div>
+    <input id="v1208AddName" class="input" placeholder="例：${isSup?"中央園芸":"茨城中央"}" autocomplete="off">
+    <button class="btn" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1208AddCandidate',[kind])}>追加する</button></div>`;
+
+  const list=`<div class="card"><b>候補に出る${label}（${shown.length}件）</b>
+    <div class="small">誤入力されたものは「非表示」にすると候補から消えます。過去の記録自体は消えません。</div>
+    ${shown.length?shown.map(n=>`<div class="qrRow" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eee">
+        <div style="flex:1">${esc(n)}${mset.has(qrNormalizeName(n))?' <span class="small">（マスタ登録）</span>':' <span class="small">（過去の入力）</span>'}</div>
+        <button class="btn gray" style="padding:6px 12px" ${seikaEventAttrs('click','v1208HideCandidate',[kind,n])}>非表示</button>
+        <button class="btn" style="padding:6px 12px" ${seikaEventAttrs('click','v1208RenameCandidate',[kind,n])}>名称修正</button>
+      </div>`).join(""):'<div class="small">候補がありません。</div>'}</div>`;
+
+  const hiddenBox=`<div class="card"><b>非表示にした${label}（${hid.length}件）</b>
+    ${hid.length?hid.map(n=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eee">
+        <div style="flex:1">${esc(n)}</div>
+        <button class="btn" style="padding:6px 12px" ${seikaEventAttrs('click','v1208ShowCandidate',[kind,n])}>戻す</button>
+      </div>`).join(""):'<div class="small">ありません。</div>'}</div>`;
+
+  pageShell(`${label}の候補を編集`,"誤入力された候補を非表示にできます",okHtml(msg)+tabs+add+list+hiddenBox);
+}
+window.v1208CandidatePage=v1208CandidatePage;
+
+async function v1208AllSuppliers(){
+  qrEnsureMasters();let arr=[...db.qrSuppliers];
+  try{const rows=await qrSelect("qr_lots","select=supplier&supplier=not.is.null&order=created_at.desc&limit=300");
+      arr=arr.concat(rows.map(r=>r.supplier).filter(Boolean))}catch(e){}
+  const seen=new Set;
+  return arr.map(v=>String(v||"").trim()).filter(v=>{const k=qrNormalizeName(v);if(!k||seen.has(k))return false;seen.add(k);return true});
+}
+async function v1208AllCooperatives(){
+  qrEnsureMasters();let arr=[...db.qrCooperatives];
+  try{const rows=await qrSelect("qr_lots","select=cooperative_name&cooperative_name=not.is.null&order=created_at.desc&limit=300");
+      arr=arr.concat(rows.map(r=>r.cooperative_name).filter(Boolean))}catch(e){}
+  const seen=new Set;
+  return arr.map(v=>String(v||"").trim()).filter(v=>{const k=qrNormalizeName(v);if(!k||seen.has(k))return false;seen.add(k);return true});
+}
+window.v1208AllSuppliers=v1208AllSuppliers;window.v1208AllCooperatives=v1208AllCooperatives;
+
+function v1208Lists(kind){
+  qrEnsureMasters();
+  return kind!=="cooperative"
+    ?{master:db.qrSuppliers,hidden:db.qrSupplierHidden}
+    :{master:db.qrCooperatives,hidden:db.qrCooperativeHidden};
+}
+function v1208AddCandidate(kind){
+  const el=document.getElementById("v1208AddName");
+  const name=String(el&&el.value||"").trim();
+  if(!name)return alert("名称を入力してください");
+  const{master,hidden}=v1208Lists(kind);
+  const k=qrNormalizeName(name);
+  const i=hidden.findIndex(v=>qrNormalizeName(v)===k);
+  if(i>=0)hidden.splice(i,1);
+  if(!master.some(v=>qrNormalizeName(v)===k))master.push(name);
+  save();v1208CandidatePage(kind,`「${name}」を追加しました`);
+}
+function v1208HideCandidate(kind,name){
+  if(!confirm(`「${name}」を候補から非表示にします。\n過去の記録は消えません。よろしいですか？`))return;
+  const{master,hidden}=v1208Lists(kind);
+  const k=qrNormalizeName(name);
+  const i=master.findIndex(v=>qrNormalizeName(v)===k);
+  if(i>=0)master.splice(i,1);
+  if(!hidden.some(v=>qrNormalizeName(v)===k))hidden.push(name);
+  save();v1208CandidatePage(kind,`「${name}」を非表示にしました`);
+}
+function v1208ShowCandidate(kind,name){
+  const{hidden}=v1208Lists(kind);
+  const k=qrNormalizeName(name);
+  const i=hidden.findIndex(v=>qrNormalizeName(v)===k);
+  if(i>=0)hidden.splice(i,1);
+  save();v1208CandidatePage(kind,`「${name}」を候補に戻しました`);
+}
+function v1208RenameCandidate(kind,name){
+  const next=prompt(`「${name}」の正しい名称を入力してください。\n元の名称は候補から非表示になります。`,name);
+  if(next===null)return;
+  const fixed=String(next).trim();
+  if(!fixed)return alert("名称が空です");
+  const{master,hidden}=v1208Lists(kind);
+  const ok=qrNormalizeName(name),nk=qrNormalizeName(fixed);
+  if(ok!==nk){
+    const i=master.findIndex(v=>qrNormalizeName(v)===ok);
+    if(i>=0)master.splice(i,1);
+    if(!hidden.some(v=>qrNormalizeName(v)===ok))hidden.push(name);
+  }
+  const j=hidden.findIndex(v=>qrNormalizeName(v)===nk);
+  if(j>=0)hidden.splice(j,1);
+  if(!master.some(v=>qrNormalizeName(v)===nk))master.push(fixed);
+  save();v1208CandidatePage(kind,`「${name}」を「${fixed}」に修正しました`);
+}
+window.v1208AddCandidate=v1208AddCandidate;window.v1208HideCandidate=v1208HideCandidate;
+window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208RenameCandidate;
+
+/* ---------- QRホームに入口を追加 ---------- */
+(function(){
+ const base=qrHome;
+ qrHome=async function(msg=""){
+   await base(msg);
+   if(!canQrOperate())return;
+   if(document.getElementById("v1208CandEntry"))return;
+   const wrap=document.querySelector(".wrap");
+   if(!wrap)return;
+   wrap.insertAdjacentHTML("beforeend",
+     `<div class="card" id="v1208CandEntry"><b>仕入先・単協名の候補を編集</b>
+      <div class="small">誤入力された候補を非表示にできます。</div>
+      <button class="btn" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1208CandidatePage',["supplier",""])}>候補を編集する</button></div>`);
+ };
+ window.qrHome=qrHome;
+})();
+
+/* ===== v1.199-c8 ④ 戻るボタンを1つ前の画面へ =====
+   従来の goBack は画面名の分岐で、該当しないものは全部 home() だった。
+   setScreen が呼ばれるたびに履歴を積み、goBack は1つ前を再描画する。
+   renderCurrent が window[画面名](...引数) で解決できる作りなので、
+   同じ方法で前の画面を復元できる。                              */
+(function(){
+ const V1208_MAX=40;
+ let v1208Nav=[];            // [{name,args}]
+ let v1208Restoring=false;   // 復元中はスタックを積まない
+
+ const v1208SetScreenBase=setScreen;
+ setScreen=function(name,args=[]){
+   v1208SetScreenBase(name,args);
+   if(v1208Restoring)return;
+   if(name==="login"){v1208Nav=[];return}
+   const last=v1208Nav[v1208Nav.length-1];
+   const same=last&&last.name===name&&JSON.stringify(last.args)===JSON.stringify(args);
+   if(same)return;
+   if(last&&last.name===name)v1208Nav[v1208Nav.length-1]={name,args};
+   else v1208Nav.push({name,args});
+   if(v1208Nav.length>V1208_MAX)v1208Nav.splice(0,v1208Nav.length-V1208_MAX);
+ };
+ window.setScreen=setScreen;
+
+ function v1208IsHome(n){
+   return !n||n==="home"||n==="login"||n==="qrHome";
+ }
+
+ const v1208GoBackBase=goBack;
+ goBack=function(){
+   const s=currentScreen;
+   // カメラ画面は停止処理が必要なので従来処理へ
+   if(s==="qrCameraPage"||s==="qrCountCameraPage")return v1208GoBackBase();
+   // 出庫履歴・品質一覧からの復帰も従来処理を優先
+   if(s==="qrLotDetail"&&(typeof v1144OutboundDetailReturn!=="undefined"&&v1144OutboundDetailReturn))return v1208GoBackBase();
+   if(s==="qrLotDetail"&&(typeof v1140QualityDetailReturn!=="undefined"&&v1140QualityDetailReturn))return v1208GoBackBase();
+
+   // 現在の画面をスタックから外し、1つ前へ
+   if(v1208Nav.length&&v1208Nav[v1208Nav.length-1].name===s)v1208Nav.pop();
+   let prev=null;
+   while(v1208Nav.length){
+     const cand=v1208Nav[v1208Nav.length-1];
+     if(cand.name===s){v1208Nav.pop();continue}
+     prev=cand;break;
+   }
+   if(!prev)return v1208GoBackBase();
+   const fn=window[prev.name];
+   if(typeof fn!=="function")return v1208GoBackBase();
+   v1208Restoring=true;
+   let r;
+   try{ r=fn(...(prev.args||[])); }
+   catch(e){ v1208Restoring=false; return v1208GoBackBase(); }
+   if(r&&typeof r.finally==="function")return r.finally(()=>{v1208Restoring=false});
+   setTimeout(()=>{v1208Restoring=false},0);
+   return r;
+ };
+ window.goBack=goBack;
+ window.v1208NavDepth=()=>v1208Nav.length;
+})();
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
