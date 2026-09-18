@@ -12327,12 +12327,17 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    // 現在の画面をスタックから外し、1つ前へ
    if(v1208Nav.length&&v1208Nav[v1208Nav.length-1].name===s)v1208Nav.pop();
    let prev=null;
+   const skip=window.V1209_SKIP||new Set();
    while(v1208Nav.length){
      const cand=v1208Nav[v1208Nav.length-1];
-     if(cand.name===s){v1208Nav.pop();continue}
+     if(cand.name===s||skip.has(cand.name)){v1208Nav.pop();continue}
      prev=cand;break;
    }
-   if(!prev)return v1208GoBackBase();
+   // 戻り先が無い場合、QR系の画面からはQR管理ホームへ
+   if(!prev){
+     if(String(s||"").startsWith("qr")&&typeof qrHome==="function")return qrHome();
+     return v1208GoBackBase();
+   }
    const fn=window[prev.name];
    if(typeof fn!=="function")return v1208GoBackBase();
    v1208Restoring=true;
@@ -12345,6 +12350,120 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
  };
  window.goBack=goBack;
  window.v1208NavDepth=()=>v1208Nav.length;
+})();
+
+/* ===== v1.199-c9 =====
+   ① 戻るで品質評価の登録画面へ復帰しないようにする
+   ② 在庫入力・在庫表の重さ（全ロット／全移動履歴の再取得）を解消
+   ③ ホーム画面でボタン位置が後からズレるのを抑える           */
+(function(){
+
+ /* ---------- ① 復元してはいけない画面 ----------
+    v1102QualityPage は v1114OpenNewQualityEvaluation に差し替えられており、
+    開くと「登録済みです」の確認が再発火して qrLotDetail へ飛ばされる。
+    履歴の戻り先としては使わず、1つ前へ読み飛ばす。            */
+ const V1209_SKIP=new Set(["v1102QualityPage","qrCameraPage","qrCountCameraPage"]);
+ window.V1209_SKIP=V1209_SKIP;
+
+ /* ---------- ② 重いQR取得のキャッシュ ---------- */
+ const V1209_TTL=60000;
+ const v1209Cache=new Map();
+ function v1209Get(key){
+   const hit=v1209Cache.get(key);
+   if(hit&&Date.now()-hit.at<V1209_TTL)return hit.value;
+   return undefined;
+ }
+ function v1209Set(key,value){v1209Cache.set(key,{at:Date.now(),value});return value}
+ window.v1209ClearQrCache=function(){v1209Cache.clear()};
+
+ if(typeof v163SelectAll==="function"){
+   const base=v163SelectAll;
+   const heavy=["qr_lots","qr_lot_movements","qr_lot_monthly_snapshots"];
+   v163SelectAll=async function(table,baseQuery,pageSize=1000){
+     if(!heavy.includes(table))return base(table,baseQuery,pageSize);
+     const key="all|"+table+"|"+baseQuery;
+     const hit=v1209Get(key);
+     if(hit)return hit.slice();
+     const rows=await base(table,baseQuery,pageSize);
+     v1209Set(key,rows);
+     return rows.slice();
+   };
+   window.v163SelectAll=v163SelectAll;
+ }
+
+ if(typeof qrInventoryKgByItemForRoom==="function"){
+   const base=qrInventoryKgByItemForRoom;
+   qrInventoryKgByItemForRoom=async function(room){
+     const key="room|"+String(room);
+     const hit=v1209Get(key);
+     if(hit)return hit;
+     return v1209Set(key,await base(room));
+   };
+   window.qrInventoryKgByItemForRoom=qrInventoryKgByItemForRoom;
+ }
+ if(typeof qrInventoryKgByItemForRoomByDay==="function"){
+   const base=qrInventoryKgByItemForRoomByDay;
+   qrInventoryKgByItemForRoomByDay=async function(room,dayKeys){
+     const key="roomday|"+String(room)+"|"+(dayKeys||[]).join(",");
+     const hit=v1209Get(key);
+     if(hit)return hit;
+     return v1209Set(key,await base(room,dayKeys));
+   };
+   window.qrInventoryKgByItemForRoomByDay=qrInventoryKgByItemForRoomByDay;
+ }
+
+ /* 書き込みが起きたらキャッシュを捨てる */
+ if(typeof callRpc==="function"){
+   const base=callRpc;
+   callRpc=async function(name,args){
+     const r=await base(name,args);
+     if(/^(create|update|delete|save|apply|adjust|move|register|confirm|v\d+)/.test(String(name||"")))
+       v1209Cache.clear();
+     return r;
+   };
+   window.callRpc=callRpc;
+ }
+})();
+
+/* ---------- ② 在庫表の白画面を減らす ---------- */
+(function(){
+ if(typeof weeklyData!=="function")return;
+ const base=weeklyData;
+ weeklyData=async function(...a){
+   try{
+     if(typeof pageShell==="function")
+       pageShell("在庫表","集計しているところです",
+         '<div class="card"><b>読み込み中です</b><div class="small">QR在庫と通常在庫を集計しています。しばらくお待ちください。</div></div>');
+   }catch(e){}
+   return base(...a);
+ };
+ window.weeklyData=weeklyData;
+})();
+
+/* ---------- ③ ホームのレイアウトずれ対策 ---------- */
+(function(){
+ const css=document.createElement("style");
+ css.textContent=
+  "#v1143QualityTask{min-height:64px}"+
+  "#v1103BuyerQualityAlerts{min-height:40px}"+
+  "#v1143TodayTasks{min-height:96px}"+
+  ".homePrimary{scroll-margin-top:0}";
+ document.head.appendChild(css);
+
+ /* 同じ画面を描き直すときはスクロール位置を戻す（画面が飛ぶのを防ぐ） */
+ if(typeof pageShell==="function"){
+   const base=pageShell;
+   let last="";
+   pageShell=function(title,sub,body,opts={}){
+     const same=(last===String(title));
+     const y=same?(window.scrollY||0):0;
+     const r=base(title,sub,body,opts);
+     last=String(title);
+     if(same&&y>0){try{window.scrollTo(0,y)}catch(e){}}
+     return r;
+   };
+   window.pageShell=pageShell;
+ }
 })();
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
