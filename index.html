@@ -12432,8 +12432,8 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
  weeklyData=async function(...a){
    try{
      if(typeof pageShell==="function")
-       pageShell("在庫表","集計しているところです",
-         '<div class="card"><b>読み込み中です</b><div class="small">QR在庫と通常在庫を集計しています。しばらくお待ちください。</div></div>');
+       pageShell("在庫表","集計中",
+         '<div class="card"><b>読み込み中です</b><div class="small">QR在庫と通常在庫を集計しています。</div></div>');
    }catch(e){}
    return base(...a);
  };
@@ -12464,6 +12464,51 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    };
    window.pageShell=pageShell;
  }
+})();
+
+/* ===== v1.199-c10 在庫表の冷蔵庫切り替えを速くする =====
+   qrInventoryKgByItemForRoomByDay は
+     for(ロット) × for(98日) で v1101LotSnapshotAtDayEnd を呼び、
+     そのたびに移動履歴を先頭から再生していた。
+   この計算は「どの冷蔵庫を見ているか」に一切依存しない。
+   冷蔵庫の切り替えごとに全ロット×98日分を作り直していたのが
+   待ち時間と表の描画崩れの原因。結果を記憶して使い回す。      */
+(function(){
+ if(typeof v1101LotSnapshotAtDayEnd!=="function")return;
+ const base=v1101LotSnapshotAtDayEnd;
+ let memo=new Map();
+ v1101LotSnapshotAtDayEnd=function(lot,lotMoves,dayKey){
+   const id=String((lot&&(lot.id||lot.qr_key||lot.lot_no))||"");
+   if(!id)return base(lot,lotMoves,dayKey);
+   const key=id+"|"+String(dayKey);
+   if(memo.has(key))return memo.get(key);
+   const v=base(lot,lotMoves,dayKey);
+   memo.set(key,v);
+   return v;
+ };
+ window.v1101LotSnapshotAtDayEnd=v1101LotSnapshotAtDayEnd;
+
+ /* 取得キャッシュを捨てるときは、この記憶も一緒に捨てる */
+ const clearBase=window.v1209ClearQrCache;
+ window.v1209ClearQrCache=function(){
+   memo=new Map();
+   if(typeof clearBase==="function")clearBase();
+ };
+ window.v1210ClearSnapshotMemo=function(){memo=new Map()};
+ window.v1210SnapshotMemoSize=function(){return memo.size};
+})();
+
+/* 書き込みRPCのあとは記憶も破棄する */
+(function(){
+ if(typeof callRpc!=="function")return;
+ const base=callRpc;
+ callRpc=async function(name,args){
+   const r=await base(name,args);
+   if(/^(create|update|delete|save|apply|adjust|move|register|confirm)/.test(String(name||"")))
+     { if(typeof window.v1210ClearSnapshotMemo==="function")window.v1210ClearSnapshotMemo(); }
+   return r;
+ };
+ window.callRpc=callRpc;
 })();
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
