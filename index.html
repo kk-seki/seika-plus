@@ -12510,6 +12510,122 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
  };
  window.callRpc=callRpc;
 })();
+
+/* ===== v1.199-c11 在庫表の集計をサーバー側RPCへ =====
+   RPC qr_lot_daily_state_v1211 が「日ごとの在庫数と保管場所」を
+   変化した日だけ返す。端末側は移動履歴をダウンロードせず、
+   品目解決・kg換算・大型容器などの業務判定は従来処理をそのまま使う。
+   RPCが使えない場合は従来の端末側計算へ自動で戻る。        */
+(function(){
+ if(typeof qrInventoryKgByItemForRoomByDay!=="function")return;
+
+ let v1211States=null;      // Map(lotId -> {from, ch:[[day,qty,loc,del]]})
+ let v1211Active=false;
+ let v1211CacheKey="";
+ let v1211CacheAt=0;
+ const V1211_TTL=60000;
+ window.v1211LastError="";
+
+ function v1211Lookup(lot,dayKey){
+   if(!v1211States)return null;
+   const rec=v1211States.get(String(lot&&lot.id||""));
+   if(!rec)return null;
+   if(dayKey<rec.from)return null;
+   const ch=rec.ch;
+   let lo=0,hi=ch.length-1,found=-1;
+   while(lo<=hi){
+     const mid=(lo+hi)>>1;
+     if(ch[mid][0]<=dayKey){found=mid;lo=mid+1}else hi=mid-1;
+   }
+   if(found<0)return null;
+   const c=ch[found];
+   return{qty:Number(c[1])||0,location:String(c[2]||""),deleted:c[3]===true};
+ }
+
+ async function v1211Load(dayKeys){
+   const days=[...new Set(dayKeys||[])].sort();
+   if(!days.length)return false;
+   const from=days[0],to=days[days.length-1],key=from+"|"+to;
+   if(v1211States&&v1211CacheKey===key&&Date.now()-v1211CacheAt<V1211_TTL)return true;
+   const ans=await callRpc("qr_lot_daily_state_v1211",{p_from:from,p_to:to});
+   if(!ans||ans.ok!==true||!Array.isArray(ans.lots))
+     throw new Error((ans&&ans.message)||"日別在庫の取得に失敗しました");
+   const map=new Map();
+   for(const row of ans.lots)
+     map.set(String(row.id||""),{from:String(row.from||from),ch:Array.isArray(row.ch)?row.ch:[]});
+   v1211States=map;v1211CacheKey=key;v1211CacheAt=Date.now();
+   return true;
+ }
+
+ /* RPC使用中は移動履歴と月次スナップショットを取りに行かない */
+ const v1211SelectAllBase=v163SelectAll;
+ v163SelectAll=async function(table,baseQuery,pageSize=1000){
+   if(v1211Active&&(table==="qr_lot_movements"||table==="qr_lot_monthly_snapshots"))return[];
+   return v1211SelectAllBase(table,baseQuery,pageSize);
+ };
+ window.v163SelectAll=v163SelectAll;
+
+ /* 日ごとの状態はRPCの結果を引く */
+ const v1211SnapBase=v1101LotSnapshotAtDayEnd;
+ v1101LotSnapshotAtDayEnd=function(lot,movements,dayKey){
+   if(v1211Active)return v1211Lookup(lot,dayKey);
+   return v1211SnapBase(lot,movements,dayKey);
+ };
+ window.v1101LotSnapshotAtDayEnd=v1101LotSnapshotAtDayEnd;
+
+ const v1211ByDayBase=qrInventoryKgByItemForRoomByDay;
+ qrInventoryKgByItemForRoomByDay=async function(room,dayKeys){
+   let ready=false;
+   try{ ready=await v1211Load(dayKeys); }
+   catch(e){
+     window.v1211LastError=String(e&&e.message||e);
+     console.warn("[在庫表] サーバー側集計を使えないため端末側で計算します:",window.v1211LastError);
+     ready=false;
+   }
+   if(!ready)return v1211ByDayBase(room,dayKeys);
+   v1211Active=true;
+   try{ return await v1211ByDayBase(room,dayKeys); }
+   finally{ v1211Active=false; }
+ };
+ window.qrInventoryKgByItemForRoomByDay=qrInventoryKgByItemForRoomByDay;
+
+ /* キャッシュ破棄に連動 */
+ const clearBase=window.v1209ClearQrCache;
+ window.v1209ClearQrCache=function(){
+   v1211States=null;v1211CacheKey="";v1211CacheAt=0;
+   if(typeof clearBase==="function")clearBase();
+ };
+
+ /* 数字が従来と一致するか確認する（管理者が任意に実行） */
+ window.v1211Verify=async function(room=(typeof weeklyRoom!=="undefined"?weeklyRoom:"第2冷蔵庫")){
+   const days=v163DayKeys(98);
+   v1211States=null;v1211CacheKey="";
+   const srv=await qrInventoryKgByItemForRoomByDay(room,days);
+   v1211Active=false;
+   if(typeof window.v1210ClearSnapshotMemo==="function")window.v1210ClearSnapshotMemo();
+   const cli=await v1211ByDayBase(room,days);
+   const diff=[];
+   const walk=(a,b,label)=>{
+     const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]);
+     for(const k of keys){
+       const da=(a||{})[k]||{},dbb=(b||{})[k]||{};
+       const dk=new Set([...Object.keys(da),...Object.keys(dbb)]);
+       for(const d of dk){
+         const x=JSON.stringify(da[d]||null),y=JSON.stringify(dbb[d]||null);
+         if(x!==y)diff.push(`${label} ${k} ${d}: サーバー=${x} 端末=${y}`);
+       }
+     }
+   };
+   walk(srv.totals,cli.totals,"品目");
+   walk(srv.normalTotals,cli.normalTotals,"通常");
+   walk(srv.largeTotals,cli.largeTotals,"大型");
+   const msg=diff.length
+     ?`差異 ${diff.length} 件\n\n`+diff.slice(0,30).join("\n")
+     :"差異はありません。サーバー側集計と端末側計算の数字は一致しています。";
+   alert(msg);
+   return diff;
+ };
+})();
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
