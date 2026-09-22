@@ -12801,6 +12801,161 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
   }catch(e){}
 })();
 
+
+/* ===== v1.204 QR在庫の合計kg表示 ===== */
+(function(){
+  function v1204Kg(lot){const v=qrLotCurrentKg(lot);return Number.isFinite(v)&&v>0?v:null}
+  function v1204Room(lot){return String(lot&&lot.storage_location||'').trim()||'保管場所なし'}
+  function v1204KgText(n){return fmtRounded(Math.round(Number(n||0)*10)/10)+'kg'}
+
+  async function v1204FetchLots(selected){
+    const q=typeof v1200QrItemQuery==='function'?v1200QrItemQuery(selected||''):'';
+    const rows=await qrSelect('qr_lots',`select=*&active=eq.true&current_qty=gt.0${q}&limit=5000`);
+    const list=Array.isArray(rows)?rows:[];
+    return (selected&&typeof v1200QrFilterByGroup==='function')?v1200QrFilterByGroup(list,selected):list;
+  }
+  function v1204Sum(lots){
+    const r={kg:0,lots:(lots||[]).length,unknown:0,rooms:new Map()};
+    for(const l of lots||[]){
+      const kg=v1204Kg(l);
+      if(kg==null){r.unknown++;continue}
+      r.kg+=kg;const k=v1204Room(l);r.rooms.set(k,(r.rooms.get(k)||0)+kg);
+    }
+    return r;
+  }
+  function v1204RoomHtml(rooms){
+    const list=[...rooms.entries()].sort((a,b)=>b[1]-a[1]);
+    if(!list.length)return '';
+    return `<div class="grid" style="margin-top:8px">`
+      +list.map(([name,kg])=>`<div class="box">${esc(name)}<b>${v1204KgText(kg)}</b></div>`).join('')+`</div>`;
+  }
+
+  /* ① QRロット一覧に合計kgカードを差し込む */
+  const v1204ListBase=qrLotListPage;
+  qrLotListPage=async function(...args){
+    const r=await v1204ListBase.apply(this,args);
+    const selected=String((typeof qrLotListState!=='undefined'&&qrLotListState.selectedItem)||args[0]||'').trim();
+    try{
+      const host=document.querySelector('.card');
+      if(!host)return r;
+      const box=document.createElement('div');
+      box.className='card';
+      box.id='v1204TotalCard';
+      box.innerHTML='<b>在庫合計（kg）</b><div class="small" style="margin-top:4px">集計中…</div>';
+      host.parentNode.insertBefore(box,host);
+      const lots=await v1204FetchLots(selected);
+      if(!document.getElementById('v1204TotalCard'))return r;
+      const s=v1204Sum(lots);
+      const label=selected?esc(v1200QrCanonName(selected)||selected):'QR在庫すべて';
+      box.innerHTML=`<b>在庫合計（kg）</b>`
+        +`<div class="small" style="margin-top:4px">${label}／在庫ありのロットを集計しています。表示件数の絞り込みには影響されません。</div>`
+        +`<div class="grid" style="margin-top:8px"><div class="box" style="grid-column:1/-1">合計<b style="font-size:22px">${v1204KgText(s.kg)}</b></div></div>`
+        +v1204RoomHtml(s.rooms)
+        +`<div class="small" style="margin-top:6px">在庫ありロット ${s.lots}件`
+        +(s.unknown?` ／ <span style="color:#b45309">量目未設定でkg換算できないロット ${s.unknown}件</span>`:'')+`</div>`
+        +`<button class="btn homeBtnQrTotals" style="width:100%;margin-top:9px" ${seikaEventAttrs('click','qrTotalsPage',[])}>QR品目ごとの合計kgを見る</button>`;
+    }catch(e){
+      const box=document.getElementById('v1204TotalCard');
+      if(box)box.innerHTML='<b>在庫合計（kg）</b><div class="small" style="margin-top:4px">合計を計算できませんでした。再読込してください。</div>';
+    }
+    return r;
+  };
+  window.qrLotListPage=qrLotListPage;
+
+  /* ② QR品目ごとの合計kg一覧（別画面） */
+  async function qrTotalsPage(){
+    setScreen('qrTotalsPage',[]);
+    pageShell('QR在庫 合計kg','品目ごとの現在庫','<div class="card"><div class="notice">在庫を集計しています。</div></div>');
+    try{
+      const lots=await v1204FetchLots('');
+      const groups=new Map();
+      for(const l of lots){
+        const name=(typeof v1200QrCanonName==='function'?v1200QrCanonName(l.item_name):String(l.item_name||''))||'（品名なし）';
+        const g=groups.get(name)||{kg:0,lots:0,unknown:0,rooms:new Map()};
+        g.lots++;
+        const kg=v1204Kg(l);
+        if(kg==null)g.unknown++;
+        else{g.kg+=kg;const rm=v1204Room(l);g.rooms.set(rm,(g.rooms.get(rm)||0)+kg)}
+        groups.set(name,g);
+      }
+      const rows=[...groups.entries()].sort((a,b)=>b[1].kg-a[1].kg);
+      const roomNames=[...new Set(lots.map(v1204Room))].sort((a,b)=>a.localeCompare(b,'ja'));
+      const total=v1204Sum(lots);
+      const head=`<tr><th>品目</th><th style="text-align:right">合計kg</th>`
+        +roomNames.map(n=>`<th style="text-align:right">${esc(n)}</th>`).join('')
+        +`<th style="text-align:right">ロット</th></tr>`;
+      const body=rows.map(([name,g])=>`<tr>`
+        +`<td><a href="#" ${seikaEventAttrs('click','qrLotListPage',[name])}>${esc(name)}</a></td>`
+        +`<td style="text-align:right"><b>${v1204KgText(g.kg)}</b></td>`
+        +roomNames.map(n=>`<td style="text-align:right">${g.rooms.get(n)?v1204KgText(g.rooms.get(n)):'-'}</td>`).join('')
+        +`<td style="text-align:right">${g.lots}件${g.unknown?`<br><span class="small" style="color:#b45309">kg不明${g.unknown}</span>`:''}</td></tr>`).join('')
+        ||`<tr><td colspan="${roomNames.length+3}" class="small">在庫ありのQRロットはありません。</td></tr>`;
+      const totalRow=rows.length?`<tr><td><b>合計</b></td><td style="text-align:right"><b>${v1204KgText(total.kg)}</b></td>`
+        +roomNames.map(n=>`<td style="text-align:right">${total.rooms.get(n)?v1204KgText(total.rooms.get(n)):'-'}</td>`).join('')
+        +`<td style="text-align:right">${total.lots}件</td></tr>`:'';
+      pageShell('QR在庫 合計kg',`${rows.length}品目 ／ 合計 ${v1204KgText(total.kg)}`,
+        `<div class="card"><b>品目ごとの現在庫（在庫ありロットの合計）</b>`
+        +`<div class="small" style="margin-top:4px">量目と現在残数からkg換算しています。量目が未設定のロットは「kg不明」として件数だけ表示します。</div>`
+        +`<div class="row" style="margin-top:8px"><button class="btn blue" ${seikaEventAttrs('click','qrTotalsPage',[])}>最新に更新</button>`
+        +`<button class="btn btn2" ${seikaEventAttrs('click','qrLotListPage',[])}>QRロット一覧へ</button></div></div>`
+        +`<div class="card"><table class="table"><thead>${head}</thead><tbody>${body}${totalRow}</tbody></table>`
+        +(total.unknown?`<div class="small" style="margin-top:6px;color:#b45309">kg換算できないロットが ${total.unknown}件あります。ロット編集で量目を入力すると合計に含まれます。</div>`:'')
+        +`</div>`);
+    }catch(e){
+      pageShell('QR在庫 合計kg','読み込みエラー',
+        `<div class="err">${esc(typeof v161ErrorText==='function'?v161ErrorText(e):(e&&e.message||e))}</div>`
+        +`<button class="btn blue" ${seikaEventAttrs('click','qrTotalsPage',[])}>再読み込み</button>`);
+    }
+  }
+  window.qrTotalsPage=qrTotalsPage;
+
+  /* ③ QR在庫管理ホームにボタンを追加 */
+  const v1204HomeBase=qrHome;
+  qrHome=async function(...args){
+    const r=await v1204HomeBase.apply(this,args);
+    try{
+      const box=document.querySelector('.homePrimary');
+      if(box&&!document.getElementById('v1204TotalsBtn')){
+        const b=document.createElement('button');
+        b.id='v1204TotalsBtn';
+        b.type='button';
+        b.className='btn homeBtnQrTotals';
+        b.setAttribute('data-seika-click-action','qrTotalsPage');
+        b.setAttribute('data-seika-click-args','%5B%5D');
+        b.innerHTML='QR在庫 合計kg<br><span style="font-size:15px;font-weight:800">品目ごとの現在庫をkgで確認</span>';
+        const list=box.querySelector('[data-seika-click-action="qrLotListPage"]');
+        if(list&&list.nextSibling)box.insertBefore(b,list.nextSibling); else box.appendChild(b);
+      }
+    }catch(e){}
+    return r;
+  };
+  window.qrHome=qrHome;
+
+  /* ボタン色 */
+  try{
+    const st=document.createElement('style');
+    st.textContent='.homeBtnQrTotals{background:linear-gradient(90deg,#b45309 0%,#f59e0b 52%,#fcd34d 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.25) !important;border-color:transparent !important;}';
+    document.head.appendChild(st);
+  }catch(e){}
+
+  /* 操作ガイドに追記 */
+  try{
+    if(typeof V198_GUIDE_SECTIONS!=='undefined'){
+      V198_GUIDE_SECTIONS.v1204QrTotals={title:'QR在庫の合計kgを確認する',where:'ホーム → QR在庫管理 → QR在庫 合計kg',
+        steps:['QRロット一覧を開くと、いちばん上に選んだ品目の在庫合計kgと冷蔵庫別の内訳が出ます。',
+               '「QR在庫 合計kg」を開くと、QR品目すべての現在庫kgを一覧で比べられます。品名を押すとその品目のロット一覧へ移ります。',
+               '量目が未設定のロットはkg換算できないため「kg不明」として件数だけ表示します。ロット編集で量目を入れると合計に入ります。'],
+        check:'冷蔵庫別の内訳と現物が合っているか確認します。',
+        caution:'在庫ありのロットだけを集計します。在庫なしのロットは含みません。'};
+      if(typeof V198_ROLE_ADD!=='undefined'){
+        for(const k of Object.keys(V198_ROLE_ADD)){
+          if(Array.isArray(V198_ROLE_ADD[k])&&!V198_ROLE_ADD[k].includes('v1204QrTotals'))V198_ROLE_ADD[k].push('v1204QrTotals');
+        }
+      }
+    }
+  }catch(e){}
+})();
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
