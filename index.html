@@ -12626,6 +12626,181 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    return diff;
  };
 })();
+
+/* ===== v1.203 登録済み日報の修正・削除 ===== */
+(function(){
+  let v1203EditId='';
+  const v1203Jobs=new Map();
+
+  function v1203CanEdit(){return typeof v1115CanTrimmingEdit==='function'?v1115CanTrimmingEdit():false}
+  function v1203Num(x){const n=Number(x);return Number.isFinite(n)?n:0}
+
+  /* 製造日報の下に「日報の修正・削除」カードを追加 */
+  const v1203RenderDailyBase=v1200RenderDailyReport;
+  v1200RenderDailyReport=function(rows,day,recv){
+    v1203Jobs.clear();
+    for(const row of rows||[]){const j=row.job||row;if(j&&j.id!=null)v1203Jobs.set(String(j.id),row)}
+    const r=v1203RenderDailyBase.call(this,rows,day,recv);
+    if(!v1203CanEdit()||!(rows||[]).length)return r;
+    try{
+      const cards=document.querySelectorAll('.card');
+      if(!cards.length)return r;
+      const host=cards[cards.length-1].parentNode;
+      const div=document.createElement('div');
+      div.className='card';
+      div.innerHTML='<b>日報の修正・削除</b>'
+        +'<div class="small" style="margin-top:4px">入力を間違えた日報を直せます。修正では作業日・使用原料・使用量・出来高・メモをすべて直し、単価も計算し直します。在庫は変わりません。</div>'
+        +v1203EditListHtml(rows);
+      host.appendChild(div);
+    }catch(e){}
+    return r;
+  };
+  window.v1200RenderDailyReport=v1200RenderDailyReport;
+
+  function v1203EditListHtml(rows){
+    return (rows||[]).map(row=>{
+      const j=row.job||row,lots=row.lots||[],id=String(j.id);
+      const lotText=lots.map(l=>`${l.item_name||''}｜${l.lot_no||l.qr_key||''}｜${fmtRounded(l.used_weight_kg)}kg`).join('　/　')||'使用原料の記録なし';
+      return `<div style="padding:9px 0;border-top:1px solid #e2e8f0">
+<div><b>${esc(j.source_item_name||'（品目未設定）')}</b><span class="small"> ${esc(j.work_date||'')}　使用${fmtRounded(j.input_weight_kg)}kg ／ 出来高${fmtRounded(j.output_weight_kg)}kg</span></div>
+<div class="small">${esc(lotText)}</div>
+<div class="row" style="margin-top:6px">
+<button class="btn blue" style="padding:8px 12px" ${seikaEventAttrs('click','v1203EditJob',[id])}>この日報を修正</button>
+<button class="btn danger" style="padding:8px 12px" ${seikaEventAttrs('click','v1203DeleteJob',[id])}>削除</button>
+</div></div>`;
+    }).join('');
+  }
+
+  /* 登録画面に既存の日報を読み込む */
+  async function v1203EditJob(jobId){
+    if(!v1203CanEdit())return alert('日報の修正は管理者・青果社員のみです');
+    const row=v1203Jobs.get(String(jobId));
+    if(!row)return alert('この日報を読み込めませんでした。画面を再読み込みしてください。');
+    const j=row.job||row,lots=row.lots||[],outputs=row.outputs||[];
+    if(!lots.length)return alert('使用原料の記録がない日報は修正できません。削除してから登録し直してください。');
+    v1203EditId=String(jobId);
+    await trimmingPage();
+    v1115Trimming.lots=lots.map(l=>{
+      const key=String(l.qr_key||l.lot_no||'');
+      const full=(typeof v195TrimLots!=='undefined'&&Array.isArray(v195TrimLots))
+        ?v195TrimLots.find(x=>String(x.qr_key||'')===key||String(x.lot_no||'')===String(l.lot_no||''))||null:null;
+      const unitWeight=full&&typeof v195TrimUnitWeight==='function'?v195TrimUnitWeight(full):null;
+      return {id:v1115Uuid(),qrKey:l.qr_key||key,lotNo:l.lot_no||'',itemName:l.item_name||j.source_item_name||'',
+        itemKey:String(l.item_id??l.item_name??''),
+        currentQty:full&&typeof v195TrimLotQty==='function'?v195TrimLotQty(full):0,
+        currentKg:full&&typeof qrLotCurrentKg==='function'?qrLotCurrentKg(full):0,
+        unitWeight:unitWeight>0?unitWeight:null,
+        unit:full&&typeof qrLotUnit==='function'?qrLotUnit(full):'ケース',
+        mode:'weight',amount:String(v1203Num(l.used_weight_kg)||'')};
+    });
+    v1115Trimming.outputs=outputs.map(o=>{
+      const qty=v1203Num(o.output_qty),unit=v1203Num(o.unit_weight_kg);
+      const qtyMode=qty>0&&unit>0;
+      return {id:v1115Uuid(),itemId:'',itemName:o.item_name||'',mode:qtyMode?'qty':'weight',
+        weight:qtyMode?'':String(v1203Num(o.output_weight_kg)||''),
+        qty:qtyMode?String(qty):'',unitWeight:qtyMode?String(unit):''};
+    });
+    if(typeof v196TrimWorkDate!=='undefined')v196TrimWorkDate=j.work_date||todayKey();
+    if(typeof v196TrimNote!=='undefined')v196TrimNote=j.note||'';
+    v1115RenderTrimming();
+  }
+  window.v1203EditJob=v1203EditJob;
+
+  /* 修正中の見た目（案内と保存ボタンの文言、修正をやめる） */
+  const v1203RenderTrimBase=v1115RenderTrimming;
+  v1115RenderTrimming=function(...args){
+    const r=v1203RenderTrimBase.apply(this,args);
+    if(!v1203EditId)return r;
+    try{
+      const btn=document.querySelector('[data-seika-click-action="v1115SaveTrimming"]');
+      if(btn)btn.textContent='確認して日報を修正';
+      const first=document.querySelector('.notice');
+      if(first){
+        const box=document.createElement('div');
+        box.className='notice';
+        box.style.background='#fdf1dc';
+        box.innerHTML='<b>登録済みの日報を修正しています。</b>'
+          +'<div class="small">保存すると、いまの内容でこの日報が置き換わります。単価も作業日にあわせて計算し直します。在庫は変わりません。</div>'
+          +`<button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','v1203CancelEdit',[])}>修正をやめる</button>`;
+        first.parentNode.insertBefore(box,first);
+      }
+    }catch(e){}
+    return r;
+  };
+  window.v1115RenderTrimming=v1115RenderTrimming;
+
+  function v1203CancelEdit(){
+    const day=(v1203Jobs.get(v1203EditId)?.job||v1203Jobs.get(v1203EditId)||{}).work_date||todayKey();
+    v1203EditId='';
+    v1115TrimmingReset();
+    if(typeof v196TrimNote!=='undefined')v196TrimNote='';
+    v1200DailyReportPage(day);
+  }
+  window.v1203CancelEdit=v1203CancelEdit;
+
+  /* 保存：修正中は create_trimming_job を replace_trimming_job_v1203 に差し替える */
+  const v1203SaveBase=v1115SaveTrimming;
+  v1115SaveTrimming=async function(...args){
+    if(!v1203EditId)return v1203SaveBase.apply(this,args);
+    const jobId=v1203EditId;
+    const row=v1203Jobs.get(jobId),job=row&&(row.job||row)||{};
+    const rpcBase=window.callRpc,confirmBase=window.confirm;
+    let sent=false,ok=false;
+    window.callRpc=async function(name,params){
+      if(name!=='create_trimming_job')return rpcBase.apply(this,arguments);
+      sent=true;
+      const ans=await rpcBase('replace_trimming_job_v1203',{p_job_id:jobId,
+        p_operation_id:params?.p_operation_id||'',p_work_date:params?.p_work_date||'',
+        p_lots:params?.p_lots||[],p_outputs:params?.p_outputs||[],
+        p_note:params?.p_note||'',p_user_name:params?.p_user_name||''});
+      ok=!!(ans&&ans.ok);
+      return ans;
+    };
+    window.confirm=function(msg){
+      return confirmBase(String(msg||'').replace('トリミング日報を登録します。','登録済みの日報を修正します。')
+        .replace('日報実績だけを保存します。','この日報を、いまの内容に置き換えます。'));
+    };
+    try{
+      await v1203SaveBase.apply(this,args);
+    }finally{
+      window.callRpc=rpcBase;window.confirm=confirmBase;
+    }
+    if(!sent||!ok)return;
+    const day=job.work_date||todayKey();
+    v1203EditId='';
+    v1115TrimmingReset();
+    if(typeof v196TrimNote!=='undefined')v196TrimNote='';
+    pageShell('日報の修正完了','修正内容を保存しました',
+      '<div class="ok">日報を修正しました。単価も計算し直しています。在庫は変更していません。</div>'
+      +`<button class="btn blue" style="width:100%" ${seikaEventAttrs('click','v1200DailyReportPage',[day])}>製造日報を見る</button>`
+      +`<button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','v1200ProductionHome',[])}>製造・歩留まりへ</button>`);
+  };
+  window.v1115SaveTrimming=v1115SaveTrimming;
+
+  /* 削除 */
+  async function v1203DeleteJob(jobId){
+    if(!v1203CanEdit())return alert('日報の削除は管理者・青果社員のみです');
+    const row=v1203Jobs.get(String(jobId)),j=row&&(row.job||row)||{};
+    const day=j.work_date||todayKey();
+    if(!confirm(`この日報を削除します。\n\n作業日：${day}\n品目：${j.source_item_name||''}\n使用原料：${fmtRounded(j.input_weight_kg)}kg\n出来高：${fmtRounded(j.output_weight_kg)}kg\n\n削除すると歩留まり・原価の集計から外れます。在庫は変わりません。`))return;
+    try{
+      const ans=await callRpc('delete_trimming_job_v1203',{p_job_id:String(jobId)});
+      if(!ans||ans.ok===false)return alert(ans&&ans.message?ans.message:'削除できませんでした。');
+      await v1200DailyReportPage(day);
+    }catch(e){alert('削除できませんでした。\n'+(e&&e.message?e.message:e))}
+  }
+  window.v1203DeleteJob=v1203DeleteJob;
+
+  /* 操作ガイドに追記 */
+  try{
+    if(typeof V198_GUIDE_SECTIONS!=='undefined'&&V198_GUIDE_SECTIONS.trimming){
+      V198_GUIDE_SECTIONS.trimming.steps.push(
+        '入力を間違えたときは、製造日報でその日を表示し、いちばん下の「日報の修正・削除」から直します。「この日報を修正」を押すと登録画面に内容が読み込まれるので、作業日・使用原料・使用量・出来高・メモを直して保存します。',
+        '内容ごと不要になった日報は同じ場所の「削除」で消します。修正・削除しても通常在庫・QR在庫は変わりません。');
+    }
+  }catch(e){}
+})();
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
