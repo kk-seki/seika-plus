@@ -12547,7 +12547,7 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    if(!days.length)return false;
    const from=days[0],to=days[days.length-1],key=from+"|"+to;
    if(v1211States&&v1211CacheKey===key&&Date.now()-v1211CacheAt<V1211_TTL)return true;
-   let ans;
+   let ans;const v1216T0=performance.now();
    try{ ans=await callRpc("qr_lot_daily_state_v1211",{p_from:from,p_to:to}); }
    catch(e){ await new Promise(r=>setTimeout(r,800)); ans=await callRpc("qr_lot_daily_state_v1211",{p_from:from,p_to:to}); }
    if(!ans||ans.ok!==true||!Array.isArray(ans.lots))
@@ -12555,6 +12555,7 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    const map=new Map();
    for(const row of ans.lots)
      map.set(String(row.id||""),{from:String(row.from||from),ch:Array.isArray(row.ch)?row.ch:[]});
+   window.v1216RpcSec=((performance.now()-v1216T0)/1000).toFixed(1);
    v1211States=map;v1211CacheKey=key;v1211CacheAt=Date.now();
    return true;
  }
@@ -13149,6 +13150,22 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    ② 在庫表：サーバー集計に失敗しても端末計算へ自動で切り替えない。
       理由を表示し、「もう一度読み込む」と「この端末で計算する」を選べるようにする。 */
 (function(){
+
+ /* 日付キー（日本時間の YYYY-MM-DD）を計算で求める。
+    toLocaleDateString(timeZone指定) は iPhone で非常に遅く、在庫表の大半の時間を占めていた。 */
+ if(typeof ymdKey==="function"){
+   const v1216YmdBase=ymdKey;
+   const pad=n=>(n<10?"0":"")+n;
+   ymdKey=function(d){
+     const ms=(d instanceof Date)?d.getTime():new Date(d).getTime();
+     if(!isFinite(ms))return v1216YmdBase(d);
+     const j=new Date(ms+32400000),y=j.getUTCFullYear();
+     if(y<1000||y>9999)return v1216YmdBase(d);
+     return y+"-"+pad(j.getUTCMonth()+1)+"-"+pad(j.getUTCDate());
+   };
+   window.ymdKey=ymdKey;
+   window.v1216YmdBase=v1216YmdBase;
+ }
  let v1216Idx=null;
  function v1216Index(){
    const src=db.records||[];
@@ -13198,6 +13215,9 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
      if(currentScreen!=="weeklyData")return r;
      const info=document.getElementById("v1215WeeklyInfo");
      if(info&&client&&window.v1211LastError)info.textContent=info.textContent.replace("端末計算（サーバー集計が使えません）","端末計算（手動で選択）");
+     if(info&&!client&&!window.v1211LastError&&window.v1216RpcSec&&!info.textContent.includes("サーバー応答"))
+       info.textContent+=` （うちサーバー応答 ${window.v1216RpcSec}秒）`;
+     window.v1216RpcSec="";
      if(!window.v1216ServerFail)return r;
      info?.remove();
      const box=document.querySelector("main.wrap .err");
