@@ -12547,7 +12547,9 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    if(!days.length)return false;
    const from=days[0],to=days[days.length-1],key=from+"|"+to;
    if(v1211States&&v1211CacheKey===key&&Date.now()-v1211CacheAt<V1211_TTL)return true;
-   const ans=await callRpc("qr_lot_daily_state_v1211",{p_from:from,p_to:to});
+   let ans;
+   try{ ans=await callRpc("qr_lot_daily_state_v1211",{p_from:from,p_to:to}); }
+   catch(e){ await new Promise(r=>setTimeout(r,800)); ans=await callRpc("qr_lot_daily_state_v1211",{p_from:from,p_to:to}); }
    if(!ans||ans.ok!==true||!Array.isArray(ans.lots))
      throw new Error((ans&&ans.message)||"日別在庫の取得に失敗しました");
    const map=new Map();
@@ -12582,7 +12584,12 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
      console.warn("[在庫表] サーバー側集計を使えないため端末側で計算します:",window.v1211LastError);
      ready=false;
    }
-   if(!ready)return v1211ByDayBase(room,dayKeys);
+   if(!ready){
+     if(window.v1216AllowClient)return v1211ByDayBase(room,dayKeys);
+     window.v1216ServerFail=window.v1211LastError||"不明なエラー";
+     throw new Error("サーバー集計を使えませんでした（"+window.v1216ServerFail+"）");
+   }
+   window.v1211LastError="";window.v1216ServerFail="";
    v1211Active=true;
    try{ return await v1211ByDayBase(room,dayKeys); }
    finally{ v1211Active=false; }
@@ -13076,7 +13083,7 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
   const wrapped=function(...a){const r=base.apply(this,a);v1215QueueDraft();return r};
   window[name]=wrapped;try{if(name==="seikaInventoryAddLine")seikaInventoryAddLine=wrapped;if(name==="seikaInventoryRemoveLine")seikaInventoryRemoveLine=wrapped;if(name==="moveInventoryItem")moveInventoryItem=wrapped}catch(e){}}
  try{const st=document.createElement("style");
-  st.textContent=".v1215Inv main.wrap > section.card{content-visibility:auto;contain-intrinsic-size:auto 300px}";document.head.appendChild(st)}catch(e){}
+  st.textContent="";document.head.appendChild(st)}catch(e){}
 
  /* ---------- ① 登録後はクラウド保存を待ってから重い画面へ ---------- */
  let v1215CommitAt=0;
@@ -13133,6 +13140,80 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    steps:["在庫入力は入力するたびに端末へ自動で下書き保存されます。","途中で画面が白くなったり閉じたりしても、同じ日に同じ冷蔵庫を開くと入力が復元されます。","「まとめて登録」が終わると下書きは消えます。"],
    check:"復元のお知らせが出たら、数字を確認してから登録します。",caution:"下書きはその端末にだけ保存されます。別の端末には引き継がれません。"};
   if(typeof V198_ROLE_ADD!=="undefined")for(const k of Object.keys(V198_ROLE_ADD)){const a=V198_ROLE_ADD[k];if(Array.isArray(a)&&a.includes("v1214Nav")&&!a.includes("v1215Draft"))a.push("v1215Draft")}}}catch(e){}
+})();
+
+
+/* ===== v1.199-c16 在庫入力の白画面・在庫表のサーバー集計 =====
+   ① 在庫入力：最新記録・前回入力の検索を1回の描画で1回だけにする
+      （品目ごとに全記録を並べ替えていたため、記録が増えるほど遅くなっていた）
+   ② 在庫表：サーバー集計に失敗しても端末計算へ自動で切り替えない。
+      理由を表示し、「もう一度読み込む」と「この端末で計算する」を選べるようにする。 */
+(function(){
+ let v1216Idx=null;
+ function v1216Index(){
+   const src=db.records||[];
+   if(v1216Idx&&v1216Idx.src===src&&v1216Idx.len===src.length)return v1216Idx;
+   const today=todayKey();
+   const sorted=src.slice().sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0));
+   const all={},tod={},prev={};
+   for(const r of sorted){
+     all[r.itemId]=r;
+     if(r.createdAt){ if(ymdKey(new Date(r.createdAt))===today)tod[r.itemId]=r; else prev[r.itemId]=r; }
+   }
+   v1216Idx={src,len:src.length,all,tod,prev};
+   setTimeout(()=>{v1216Idx=null},0);
+   return v1216Idx;
+ }
+ if(typeof todayLatestMap==="function"){
+   todayLatestMap=function(){return Object.assign({},v1216Index().tod)};
+   window.todayLatestMap=todayLatestMap;
+ }
+ if(typeof previousRecordBeforeToday==="function"){
+   previousRecordBeforeToday=function(itemId){return v1216Index().prev[itemId]||null};
+   window.previousRecordBeforeToday=previousRecordBeforeToday;
+ }
+ if(typeof latestRecord==="function"){
+   latestRecord=function(itemId){return v1216Index().all[itemId]||null};
+   window.latestRecord=latestRecord;
+ }
+
+ window.v1216ServerFail="";
+ window.v1216AllowClient=false;
+ window.v1216RetryWeekly=function(){
+   if(typeof window.v1209ClearQrCache==="function")window.v1209ClearQrCache();
+   window.v1216ServerFail="";window.v1211LastError="";
+   weeklyData();
+ };
+ window.v1216ClientWeekly=async function(){
+   if(!confirm("この端末で在庫表を計算します。\n履歴が多いため、表示まで時間がかかります。よろしいですか？"))return;
+   window.v1216AllowClient=true;
+   try{ await weeklyData(); }finally{ window.v1216AllowClient=false; }
+ };
+ const v1216WeeklyBase=weeklyData;
+ weeklyData=async function(...a){
+   window.v1216ServerFail="";
+   const client=window.v1216AllowClient;
+   const r=await v1216WeeklyBase.apply(this,a);
+   try{
+     if(currentScreen!=="weeklyData")return r;
+     const info=document.getElementById("v1215WeeklyInfo");
+     if(info&&client&&window.v1211LastError)info.textContent=info.textContent.replace("端末計算（サーバー集計が使えません）","端末計算（手動で選択）");
+     if(!window.v1216ServerFail)return r;
+     info?.remove();
+     const box=document.querySelector("main.wrap .err");
+     if(box){
+       box.className="card";
+       box.style.cssText="border:2px solid #d97706;background:#fff7e6";
+       box.innerHTML='<b>在庫表のQR在庫をサーバーで集計できませんでした。</b>'
+         +'<div class="small" style="margin:6px 0">理由：'+esc(window.v1216ServerFail)+'</div>'
+         +'<div class="small">通信が不安定なときは「もう一度読み込む」を押してください。続く場合は管理者へ連絡してください。</div>'
+         +'<button class="btn" style="width:100%;margin-top:10px" '+seikaEventAttrs("click","v1216RetryWeekly",[])+'>もう一度読み込む</button>'
+         +'<button class="btn btn2" style="width:100%;margin-top:8px" '+seikaEventAttrs("click","v1216ClientWeekly",[])+'>この端末で計算する（時間がかかります）</button>';
+     }
+   }catch(e){}
+   return r;
+ };
+ window.weeklyData=weeklyData;
 })();
 
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
