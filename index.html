@@ -4701,7 +4701,7 @@ const it=db.items.find(x=>x.id===r.itemId);if(!it||coldRoomForNormalItem(it)!==i
 ;const total=yen((r.lines||[]).reduce((a,l)=>a+(l.detail?detailSubtotal(l):Number(l.pack||0)*Number(l.cases||0)),0))
 ;const prev=previousRecordBeforeToday(it.id)
 ;summary.push(`${it.name}: 今回 ${fmt(total)}kg${prev?` / 前回 ${fmt(prev.total)}kg / 差 ${fmt(total-Number(prev.total||0))}kg`:""}`)}
-if(!summary.length)return submitInventoryCommit();if(!confirm(`登録内容を確認してください。\n\n${summary.join("\n")}\n\nこの内容で登録しますか？`))return
+if(!summary.length)return submitInventoryCommit();if(!confirm(`登録内容を確認してください。\n\n${(window.v1215Cap?v1215Cap(summary,25):summary.join("\n"))}\n\nこの内容で登録しますか？`))return
 ;const beforeIds=new Set(db.records.map(r=>r.id));await submitInventoryCommit();const added=db.records.filter(r=>!beforeIds.has(r.id))
 ;if(added.length){const entries=added.map(x=>({recordId:x.id,beforeTotal:(db.movements.find(m=>m.recordId===x.id)||{}).beforeTotal??0}));saveUndo({
 type:"inventory",entries});addOperationLog("inventory_save",null,added.map(r=>({id:r.id,itemId:r.itemId,total:r.total})));save()}}
@@ -12999,6 +12999,140 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    caution:"カメラ画面から「ホーム」を押すと、カメラを止めてからホームへ戻ります。"};
   if(typeof V198_ROLE_ADD!=="undefined"){for(const k of Object.keys(V198_ROLE_ADD)){
    if(Array.isArray(V198_ROLE_ADD[k])&&!V198_ROLE_ADD[k].includes("v1214Nav"))V198_ROLE_ADD[k].push("v1214Nav")}}}}catch(e){}
+})();
+
+/* ===== v1.199-c15 =====
+   ① 在庫入力：入力途中を端末へ自動保存し、白画面・再起動後も復元できるようにする
+      登録直後の在庫報告コピーは、クラウド保存が終わってから開く（同時の重い処理を避ける）
+   ② 在庫入力：1項目入力するたびの画面全体の再描画をやめ、その品目だけ更新する
+   ③ QR関連の画面では「ホーム」をQR在庫管理のホームへ戻す
+   ⑤ 在庫表：QRロットの取得を並行化・重複取得を抑止し、集計方式と所要時間を表示する */
+(function(){
+ /* ---------- ③ QRホーム ---------- */
+ const V1215_QR_SCREENS=new Set(["v1102QualityPage","v1103QualityListPage","v1144QrOutboundHistoryPage","v123QrPage","v136SupplierQualityPage","v177ManualQrPage","v199QrExcelPage"]);
+ function v1215IsQrScreen(n){n=String(n||"");return n!=="qrHome"&&(n.startsWith("qr")||V1215_QR_SCREENS.has(n))}
+ window.v1214GoHome=function(){const s=currentScreen,go=()=>v1215IsQrScreen(s)&&typeof qrHome==="function"?qrHome():home();
+  if((s==="qrCameraPage"||s==="qrCountCameraPage")&&typeof qrStopActiveCamera==="function")return qrStopActiveCamera().finally(go);
+  return go()};
+ try{if(typeof V138_ID==="object")V138_ID["QRホーム"]="Beranda QR";if(typeof V202_VI==="object")V202_VI["QRホーム"]="Trang chủ QR"}catch(e){}
+
+ /* ---------- ① 下書きの自動保存 ---------- */
+ const V1215_DRAFT_KEY=()=>"seika_inv_draft_v1215_"+(db&&db.userId||"");
+ function v1215ReadDrafts(){try{return JSON.parse(localStorage.getItem(V1215_DRAFT_KEY())||"{}")||{}}catch(e){return{}}}
+ function v1215WriteDrafts(o){try{localStorage.setItem(V1215_DRAFT_KEY(),JSON.stringify(o))}catch(e){}}
+ function v1215ClearDraft(room){const o=v1215ReadDrafts();delete o[String(room)];v1215WriteDrafts(o)}
+ let v1215DraftTimer=null,v1215Restoring=false,v1215Committing=false;
+ function v1215CollectDraft(){if(currentScreen!=="inventory"||!Array.isArray(formState))return;
+  const rows=[];for(const r of formState){const it=db.items.find(x=>x.id===r.itemId);
+   if(!it||coldRoomForNormalItem(it)!==inventoryRoom||!inventoryStateHasInput(r))continue;
+   rows.push({itemId:r.itemId,lines:JSON.parse(JSON.stringify(r.lines||[]))})}
+  const sp={};document.querySelectorAll('input[id^="sp_"],input[id^="spmemo_"],textarea[id^="spmemo_"]').forEach(el=>{if(String(el.value||"").trim()!=="")sp[el.id]=el.value});
+  const o=v1215ReadDrafts(),room=String(inventoryRoom);
+  if(!rows.length&&!Object.keys(sp).length){delete o[room]}else o[room]={day:todayKey(),at:Date.now(),rows,sp};
+  v1215WriteDrafts(o)}
+ function v1215QueueDraft(){if(v1215Restoring||v1215Committing)return;clearTimeout(v1215DraftTimer);v1215DraftTimer=setTimeout(()=>{try{v1215CollectDraft()}catch(e){}},400)}
+ window.v1215QueueDraft=v1215QueueDraft;
+ document.addEventListener("input",e=>{const t=e.target;if(currentScreen==="inventory"&&t&&t.id&&/^sp(memo)?_/.test(t.id))v1215QueueDraft()},true);
+ function v1215ApplySp(sp){for(const[id,v]of Object.entries(sp||{})){const el=document.getElementById(id);if(el&&String(el.value||"")==="")el.value=v}}
+ function v1215TryRestore(){const d=v1215ReadDrafts()[String(inventoryRoom)];
+  if(!d)return;if(d.day!==todayKey()){v1215ClearDraft(inventoryRoom);return}
+  let n=0;v1215Restoring=true;
+  try{for(const row of d.rows||[]){const r=formState.find(x=>x.itemId===row.itemId);if(!r)continue;
+    if(!inventoryStateHasInput(r)){r.lines=row.lines;n++}}
+   const sp=Object.keys(d.sp||{}).length;
+   if(!n&&!sp)return;
+   renderInventory(`登録前の入力（${n+sp}件）を復元しました。内容を確認して「まとめて登録」を押してください。`);
+   v1215ApplySp(d.sp);
+   const host=document.querySelector("main.wrap");
+   if(host&&!document.getElementById("v1215DraftBar")){const bar=document.createElement("div");bar.id="v1215DraftBar";bar.className="card notice";
+    bar.innerHTML='この冷蔵庫の登録前の入力を端末から復元しました。<button class="btn btn2" style="margin-left:8px;padding:6px 10px" data-seika-click-action="v1215DiscardDraft" data-seika-click-args="%5B%5D">復元した入力を消す</button>';
+    host.insertAdjacentElement("afterbegin",bar)}}
+  finally{v1215Restoring=false}}
+ window.v1215DiscardDraft=function(){if(!confirm("復元した入力を消して、入力前の状態に戻しますか？"))return;v1215ClearDraft(inventoryRoom);inventory("",inventoryRoom)};
+ const v1215InventoryBase=inventory;
+ inventory=function(msg="",room=inventoryRoom){const r=v1215InventoryBase(msg,room);try{if(currentScreen==="inventory"&&!v1215Committing)v1215TryRestore()}catch(e){}return r};
+ window.inventory=inventory;
+
+ /* ---------- ② 1品目だけ更新 ---------- */
+ function v1215CardTotal(r){return yen((r.lines||[]).reduce((a,l)=>inventoryLineHasInput(l)?a+(l.detail?detailSubtotal(l):Number(l.pack)*Number(l.cases)):a,0))}
+ function v1215UpdateCard(index,lineIndex,field){
+  const args=encodeURIComponent(JSON.stringify([index,lineIndex,field,{__seikaValue:true}]));
+  const el=document.querySelector('[data-seika-change-args="'+CSS.escape(args)+'"]');if(!el)return false;
+  const card=el.closest("section.card"),r=formState[index],it=r&&db.items.find(x=>x.id===r.itemId);if(!card||!r||!it)return false;
+  const l=r.lines[lineIndex],kg=el.closest(".line")?.querySelector(".kg");
+  if(kg&&l){const first=kg.firstChild;const txt="小計 "+(inventoryLineHasInput(l)?fmt(l.detail?detailSubtotal(l):Number(l.pack)*Number(l.cases))+"kg":"-")+" ";
+   if(first&&first.nodeType===3)first.nodeValue=txt;else kg.insertAdjacentText("afterbegin",txt)}
+  const hasInput=inventoryStateHasInput(r),total=v1215CardTotal(r),s=db.settings[it.id]||{min:null,max:null},st=hasInput?judge(total,s):"unset";
+  const tot=card.querySelector(".total span:last-child");if(tot)tot.textContent=hasInput?fmt(total)+"kg":"- kg";
+  const badge=card.querySelector(".itemHead > .badge");
+  if(badge&&!r.fromToday){badge.className="badge "+(hasInput?st:"unset");badge.textContent=hasInput&&total===0?"在庫なし":hasInput?label(st):"未入力"}
+  card.classList.toggle("entered",!!(r.fromToday||hasInput));return true}
+ seikaInventoryField=function(index,lineIndex,field,value){const line=formState[index]?.lines?.[lineIndex];if(!line)return;line[field]=value;
+  let ok=false;try{ok=v1215UpdateCard(index,lineIndex,field)}catch(e){ok=false}
+  if(!ok)renderInventory(lastMessage);v1215QueueDraft()};
+ window.seikaInventoryField=seikaInventoryField;
+ for(const name of["seikaInventoryAddLine","seikaInventoryRemoveLine","moveInventoryItem"]){
+  const base=window[name];if(typeof base!=="function")continue;
+  const wrapped=function(...a){const r=base.apply(this,a);v1215QueueDraft();return r};
+  window[name]=wrapped;try{if(name==="seikaInventoryAddLine")seikaInventoryAddLine=wrapped;if(name==="seikaInventoryRemoveLine")seikaInventoryRemoveLine=wrapped;if(name==="moveInventoryItem")moveInventoryItem=wrapped}catch(e){}}
+ try{const st=document.createElement("style");
+  st.textContent=".v1215Inv main.wrap > section.card{content-visibility:auto;contain-intrinsic-size:auto 300px}";document.head.appendChild(st)}catch(e){}
+
+ /* ---------- ① 登録後はクラウド保存を待ってから重い画面へ ---------- */
+ let v1215CommitAt=0;
+ const v1215CommitBase=submitInventoryCommit;
+ submitInventoryCommit=async function(...a){const room=inventoryRoom,nr=(db.records||[]).length,ns=(db.specialRecords||[]).length;
+  v1215CommitAt=Date.now();clearTimeout(v1215DraftTimer);v1215Committing=true;let r;
+  try{r=await v1215CommitBase.apply(this,a)}finally{v1215Committing=false}
+  if((db.records||[]).length>nr||(db.specialRecords||[]).length>ns)v1215ClearDraft(room);return r};
+ window.submitInventoryCommit=submitInventoryCommit;
+ async function v1215WaitSync(maxMs=20000){const t0=Date.now();await new Promise(r=>setTimeout(r,500));
+  while(Date.now()-t0<maxMs){let busy=false;try{busy=v161SyncRunning||v161PendingCount()>0}catch(e){busy=false}if(!busy)return true;await new Promise(r=>setTimeout(r,400))}return false}
+ for(const name of["lineCopyPage","orderCandidatePage"]){const base=window[name]||(name==="lineCopyPage"?lineCopyPage:orderCandidatePage);if(typeof base!=="function")continue;
+  const wrapped=async function(...a){if(Date.now()-v1215CommitAt<8000){v1215CommitAt=0;
+    pageShell("保存中","クラウドへ保存しています",'<div class="card"><b>登録した在庫をクラウドへ保存しています。</b><div class="small">保存が終わると自動で次の画面を開きます。</div></div>');
+    await v1215WaitSync()}return base.apply(this,a)};
+  window[name]=wrapped;if(name==="lineCopyPage")lineCopyPage=wrapped;else orderCandidatePage=wrapped}
+
+ /* 異常値確認の文面が長くなりすぎないようにする */
+ window.v1215Cap=function(lines,max=15){lines=lines||[];return lines.length<=max?lines.join("\n"):lines.slice(0,max).join("\n")+`\n…ほか ${lines.length-max}品`};
+ v161ConfirmAnomaly=function(lines,title="入力値が大きく変化しています"){return!lines.length||confirm(`【要確認】${title}\n\n${v1215Cap(lines)}\n\n桁・単位・品目に間違いがないことを確認しましたか？`)};
+
+ /* ---------- ⑤ 在庫表 ---------- */
+ const V1215_TTL=45000,v1215Sel=new Map();
+ const v1215SelBase=v163SelectAll;
+ v163SelectAll=function(table,baseQuery,pageSize=1000){if(table!=="qr_lots")return v1215SelBase(table,baseQuery,pageSize);
+  const k=table+"|"+baseQuery+"|"+pageSize,hit=v1215Sel.get(k);if(hit&&Date.now()-hit.at<V1215_TTL)return hit.p;
+  const p=v1215SelBase(table,baseQuery,pageSize).catch(e=>{v1215Sel.delete(k);throw e});v1215Sel.set(k,{at:Date.now(),p});return p};
+ window.v163SelectAll=v163SelectAll;
+ const v1215RpcBase=callRpc;
+ callRpc=async function(name,args){const r=await v1215RpcBase(name,args);if(!/^(list|get|qr_lot_daily_state|calculate|resolve)/.test(String(name||"")))v1215Sel.clear();return r};
+ window.callRpc=callRpc;
+ const v1215WeeklyBase=weeklyData;
+ weeklyData=async function(...a){const t0=performance.now();try{v163SelectAll("qr_lots","select=*&order=qr_key.asc").catch(()=>{})}catch(e){}
+  const r=await v1215WeeklyBase.apply(this,a);
+  try{const sec=((performance.now()-t0)/1000).toFixed(1),mode=window.v1211LastError?"端末計算（サーバー集計が使えません）":"サーバー集計";
+   const host=document.querySelector("main.wrap");if(host&&currentScreen==="weeklyData"&&!document.getElementById("v1215WeeklyInfo")){
+    const d=document.createElement("div");d.id="v1215WeeklyInfo";d.className="small";d.style.cssText="margin:0 0 8px;color:#667";
+    d.textContent=`集計方式：${mode} ／ 読み込み ${sec}秒`;host.insertAdjacentElement("afterbegin",d)}}catch(e){}
+  return r};
+ window.weeklyData=weeklyData;
+
+ /* 画面ごとのクラス付け・ホームボタン名 */
+ const v1215ShellBase=pageShell;
+ pageShell=function(title,sub,body,opts={}){const r=v1215ShellBase(title,sub,body,opts);
+  try{document.querySelector(".appShell")?.classList.toggle("v1215Inv",title==="在庫入力");
+   const hb=document.querySelector('.topBtns [data-seika-click-action="v1214GoHome"]');
+   if(hb)hb.textContent=v1215IsQrScreen(currentScreen)?(typeof v202T==="function"?v202T("QRホーム"):"QRホーム"):(typeof v202T==="function"?v202T("ホーム"):"ホーム")}catch(e){}
+  return r};
+ window.pageShell=pageShell;
+
+ try{if(typeof V198_GUIDE_SECTIONS!=="undefined"&&V198_GUIDE_SECTIONS.v1214Nav){
+  V198_GUIDE_SECTIONS.v1214Nav.steps.splice(1,0,"QR入庫・出庫・品質評価などQR関連の画面では「QRホーム」になり、QR在庫管理の画面へ戻ります。");
+  V198_GUIDE_SECTIONS.v1215Draft={title:"在庫入力の途中保存",where:"ホーム → 在庫入力",
+   steps:["在庫入力は入力するたびに端末へ自動で下書き保存されます。","途中で画面が白くなったり閉じたりしても、同じ日に同じ冷蔵庫を開くと入力が復元されます。","「まとめて登録」が終わると下書きは消えます。"],
+   check:"復元のお知らせが出たら、数字を確認してから登録します。",caution:"下書きはその端末にだけ保存されます。別の端末には引き継がれません。"};
+  if(typeof V198_ROLE_ADD!=="undefined")for(const k of Object.keys(V198_ROLE_ADD)){const a=V198_ROLE_ADD[k];if(Array.isArray(a)&&a.includes("v1214Nav")&&!a.includes("v1215Draft"))a.push("v1215Draft")}}}catch(e){}
 })();
 
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
