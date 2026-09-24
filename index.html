@@ -12956,6 +12956,51 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
   }catch(e){}
 })();
 
+/* ===== v1.199-c14 =====
+   ① フレンキ・ヒェップの翻訳表示を日本語へ切り替えられるようにする（担当者ごとに端末へ記憶）
+   ② 「戻る」の横に「ホーム」ボタンを常に出し、出庫などの後にすぐホームへ戻れるようにする */
+(function(){
+ const V1214_KEY=uid=>"seika_lang_ja_"+uid;
+ const V1214_NAME={id:"Bahasa Indonesia",vi:"Tiếng Việt"};
+ function v1214UserLang(){const uid=(db&&db.role==="worker")?db.userId:"";return(uid&&V202_USER_LANGS[uid])||""}
+ function v1214JaOn(){try{return!!(db&&db.userId)&&localStorage.getItem(V1214_KEY(db.userId))==="1"}catch(e){return false}}
+ const v1214LangBase=v202Lang;
+ v202Lang=function(){if(currentScreen!=="login"&&v1214UserLang()&&v1214JaOn())return"";return v1214LangBase()};
+ window.v1214ToggleLang=function(){if(!db||!db.userId||!v1214UserLang())return;
+  try{if(v1214JaOn())localStorage.removeItem(V1214_KEY(db.userId));else localStorage.setItem(V1214_KEY(db.userId),"1")}catch(e){}
+  document.documentElement.lang=v202Lang()||"ja";
+  try{const r=renderCurrent();if(r&&typeof r.catch==="function")r.catch(()=>home())}catch(e){home()}};
+ window.v1214GoHome=function(){const s=currentScreen;
+  if((s==="qrCameraPage"||s==="qrCountCameraPage")&&typeof qrStopActiveCamera==="function")return qrStopActiveCamera().finally(()=>home());
+  return home()};
+ function v1214Button(action,label,cls){const b=document.createElement("button");b.type="button";b.className="headAction "+(cls||"");
+  b.setAttribute("data-seika-click-action",action);b.setAttribute("data-seika-click-args","%5B%5D");b.textContent=label;return b}
+ function v1214Decorate(){const bar=document.querySelector(".topBtns");if(!bar||!db||!db.user)return;
+  const back=bar.querySelector('[data-seika-click-action="goBack"]');
+  if(back&&!bar.querySelector('[data-seika-click-action="v1214GoHome"],[data-seika-click-action="home"]')){
+   back.insertAdjacentElement("afterend",v1214Button("v1214GoHome","ホーム","primary v1214Home"))}
+  bar.querySelector(".v1214Lang")?.remove();
+  const lang=v1214UserLang();
+  if(lang){const label=v1214JaOn()?V1214_NAME[lang]:"日本語";
+   const b=v1214Button("v1214ToggleLang",label,"v1214Lang");bar.insertAdjacentElement("afterbegin",b)}}
+ const v1214ShellBase=pageShell;
+ pageShell=function(title,sub,body,opts={}){const r=v1214ShellBase(title,sub,body,opts);try{v1214Decorate()}catch(e){}return r};
+ window.pageShell=pageShell;
+ try{const st=document.createElement("style");
+  st.textContent=".v1214Lang{background:#fff7e6 !important;color:#8a4b00 !important;border:1px solid #f0b75e !important;font-weight:700}"+
+   ":root[data-theme=\"dark\"] .v1214Lang{background:#3a2a10 !important;color:#ffd08a !important}";
+  document.head.appendChild(st)}catch(e){}
+ try{if(typeof V198_GUIDE_SECTIONS!=="undefined"){
+  V198_GUIDE_SECTIONS.v1214Nav={title:"ホームへ戻る・表示言語を切り替える",where:"画面右上のボタン",
+   steps:["「戻る」は1つ前の画面へ、「ホーム」はいつでもホーム画面へ戻ります。出庫などを続けて終えたあとは「ホーム」を使うと早く戻れます。",
+          "フレンキ・ヒェップでログインすると、右上に「日本語」ボタンが出ます。押すと日本語表示になり、もう一度押すと母国語の表示に戻ります。",
+          "選んだ表示はその端末に記憶され、次回ログインしても同じ表示になります。"],
+   check:"切り替え後に画面の文字が変わったか確認します。",
+   caution:"カメラ画面から「ホーム」を押すと、カメラを止めてからホームへ戻ります。"};
+  if(typeof V198_ROLE_ADD!=="undefined"){for(const k of Object.keys(V198_ROLE_ADD)){
+   if(Array.isArray(V198_ROLE_ADD[k])&&!V198_ROLE_ADD[k].includes("v1214Nav"))V198_ROLE_ADD[k].push("v1214Nav")}}}}catch(e){}
+})();
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
