@@ -13236,6 +13236,66 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
  window.weeklyData=weeklyData;
 })();
 
+
+/* ===== v1.199-c18 仕入先・単協名の「非表示」をクラウドへ保存 =====
+   c8 の非表示リストは端末内にしか保存されず、クラウド読込で消える・他の端末に反映されない状態だった。
+   保存データに含め、入庫画面の入力欄の下から候補の編集画面を開けるようにする。 */
+(function(){
+ const V1218_KEYS=["qrSupplierHidden","qrCooperativeHidden"];
+ if(typeof cloudPayloadBase==="function"){
+   const base=cloudPayloadBase;
+   cloudPayloadBase=function(...a){
+     const out=base.apply(this,a);
+     for(const k of V1218_KEYS)out[k]=Array.isArray(db[k])?db[k]:[];
+     return out;
+   };
+   window.cloudPayloadBase=cloudPayloadBase;
+ }
+ if(typeof window.v188RolePayload==="function"){
+   const base=window.v188RolePayload;
+   const wrapped=function(payload,role=db?.role){
+     const out=base(payload,role);
+     if(role==="admin"||role==="worker")
+       for(const k of V1218_KEYS)if(Object.prototype.hasOwnProperty.call(payload||{},k))out[k]=v188Clone(payload[k]);
+     return out;
+   };
+   window.v188RolePayload=wrapped;
+   try{v188RolePayload=wrapped}catch(e){}
+ }
+ function v1218Merge(local,remote){
+   const seen=new Set,out=[];
+   for(const v of [...(Array.isArray(remote)?remote:[]),...(Array.isArray(local)?local:[])]){
+     const k=qrNormalizeName(v);if(!k||seen.has(k))continue;seen.add(k);out.push(v);
+   }
+   return out;
+ }
+ if(typeof loadCloud==="function"){
+   const base=loadCloud;
+   loadCloud=async function(...a){
+     const keep={};for(const k of V1218_KEYS)keep[k]=Array.isArray(db?.[k])?db[k].slice():[];
+     const r=await base.apply(this,a);
+     try{for(const k of V1218_KEYS){const remote=Array.isArray(db[k])?db[k]:[];db[k]=remote.length?remote:v1218Merge(keep[k],[])}}catch(e){}
+     return r;
+   };
+   window.loadCloud=loadCloud;
+ }
+ const shell=pageShell;
+ pageShell=function(...a){
+   const r=shell.apply(this,a);
+   setTimeout(()=>{try{
+     if(!canQrOperate()||document.getElementById("v1218CandLink"))return;
+     const sup=document.getElementById("qrSupplier"),coop=document.getElementById("qrCooperativeName");
+     if(!sup||!coop)return;
+     const anchor=document.getElementById("qrCooperativeSuggestions")||coop;
+     anchor.insertAdjacentHTML("afterend",
+       `<div id="v1218CandLink" class="small" style="margin:6px 0 10px">間違った仕入先・単協名が候補に出るときは
+        <button type="button" class="btn btn2" style="padding:6px 12px;margin-left:4px" ${seikaEventAttrs("click","v1208CandidatePage",["supplier",""])}>候補を編集</button></div>`);
+   }catch(e){}},0);
+   return r;
+ };
+ window.pageShell=pageShell;
+})();
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
