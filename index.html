@@ -10575,17 +10575,16 @@ function v188Home(msg=''){
   const sessions=countSessions().slice().sort((a,b)=>new Date(b.updatedAt||b.startedAt||0)-new Date(a.updatedAt||a.startedAt||0));
   const active=sessions.filter(session=>v188Session(session)&&!v188Confirmed(session)),history=sessions.filter(session=>v188Session(session)&&v188Confirmed(session)),legacy=sessions.filter(session=>!v188Session(session));
   const month=v188MonthValue();
-  pageShell('棚卸しモード',`${esc(v119RoleLabel())} / v1.192`,
+  pageShell('棚卸しモード',`${esc(v119RoleLabel())} / v1.199`,
     `${okHtml(msg)}<div class="card notice"><b>月末棚卸しの流れ</b><div class="small">①対象月と冷蔵庫を選んで開始（その時点で対象月末の在庫が固定されます）　②記入票を印刷して現物確認　③通常在庫入力・QR画面で入力／棚卸し画面で実数・差異理由を編集　④確定すると差異分だけを対象月末日の棚卸し調整として反映　⑤Excel出力（単価欄あり）<br>開始後は、翌日以降の入庫・出庫・調整があっても対象月末の帳簿在庫は変わりません。</div></div>
-${['room2','room3'].map(room=>{const blocking=v188BlockingSession(room);return blocking?`<div class="card warn"><b>${esc(roomLabel(room))}は今のままでは開始できません</b><div class="small" style="margin-top:6px">進行中の旧棚卸し（${esc(blocking.countNo||blocking.id)} / 状態：${esc(countStatusLabel(blocking))}）が残っています。下の「旧棚卸し履歴」からその棚卸しを破棄または取消すると開始できます。</div></div>`:''}).join('')}
+${['room2','room3'].map(room=>{const blocking=v188BlockingSession(room);return blocking?`<div class="card warn"><b>${esc(roomLabel(room))}は今のままでは開始できません</b><div class="small" style="margin-top:6px">進行中の旧棚卸し（${esc(blocking.countNo||blocking.id)} / 状態：${esc(countStatusLabel(blocking))}）が残っています。「棚卸し履歴」を開き、旧棚卸しの中からその棚卸しを破棄または取消すると開始できます。</div></div>`:''}).join('')}
 <div class="card"><b>新しい棚卸しを開始</b><label class="label" style="margin-top:8px">対象月</label><select id="v188TargetMonth" class="input">${v188MonthOptions(month)}</select><button class="btn orange" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v188StartBoth',[])}>第2・第3をまとめて開始</button><div class="grid" style="margin-top:10px"><button class="btn btn2" ${seikaEventAttrs('click','v188Start',['room2'])}>第2冷蔵庫だけ</button><button class="btn btn2" ${seikaEventAttrs('click','v188Start',['room3'])}>第3冷蔵庫だけ</button></div><div class="small" style="margin-top:8px">第2・第3は同時に進行できます。片方を確定しても もう片方は残ります。</div></div>
 <div class="card"><b>進行中</b>${active.map(v188SessionCard).join('')||'<div class="small">進行中の棚卸しはありません。</div>'}</div>
-<div class="card"><b>確定済み</b>${history.map(v188SessionCard).join('')||'<div class="small">確定済みの棚卸しはありません。</div>'}</div>
-${legacy.length?`<details class="card"><summary><b>旧棚卸し履歴（${legacy.length}件）</b></summary><div style="margin-top:10px">${legacy.map(v186LegacyCard).join('')}</div></details>`:''}`);
+<div class="card"><b>棚卸し履歴</b><div class="small" style="margin-top:6px">確定済み ${history.length}件${legacy.length?` / 旧棚卸し ${legacy.length}件`:''}。確定から3か月を過ぎた棚卸しは自動で削除されます。</div><button class="btn btn2" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1205CountArchivePage',[])}>棚卸し履歴を開く</button></div>`);
 }
 function v188Guide(){
   setScreen('inventoryCountGuidePage');if(!v177Allowed())return home();
-  pageShell('月末棚卸しの使い方','管理者・青果社員のみ / v1.192',
+  pageShell('月末棚卸しの使い方','管理者・青果社員のみ / v1.199',
     `<div class="card notice"><b>1. 対象月を選んで開始</b><div class="small">対象月と冷蔵庫を選ぶと、その月の月末時点（当月は本日時点）の通常・片岡・その他・QR在庫が帳簿在庫として固定されます。開始後の入庫・出庫・調整では変わりません。</div></div>
 <div class="card"><b>2. 記入票を印刷して現物確認</b><div class="small">記入票には月末時点の帳簿在庫、量目・入数、仕入先が入ります。A4横です。</div></div>
 <div class="card"><b>3. 実数を入れる</b><div class="small">いつもの通常在庫入力・QR出庫・QR在庫調整で入力し、棚卸し画面の「現在の在庫を実数へ取り込む」で反映します。行ごとの手入力・修正もできます。</div></div>
@@ -13294,6 +13293,87 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    return r;
  };
  window.pageShell=pageShell;
+})();
+
+
+/* v1.199-c19 月末棚卸しの状態保護・棚卸し履歴・3か月経過分の削除 */
+(function(){
+ const V1205_CLOSED=new Set(['completed','confirmed','test_confirmed','reversed','cancelled']);
+ const V1205_PURGE_RPC='seika_purge_old_inventory_counts_v1205';
+ function v1205Repair(s){
+  if(!s||typeof s!=='object')return false;
+  const st=String(s.status||'');
+  if(v188Session(s)&&s.v188ConfirmedAt&&st!=='completed'){s.status='completed';return true}
+  if(v177Session(s)&&!v188Session(s)&&v177Completed(s)&&!V1205_CLOSED.has(st)){s.status='completed';return true}
+  return false;
+ }
+ const normalizeBase=v124NormalizeSession;
+ v124NormalizeSession=function(s){if(v177Session(s)){v1205Repair(s);return s}return normalizeBase(s)};
+ window.v124NormalizeSession=v124NormalizeSession;
+ const deriveBase=v124DeriveStatus;
+ v124DeriveStatus=function(s){if(v177Session(s)){v1205Repair(s);return s}return deriveBase(s)};
+ window.v124DeriveStatus=v124DeriveStatus;
+
+ function v1205ClosedAt(s){
+  if(!s)return null;
+  if(v188Session(s))return s.v188ConfirmedAt||null;
+  if(v177Session(s)&&v177Completed(s))return s.v177CompletedAt||s.v177AppliedAt||s.updatedAt||null;
+  if(V1205_CLOSED.has(String(s.status||'')))return s.v186ConfirmedAt||s.confirmedAt||s.updatedAt||s.startedAt||null;
+  return null;
+ }
+ function v1205ExpireAt(s){
+  const at=v1205ClosedAt(s);if(!at)return null;
+  const d=new Date(at);if(isNaN(d))return null;
+  d.setMonth(d.getMonth()+3);return d;
+ }
+ function v1205Expired(s){const d=v1205ExpireAt(s);return Boolean(d&&d.getTime()<=Date.now())}
+ function v1205PruneLocal(){
+  const list=countSessions();let changed=false;
+  list.forEach(s=>{if(v1205Repair(s))changed=true});
+  const keep=list.filter(s=>!v1205Expired(s));
+  if(keep.length!==list.length){db.inventoryCounts.sessions=keep;changed=true}
+  if(changed&&typeof v188PersistDb==='function')v188PersistDb();
+  return changed;
+ }
+ let v1205Purged=false;
+ async function v1205PurgeServer(){
+  if(v1205Purged||!canAdmin())return;
+  if(!countSessions().some(v1205Expired))return;
+  v1205Purged=true;
+  try{const r=await callRpc(V1205_PURGE_RPC,{p_id:STATE_ID});if(r?.deleted>0)await loadCloud()}catch(e){}
+ }
+ const loadBase=loadCloud;
+ loadCloud=async function(...a){const r=await loadBase.apply(this,a);try{v1205PruneLocal()}catch(e){}return r};
+ window.loadCloud=loadCloud;
+
+ const homeBase=v188Home;
+ function v1205Home(msg=''){
+  try{v1205PruneLocal()}catch(e){}
+  const r=homeBase(msg);
+  v1205PurgeServer();
+  return r;
+ }
+ window.v188Home=v1205Home;window.inventoryCountHome=v1205Home;inventoryCountHome=v1205Home;
+
+ function v1205Ymd(d){return d?`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`:'－'}
+ window.v1205CountArchivePage=function(msg=''){
+  setScreen('v1205CountArchivePage',[msg]);if(!v177Allowed())return home();
+  v1205PruneLocal();
+  const sessions=countSessions();
+  const done=sessions.filter(s=>v188Session(s)&&v188Confirmed(s)).sort((a,b)=>String(b.targetMonth||'').localeCompare(String(a.targetMonth||''))||String(a.room||'').localeCompare(String(b.room||'')));
+  const legacy=sessions.filter(s=>!v188Session(s)).sort((a,b)=>new Date(b.updatedAt||b.startedAt||0)-new Date(a.updatedAt||a.startedAt||0));
+  const row=s=>`<div class="card"><div class="itemHead"><div><b>${esc(s.countNo||'')}</b><div class="small">${esc(s.roomLabel||'')} / ${esc(v188MonthLabel(s.targetMonth))}末<br>確定：${esc(s.v188ConfirmedAt?dt(s.v188ConfirmedAt):'－')} / 削除予定：${esc(v1205Ymd(v1205ExpireAt(s)))}</div></div><span class="badge normal">確定済み</span></div><div class="mini" style="margin-top:8px"><button class="btn btn2" ${seikaEventAttrs('click','v1205CountArchiveDetail',[s.id])}>開く</button><button class="btn orange" ${seikaEventAttrs('click','v188DownloadExcel',[s.id])}>Excelを出力</button></div></div>`;
+  pageShell('棚卸し履歴',`${esc(v119RoleLabel())} / v1.199`,
+   `${okHtml(msg)}<div class="card notice"><b>確定済みの棚卸し</b><div class="small">確定日から3か月を過ぎると自動で削除されます。残しておきたい場合は、削除予定日より前にExcelを出力して文書管理へ保存してください。在庫へ反映済みの棚卸し調整は、削除後も在庫履歴に残ります。</div></div>
+${done.map(row).join('')||'<div class="card"><div class="small">確定済みの棚卸しはありません。</div></div>'}
+${legacy.length?`<details class="card"><summary><b>旧棚卸し（${legacy.length}件）</b></summary><div style="margin-top:10px">${legacy.map(v186LegacyCard).join('')}</div></details>`:''}
+<button class="btn btn2" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しモードへ戻る</button>`);
+ };
+ window.v1205CountArchiveDetail=function(id){
+  const s=countSession(id);if(!s)return window.v1205CountArchivePage('棚卸しが見つかりません。');
+  setScreen('v1205CountArchiveDetail',[id]);
+  pageShell(esc(s.countNo||'棚卸し'),`${esc(v119RoleLabel())} / v1.199`,`${v188SessionCard(s)}<div class="small" style="margin-top:6px">削除予定：${esc(v1205Ymd(v1205ExpireAt(s)))}</div><button class="btn btn2" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1205CountArchivePage',[])}>棚卸し履歴へ戻る</button>`);
+ };
 })();
 
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
