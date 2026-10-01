@@ -13377,22 +13377,24 @@ ${legacy.length?`<details class="card"><summary><b>旧棚卸し（${legacy.lengt
 })();
 
 
-/* v1.199-c20 月末棚卸しExcelを「棚卸表」形式で出力 */
+/* v1.199-c21 月末棚卸しExcel「棚卸表」：ExcelJSで直接作成・単位と重量の算出を修正 */
 (function(){
- const B={style:'thin',color:{rgb:'000000'}};
- const ALL={top:B,bottom:B,left:B,right:B};
  const FONT='Yu Gothic';
- function st(ws,addr,s){const c=ws[addr]||(ws[addr]={t:'s',v:''});c.s={...(c.s||{}),...s}}
- function put(ws,addr,v,s={}){ws[addr]=typeof v==='number'?{t:'n',v}:{t:'s',v:inventoryCountExcelSafeText(String(v??''))};ws[addr].s=s}
- function num(v){const n=Number(v);return Number.isFinite(n)?n:null}
+ const thin={style:'thin',color:{argb:'FF000000'}};
+ const ALL={top:thin,bottom:thin,left:thin,right:thin};
+ const INPUT={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF7CC'}};
+ const GRAY={type:'pattern',pattern:'solid',fgColor:{argb:'FFC0C0C0'}};
+ const num=v=>{if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null};
+ const r2=n=>Math.round(n*100)/100;
+ const fmtN=n=>Number(n).toLocaleString('ja-JP',{maximumFractionDigits:2});
  function mdLabel(key){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key||''));return m?`${Number(m[2])}/${m[3]}`:''}
  function asOfLabel(key){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key||''));return m?`${Number(m[2])}月${Number(m[3])}日時点`:''}
- function kgText(n){return `${Number(n).toLocaleString('ja-JP')}㎏`}
- function qtyFmt(unit){const u=String(unit||'').replace(/"/g,'');return u?`#,##0.00"${u}"`:'#,##0.00'}
+ function packFromName(name){const m=/(\d+(?:\.\d+)?)\s*(?:kg|ｋｇ|㎏|KG)/i.exec(String(name||''));return m?Number(m[1]):null}
+ function gradeText(memo){const t=String(memo||'').replace(/\[[^\]]*\]?/g,'').replace(/【[^】]*】?/g,'').replace(/\s+/g,' ').trim();return t||'ー'}
  async function lotInfo(session){
   const map=new Map();
   if(!(session.qrLines||[]).length)return map;
-  try{const lots=await v163SelectAll('qr_lots','select=qr_key,cooperative_name,memo,pack_weight,container_type,unit&order=qr_key.asc');for(const lot of lots||[]){const k=String(lot?.qr_key||'').trim();if(k&&!map.has(k))map.set(k,lot)}}catch(e){}
+  try{const lots=await v163SelectAll('qr_lots','select=qr_key,cooperative_name,memo,pack_weight,container_type,unit,total_weight,received_qty&order=qr_key.asc');for(const lot of lots||[]){const k=String(lot?.qr_key||'').trim();if(k&&!map.has(k))map.set(k,lot)}}catch(e){}
   return map;
  }
  function qrRows(session,lots){
@@ -13401,106 +13403,122 @@ ${legacy.length?`<details class="card"><summary><b>旧棚卸し（${legacy.lengt
    const entry=v188Entry(session,line.lineId);if(entry.included===false)continue;
    const actual=v188Actual(session,line.lineId);if(actual===null||actual<=0)continue;
    const lot=lots.get(String(line.qrKey||'').trim())||{};
-   const pack=v192PackKg({packWeight:line.packWeight??lot.pack_weight});
-   const unit=line.unit||lot.unit||'';
-   const container=line.containerType||lot.container_type||'';
-   const grade=String(lot.memo||'').replace(/\s+/g,' ').trim()||'ー';
-   const spec=`${container}${pack?` ${kgText(pack)}`:''}${unit?` (${unit})`:''} / ${grade}`.trim();
-   const w=num(v192QrWeight(line,actual));
-   rows.push({item:line.itemName||'',date:line.receivedDate||'',received:mdLabel(line.receivedDate),origin:line.origin||'',supplier:line.supplier||'',coop:lot.cooperative_name||'',spec,qty:actual,unit,weight:w});
+   const container=String(line.containerType||lot.container_type||'').trim();
+   const large=qrIsLargeContainer(container);
+   const unit=large?'基':'ケース';
+   const pack=v192PackKg({packWeight:(line.packWeight!==''&&line.packWeight!==null&&line.packWeight!==undefined)?line.packWeight:lot.pack_weight});
+   let weight=null;
+   if(large){
+    const tw=num(line.snapshotTotalWeight)??num(lot.total_weight),rq=num(line.snapshotInitialQty)??num(lot.received_qty);
+    if(tw!==null&&rq)weight=r2(actual*tw/rq);
+    else{const m=num(line.actualWeightKg);if(m!==null)weight=m}
+   }else if(pack){weight=r2(actual*pack)}
+   else{const m=num(line.actualWeightKg);if(m!==null)weight=m}
+   const spec=`${container}${pack?` ${fmtN(pack)}kg`:''} (${unit}) / ${gradeText(lot.memo)}`.trim();
+   rows.push({item:line.itemName||'',date:line.receivedDate||'',received:mdLabel(line.receivedDate),origin:line.origin||'',supplier:line.supplier||'',coop:lot.cooperative_name||'',spec,qty:actual,unit,weight});
   }
   const order=[],groups=new Map();
   for(const r of rows){if(!groups.has(r.item)){groups.set(r.item,[]);order.push(r.item)}groups.get(r.item).push(r)}
   return order.map(item=>({item,rows:groups.get(item).sort((a,b)=>String(a.date).localeCompare(String(b.date)))}));
+ }
+ function caseText(lines){
+  const parts=[];
+  for(const l of lines||[]){
+   if(!l||l.stocktakeAdjustment||l.adjustment)continue;
+   if(l.detail){const s=num(l.subtotal)??num(detailSubtotal(l));if(s)parts.push(`${l.spec||''}${l.origin?'/'+l.origin:''} ${fmtN(s)}kg`.trim());continue}
+   const p=num(l.pack),c=num(l.cases);
+   if(p&&c)parts.push(p===1?`${fmtN(c)}kg`:`${fmtN(p)}kg ${fmtN(c)}ケース`);
+  }
+  return parts.join('、');
+ }
+ function sumLines(lines){let t=0;for(const l of lines||[]){if(!l||l.stocktakeAdjustment||l.adjustment)continue;t+=l.detail?(num(l.subtotal)??num(detailSubtotal(l))??0):((num(l.pack)||0)*(num(l.cases)||0))}return r2(t)}
+ function normalQtyText(session,line,actual){
+  const recs=v188RecordsUntil(session.asOfKey).filter(r=>r&&r.itemId===line.itemId&&r.kind!=='棚卸し調整').sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const rec=recs[0];
+  if(rec){const text=caseText(rec.lines);if(text&&Math.abs(sumLines(rec.lines)-actual)<0.01)return text}
+  return `${fmtN(actual)}kg`;
  }
  function normalRows(session){
   const rows=[];
   for(const line of v188SectionLines(session,'normal')){
    const entry=v188Entry(session,line.lineId);if(entry.included===false)continue;
    const actual=v188Actual(session,line.lineId);if(actual===null||actual<=0)continue;
-   const unit=line.unit||'';const pack=num(line.snapshotPackKg);
-   const weight=unit==='kg'?actual:(pack&&pack>0?yen(actual*pack):null);
-   const spec=unit==='kg'?'kg':`${unit}${pack&&pack>0?` ${kgText(pack)}`:''}`;
-   rows.push({item:line.itemName||'',group:line.group||'',spec,qty:actual,unit,weight});
+   if(line.type==='normal'){
+    rows.push({item:line.itemName||'',spec:'kg',qtyText:normalQtyText(session,line,actual),weight:r2(actual)});
+   }else{
+    const unit=line.unit||'ケース';
+    const pack=num(line.snapshotPackKg)||packFromName(line.itemName);
+    const isKg=String(unit).toLowerCase()==='kg';
+    rows.push({item:line.itemName||'',spec:isKg?'kg':`${unit}${pack?` ${fmtN(pack)}kg`:''}`,qtyText:isKg?`${fmtN(actual)}kg`:(pack?`${fmtN(pack)}kg ${fmtN(actual)}${unit}`:`${fmtN(actual)}${unit}`),weight:isKg?r2(actual):(pack?r2(actual*pack):null)});
+   }
   }
   return rows;
  }
- function buildSheet(session,groups,normals){
-  const ws={},heads=['品名','仕入日','産地','仕入先','農協名','荷姿・規格','数量','重量','単価','配送費','合計額'];
-  const f11={font:{name:FONT,sz:11}};
-  put(ws,'A1','棚卸表（原料/副原料/加工品/製品/資材）',{font:{name:FONT,sz:16,bold:true},alignment:{horizontal:'center',vertical:'center'}});
-  put(ws,'H1','石岡センター',{font:{name:FONT,sz:12},alignment:{horizontal:'center',vertical:'center'},border:{bottom:B}});
-  for(const c of ['I1','J1'])st(ws,c,{border:{bottom:B}});
-  put(ws,'A2',asOfLabel(session.asOfKey),{font:{name:FONT,sz:12},alignment:{horizontal:'center'}});
-  put(ws,'A3',`石岡青果 ${session.roomLabel||''}在庫`,{font:{name:FONT,sz:12},alignment:{horizontal:'center'}});
-  put(ws,'I2','氏名',{...f11,alignment:{horizontal:'center'},border:{top:B,bottom:B}});
-  put(ws,'J2','',{...f11,border:{top:B,bottom:B}});st(ws,'K2',{border:{top:B,bottom:B}});
-  put(ws,'I3','氏名',{...f11,alignment:{horizontal:'center'},border:{bottom:B}});
-  put(ws,'J3','',{...f11,border:{bottom:B}});st(ws,'K3',{border:{bottom:B}});
-  heads.forEach((h,i)=>put(ws,`${XLSX.utils.encode_col(i)}5`,h,{font:{name:FONT,sz:11,bold:true},alignment:{horizontal:'center',vertical:'center'},border:ALL}));
-  const INPUT={patternType:'solid',fgColor:{rgb:'FFF7CC'}},GRAY={patternType:'solid',fgColor:{rgb:'C0C0C0'}};
+ function buildSheet(wb,session,groups,normals){
+  const ws=wb.addWorksheet('棚卸表',{pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true,printTitlesRow:'5:5',margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.3,footer:0.3}},headerFooter:{oddFooter:'&C&P / &N'}});
+  [33,10,15,26,24,38,14,14,11,15,13].forEach((w,i)=>{ws.getColumn(i+1).width=w});
+  const f=(sz=11,bold=false)=>({name:FONT,size:sz,bold});
+  const set=(addr,value,o={})=>{const c=ws.getCell(addr);c.value=value;c.font=o.font||f();if(o.border)c.border=o.border;if(o.fill)c.fill=o.fill;if(o.numFmt)c.numFmt=o.numFmt;c.alignment={vertical:'middle',horizontal:o.h||'center',...(o.wrap?{wrapText:true}:{})};return c};
+  ws.mergeCells('A1:D1');ws.mergeCells('H1:J1');ws.mergeCells('A2:D2');ws.mergeCells('A3:D3');
+  set('A1','棚卸表（原料/副原料/加工品/製品/資材）',{font:f(16,true)});
+  set('H1','石岡センター',{font:f(12),border:{bottom:thin}});
+  set('A2',asOfLabel(session.asOfKey),{font:f(12)});
+  set('A3',`石岡青果 ${session.roomLabel||''}在庫`,{font:f(12)});
+  set('I2','氏名',{border:{top:thin,bottom:thin}});set('J2','',{border:{top:thin,bottom:thin}});set('K2','',{border:{top:thin,bottom:thin}});
+  set('I3','氏名',{border:{bottom:thin}});set('J3','',{border:{bottom:thin}});set('K3','',{border:{bottom:thin}});
+  ['品名','仕入日','産地','仕入先','単協名','荷姿・規格','数量','重量','単価','配送費','合計額'].forEach((h,i)=>set(`${String.fromCharCode(65+i)}5`,h,{font:f(11,true),border:ALL}));
+  for(let i=1;i<=5;i++)ws.getRow(i).height=20.1;
   const subtotals=[];let r=6;
-  const cell=(col,v,extra={})=>put(ws,`${col}${r}`,v,{...f11,border:ALL,alignment:{vertical:'center',horizontal:extra.h||'center'},...(extra.fill?{fill:extra.fill}:{}),...(extra.fmt?{numFmt:extra.fmt}:{})});
-  const money=(first)=>{cell('I',0,{h:'right',fmt:'#,##0.00',fill:INPUT});cell('J',0,{h:'right',fmt:'#,##0',fill:INPUT});ws[`K${r}`]={t:'n',f:`IF(H${r}="",0,H${r}*I${r})+J${r}`,s:{...f11,border:ALL,alignment:{horizontal:'right'},numFmt:'#,##0'}}};
-  const line=(o,first,isNormal)=>{
-   put(ws,`A${r}`,first?o.item:'',{...f11,alignment:{horizontal:'center',vertical:'center'},border:{left:B,right:B,...(first?{top:B}:{})}});
-   cell('B',isNormal?'':o.received);
-   cell('C',o.origin||'',isNormal?{fill:INPUT}:{});
-   cell('D',o.supplier||'',isNormal?{fill:INPUT}:{});
-   cell('E',o.coop||'');
-   cell('F',o.spec||'',{h:'left'});
-   cell('G',o.qty,{h:'right',fmt:qtyFmt(o.unit)});
-   if(o.weight===null||o.weight===undefined)cell('H','',{h:'right'});else cell('H',o.weight,{h:'right',fmt:'#,##0.00"kg"'});
-   money();r++;
+  const money=()=>{set(`I${r}`,0,{border:ALL,h:'right',numFmt:'#,##0.00',fill:INPUT});set(`J${r}`,0,{border:ALL,h:'right',numFmt:'#,##0',fill:INPUT});set(`K${r}`,{formula:`IF(H${r}="",0,H${r}*I${r})+J${r}`},{border:ALL,h:'right',numFmt:'#,##0'})};
+  const row=(o,first,isNormal)=>{
+   set(`A${r}`,first?o.item:'',{border:{left:thin,right:thin,...(first?{top:thin}:{})}});
+   set(`B${r}`,isNormal?'':o.received,{border:ALL});
+   set(`C${r}`,o.origin||'',{border:ALL,...(isNormal?{fill:INPUT}:{})});
+   set(`D${r}`,o.supplier||'',{border:ALL,...(isNormal?{fill:INPUT}:{})});
+   set(`E${r}`,o.coop||'',{border:ALL});
+   set(`F${r}`,o.spec||'',{border:ALL,h:'left'});
+   if(isNormal)set(`G${r}`,o.qtyText||'',{border:ALL,h:'right'});
+   else set(`G${r}`,o.qty,{border:ALL,h:'right',numFmt:`#,##0.##"${o.unit}"`});
+   if(o.weight===null||o.weight===undefined)set(`H${r}`,null,{border:ALL,h:'right'});
+   else set(`H${r}`,o.weight,{border:ALL,h:'right',numFmt:'#,##0.00"kg"'});
+   money();ws.getRow(r).height=20.1;r++;
   };
-  const subtotal=(start,label='小計')=>{
-   for(const c of 'ABCDEFGHI')st(ws,`${c}${r}`,{border:c==='A'?{left:B,right:B,bottom:B}:{}});
-   put(ws,`J${r}`,label,{...f11,fill:GRAY,border:ALL,alignment:{horizontal:'center'}});
-   ws[`K${r}`]={t:'n',f:`SUM(K${start}:K${r-1})`,s:{...f11,fill:GRAY,border:ALL,alignment:{horizontal:'right'},numFmt:'#,##0'}};
-   subtotals.push(`K${r}`);r+=2;
+  const subtotal=(start,label)=>{
+   ws.getCell(`A${r}`).border={left:thin,right:thin,bottom:thin};
+   set(`J${r}`,label,{border:ALL,fill:GRAY});
+   set(`K${r}`,{formula:`SUM(K${start}:K${r-1})`},{border:ALL,fill:GRAY,h:'right',numFmt:'#,##0'});
+   ws.getRow(r).height=20.1;subtotals.push(`K${r}`);r+=2;
   };
-  for(const g of groups){const start=r;g.rows.forEach((o,i)=>line(o,i===0,false));subtotal(start)}
+  for(const g of groups){const start=r;g.rows.forEach((o,i)=>row(o,i===0,false));subtotal(start,'小計')}
   if(normals.length){
-   put(ws,`A${r}`,'【通常在庫】',{font:{name:FONT,sz:11,bold:true}});r++;
-   const start=r;for(const o of normals)line(o,true,true);subtotal(start,'通常在庫 小計');
+   set(`A${r}`,'【通常在庫】',{font:f(11,true),h:'left'});r++;
+   const start=r;for(const o of normals)row(o,true,true);subtotal(start,'通常在庫 小計');
   }
   r--;
-  put(ws,`J${r}`,'総合計',{font:{name:FONT,sz:11,bold:true},border:ALL,alignment:{horizontal:'center'}});
-  ws[`K${r}`]={t:'n',f:subtotals.length?subtotals.join('+'):'0',s:{font:{name:FONT,sz:11,bold:true},border:ALL,alignment:{horizontal:'right'},numFmt:'#,##0'}};
-  ws['!ref']=`A1:K${r}`;
-  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:3}},{s:{r:0,c:7},e:{r:0,c:9}},{s:{r:1,c:0},e:{r:1,c:3}},{s:{r:2,c:0},e:{r:2,c:3}}];
-  ws['!cols']=[33,10,15,26,24,38,13,14,11,15,13].map(wch=>({wch}));
-  ws['!rows']=Array.from({length:r},()=>({hpt:20.1}));
-  ws['!margins']={left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.3,footer:0.3};
+  set(`J${r}`,'総合計',{font:f(11,true),border:ALL});
+  set(`K${r}`,{formula:subtotals.length?subtotals.join('+'):'0'},{font:f(11,true),border:ALL,h:'right',numFmt:'#,##0'});
   return ws;
  }
- async function v1206DownloadExcel(id){
+ async function v1207DownloadExcel(id){
   const session=countSession(id);if(!session||!v188Session(session))return v186DownloadExcel(id);
-  if(!ensureXlsxReady())return;
+  if(typeof ExcelJS==='undefined')return alert('Excel作成ライブラリを読み込めませんでした。再読込してからもう一度お試しください。');
   v161ShowProcessing('棚卸表を作成しています');
   try{
    const lots=await lotInfo(session);
-   const wb=XLSX.utils.book_new();
-   XLSX.utils.book_append_sheet(wb,buildSheet(session,qrRows(session,lots),normalRows(session)),'棚卸表');
+   const wb=new ExcelJS.Workbook();
+   buildSheet(wb,session,qrRows(session,lots),normalRows(session));
    const fileName=`棚卸表_${String(session.targetMonth||'').replace('-','')}_${String(session.roomLabel||'冷蔵庫').replace(/[\\/:*?"<>|]/g,'_')}.xlsx`;
-   if(typeof ExcelJS==='undefined'){downloadWorkbookXlsx(wb,fileName)}
-   else{
-    const x=new ExcelJS.Workbook();await x.xlsx.load(XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true}));
-    const sheet=x.worksheets[0];
-    sheet.pageSetup={...sheet.pageSetup,paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true,printTitlesRow:'5:5',margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.3,footer:0.3}};
-    sheet.headerFooter={oddFooter:'&C&P / &N'};
-    const buffer=await x.xlsx.writeBuffer(),blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download=fileName;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
-   }
+   const buffer=await wb.xlsx.writeBuffer(),blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+   a.href=url;a.download=fileName;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
   }catch(error){alert(`棚卸表を作成できませんでした。\n${v161ErrorText(error)}`);return}
   finally{v161HideProcessing()}
   const msg='棚卸表を出力しました。単価（円/kg）と配送費を入力すると、合計額・小計・総合計が計算されます。';
   return currentScreen==='v1205CountArchivePage'?window.v1205CountArchivePage(msg):inventoryCountHome(msg);
  }
- window.v1206DownloadExcel=v1206DownloadExcel;
- downloadInventoryCountExcel=v1206DownloadExcel;window.downloadInventoryCountExcel=v1206DownloadExcel;
- v188DownloadExcel=v1206DownloadExcel;window.v188DownloadExcel=v1206DownloadExcel;
- v192DownloadExcel=v1206DownloadExcel;window.v192DownloadExcel=v1206DownloadExcel;
+ window.v1207DownloadExcel=v1207DownloadExcel;window.v1206DownloadExcel=v1207DownloadExcel;
+ downloadInventoryCountExcel=v1207DownloadExcel;window.downloadInventoryCountExcel=v1207DownloadExcel;
+ v188DownloadExcel=v1207DownloadExcel;window.v188DownloadExcel=v1207DownloadExcel;
+ v192DownloadExcel=v1207DownloadExcel;window.v192DownloadExcel=v1207DownloadExcel;
 })();
 
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
