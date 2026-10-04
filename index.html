@@ -13521,6 +13521,170 @@ ${legacy.length?`<details class="card"><summary><b>旧棚卸し（${legacy.lengt
  v192DownloadExcel=v1207DownloadExcel;window.v192DownloadExcel=v1207DownloadExcel;
 })();
 
+/* ===== v1.199-c22 保存エラーの常時表示・エラー記録・履歴保存漏れの点検 ===== */
+(function(){
+ const LOG_KEY='seika_error_log_v1',CHECK_KEY='seika_history_check_v1',MAX=80;
+ const TABLES=[['records','inventory_records','在庫入力'],['wasteRecords','waste_records','廃棄'],['movements','inventory_movements','在庫修正']];
+ const bar={sync:'',hist:'',missing:null};
+ let pendingTimer=null;
+ const jstDay=()=>new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Tokyo'});
+ const errText=e=>String((e&&e.message)||e||'');
+
+ function readLog(){try{return JSON.parse(localStorage.getItem(LOG_KEY)||'[]')}catch(e){return[]}}
+ function logError(kind,detail){
+  const list=readLog();
+  list.unshift({at:new Date().toISOString(),kind:String(kind),detail:errText(detail).slice(0,800),
+   screen:typeof currentScreen!=='undefined'?String(currentScreen||''):'',user:(db&&db.user)||''});
+  try{localStorage.setItem(LOG_KEY,JSON.stringify(list.slice(0,MAX)))}catch(e){}
+ }
+ window.seikaLogError=logError;
+ window.addEventListener('error',e=>logError('画面エラー',`${e.message||''} (行${e.lineno||'-'})`));
+ window.addEventListener('unhandledrejection',e=>logError('処理エラー',e.reason));
+
+ function ensureStyle(){
+  if(document.getElementById('c22Style'))return;
+  const s=document.createElement('style');s.id='c22Style';
+  s.textContent='#c22Bar{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:9999;background:#b91c1c;color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 6px 20px rgba(0,0,0,.28);font-weight:700;font-size:.95rem;display:flex;gap:10px;align-items:center}#c22Bar .c22Msg{flex:1;line-height:1.45}#c22Bar button{background:#fff;color:#991b1b;border:0;border-radius:10px;padding:9px 14px;font-weight:800;font-size:.95rem}#c22Bar.ok{background:#15803d}';
+  document.head.appendChild(s);
+ }
+ function renderBar(){
+  if(!document.body)return;
+  ensureStyle();
+  const parts=[bar.hist,bar.sync].filter(Boolean);
+  if(bar.missing&&bar.missing.total>0)parts.push(`クラウドの履歴に未保存が${bar.missing.total}件あります（${bar.missing.text}）`);
+  let el=document.getElementById('c22Bar');
+  if(!parts.length){el&&el.remove();return}
+  if(!el){el=document.createElement('div');el.id='c22Bar';document.body.appendChild(el)}
+  el.className='';
+  el.innerHTML=`<div class="c22Msg">${esc(parts.join('／'))}</div><button type="button" data-seika-click-action="c22Resend" data-seika-click-args="%5B%5D">再送</button>`;
+ }
+ function flashOk(msg){
+  ensureStyle();
+  let el=document.getElementById('c22Bar');
+  if(!el){el=document.createElement('div');el.id='c22Bar';document.body.appendChild(el)}
+  el.className='ok';el.innerHTML=`<div class="c22Msg">${esc(msg)}</div>`;
+  setTimeout(()=>{if(el.className==='ok')renderBar()},3000);
+ }
+
+ const baseSet=setSyncState;
+ setSyncState=function(state,detail=''){
+  baseSet(state,detail);
+  if(state==='失敗'){
+   clearTimeout(pendingTimer);pendingTimer=null;
+   bar.sync='保存に失敗しました'+(detail?`：${detail}`:'');logError('保存失敗',detail);renderBar();
+  }else if(state==='保存済み'){
+   clearTimeout(pendingTimer);pendingTimer=null;
+   if(bar.sync){bar.sync='';renderBar()}
+  }else if(state==='未同期'&&!pendingTimer){
+   pendingTimer=setTimeout(()=>{
+    pendingTimer=null;
+    if(typeof syncState!=='undefined'&&syncState!=='未同期')return;
+    bar.sync=navigator.onLine?'未同期のデータが5分以上送れていません':'オフラインのため未同期です（通信が戻ると送ります）';
+    renderBar();
+   },5*60*1000);
+  }
+ };
+ window.setSyncState=setSyncState;
+
+ const baseHist=saveHistoryTablesNow;
+ saveHistoryTablesNow=async function(...args){
+  try{
+   const r=await baseHist.apply(this,args);
+   if(bar.hist){bar.hist='';renderBar()}
+   return r;
+  }catch(e){
+   bar.hist='廃棄・在庫の履歴をクラウドへ保存できていません：'+errText(e).slice(0,120);
+   logError('履歴保存失敗',e);renderBar();throw e;
+  }
+ };
+ window.saveHistoryTablesNow=saveHistoryTablesNow;
+
+ async function serverIds(table,ids){
+  const found=new Set();
+  for(let i=0;i<ids.length;i+=80){
+   const q=ids.slice(i,i+80).map(x=>`"${String(x).replace(/["\\]/g,'')}"`).join(',');
+   const run=async()=>{
+    const res=await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=id&id=in.(${encodeURIComponent(q)})`,{headers:historyApiHeaders()});
+    if(!res.ok)throw new Error(`${table} ${res.status} ${(await res.text()).slice(0,200)}`);
+    return res.json();
+   };
+   const rows=typeof v199RetryOnAuth==='function'?await v199RetryOnAuth(run):await run();
+   rows.forEach(r=>found.add(String(r.id)));
+  }
+  return found;
+ }
+ async function c22CheckHistory(force=false){
+  if(!db||!db.user||db.role!=='admin')return null;
+  if(!force&&localStorage.getItem(CHECK_KEY)===jstDay())return null;
+  const since=Date.now()-14*86400000,grace=Date.now()-10*60000;
+  const result={at:new Date().toISOString(),total:0,parts:[],details:[]};
+  for(const[key,table,label]of TABLES){
+   const rows=(db[key]||[]).filter(r=>{if(!r||r.id==null)return false;const t=new Date(r.createdAt||r.date||0).getTime();return t>=since&&t<=grace});
+   if(!rows.length)continue;
+   const found=await serverIds(table,rows.map(r=>String(r.id)));
+   const miss=rows.filter(r=>!found.has(String(r.id)));
+   if(miss.length){result.total+=miss.length;result.parts.push(`${label}${miss.length}件`);result.details.push({label,ids:miss.slice(0,20).map(r=>String(r.id))})}
+  }
+  localStorage.setItem(CHECK_KEY,jstDay());
+  localStorage.setItem(CHECK_KEY+'_result',JSON.stringify(result));
+  bar.missing=result.total?{total:result.total,text:result.parts.join('・')}:null;
+  if(result.total)logError('履歴保存漏れ',result.parts.join('・'));
+  renderBar();
+  return result;
+ }
+ window.c22CheckHistory=c22CheckHistory;
+
+ window.c22Resend=async function(){
+  if(typeof v161ShowProcessing==='function')v161ShowProcessing('再送しています');
+  try{
+   if(typeof saveCloudNow==='function')await saveCloudNow().catch(e=>logError('再送（通常データ）',e));
+   await loadHistoryTablesToDb();
+   if(db&&db.role==='admin')await c22CheckHistory(true);
+  }catch(e){logError('再送失敗',e);bar.sync='再送できませんでした：'+errText(e).slice(0,120)}
+  finally{if(typeof v161HideProcessing==='function')v161HideProcessing()}
+  if(!bar.sync&&!bar.hist&&!bar.missing)flashOk('クラウドへの保存を確認しました');else renderBar();
+  if(typeof currentScreen!=='undefined'&&currentScreen==='c22ErrorLogPage')c22ErrorLogPage();
+ };
+
+ function c22ErrorLogPage(){
+  if(!canAdmin()){alert('管理者のみ表示できます');return home()}
+  setScreen('c22ErrorLogPage',[]);
+  let last=null;try{last=JSON.parse(localStorage.getItem(CHECK_KEY+'_result')||'null')}catch(e){}
+  const list=readLog();
+  const check=last?`<div class="${last.total?'err':'ok'}" style="margin-top:10px">${last.total?`未保存 ${last.total}件（${esc(last.parts.join('・'))}）`:'直近14日分はすべてクラウドに保存されています'}<div class="small">点検日時：${esc(dt(last.at))}</div></div>`:'<div class="notice" style="margin-top:10px">まだ点検していません。</div>';
+  const rows=list.length?`<table class="table"><tr><th>日時</th><th>種類</th><th>内容</th><th>画面・利用者</th></tr>${list.map(x=>`<tr><td>${esc(dt(x.at))}</td><td>${esc(x.kind)}</td><td style="word-break:break-all">${esc(x.detail)}</td><td>${esc(x.screen)}<br>${esc(x.user)}</td></tr>`).join('')}</table>`:'<div class="notice">エラーの記録はありません。</div>';
+  pageShell('エラー記録・保存点検','保存の失敗と、クラウドへの保存漏れを確認します',`<section class="card"><h2 style="margin-top:0">履歴の保存点検</h2><div class="small">この端末にある直近14日分の在庫入力・廃棄・在庫修正が、クラウドの履歴テーブルにすべて保存されているかを照合します。管理者のログイン時に1日1回自動で行います。</div>${check}<button class="btn blue" style="width:100%;margin-top:10px" data-seika-click-action="c22CheckNow" data-seika-click-args="%5B%5D">今すぐ点検</button></section><section class="card"><h2 style="margin-top:0">この端末のエラー記録（最新${MAX}件まで）</h2><div class="row" style="margin-bottom:10px"><div><button class="btn btn2" data-seika-click-action="c22CopyLog" data-seika-click-args="%5B%5D">記録をコピー</button></div><div><button class="btn btn2" data-seika-click-action="c22ClearLog" data-seika-click-args="%5B%5D">記録を消去</button></div></div>${rows}</section>`);
+ }
+ window.c22ErrorLogPage=c22ErrorLogPage;
+ window.c22CheckNow=async function(){
+  if(typeof v161ShowProcessing==='function')v161ShowProcessing('照合しています');
+  try{await c22CheckHistory(true)}catch(e){logError('点検失敗',e);alert('点検できませんでした。\n'+errText(e))}
+  finally{if(typeof v161HideProcessing==='function')v161HideProcessing()}
+  c22ErrorLogPage();
+ };
+ window.c22CopyLog=async function(){
+  const text=readLog().map(x=>`${x.at}\t${x.kind}\t${x.screen}\t${x.user}\t${x.detail}`).join('\n')||'記録なし';
+  try{await navigator.clipboard.writeText(text);flashOk('エラー記録をコピーしました')}catch(e){alert(text.slice(0,3000))}
+ };
+ window.c22ClearLog=function(){if(!confirm('この端末のエラー記録を消去します。'))return;localStorage.removeItem(LOG_KEY);c22ErrorLogPage()};
+
+ if(typeof V1105_MENU_GROUPS!=='undefined'&&V1105_MENU_GROUPS.support&&!V1105_MENU_GROUPS.support.items.some(x=>x.fn==='c22ErrorLogPage()'))
+  V1105_MENU_GROUPS.support.items.push({label:'エラー記録・保存点検',fn:'c22ErrorLogPage()',roles:['admin']});
+
+ try{
+  const last=JSON.parse(localStorage.getItem(CHECK_KEY+'_result')||'null');
+  if(last&&last.total&&localStorage.getItem(CHECK_KEY)===jstDay())bar.missing={total:last.total,text:last.parts.join('・')};
+ }catch(e){}
+ const baseHome=home;
+ home=function(...args){
+  const r=baseHome.apply(this,args);
+  renderBar();
+  setTimeout(()=>c22CheckHistory(false).catch(e=>logError('点検失敗',e)),4000);
+  return r;
+ };
+ window.home=home;
+})();
+
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
 </script>
 </body>
