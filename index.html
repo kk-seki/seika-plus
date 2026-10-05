@@ -13686,6 +13686,60 @@ ${legacy.length?`<details class="card"><summary><b>旧棚卸し（${legacy.lengt
 })();
 
 window.APP_VERSION='v1.199';document.title='SEIKA＋ v1.199 現場運用';
+/* ===== v1.199-c23 QRロット詳細から最新の操作を取消 ===== */
+const V1231_CANCELABLE=["出庫","廃棄","出庫・調整減","入庫・調整増","調整","差分なし"];
+let v1231Busy=false;
+function v1231IsCancelled(m){return !!(m&&(m.reversed_operation_id||m.cancelled_at))}
+function v1231Label(m){return `${m.movement_type} ${fmt(m.qty??m.quantity??0)}${m.unit||""}（${dt(m.occurred_at||m.created_at)}）`}
+async function v1231CancelLatest(q,expectedId){
+  if(v1231Busy)return;
+  if(!canQrOperate())return alert("QR操作の取消は管理者・青果社員のみです");
+  v1231Busy=true;
+  try{
+    const rows=await qrSelect("qr_lot_movements",`select=*&qr_key=eq.${encodeURIComponent(q)}&order=created_at.desc&limit=1`);
+    const m=rows[0];
+    if(!m||String(m.id)!==String(expectedId))throw new Error("このロットに新しい操作が登録されました。画面を開き直してから取り消してください。");
+    if(v1231IsCancelled(m))throw new Error("この操作はすでに取り消されています");
+    if(!confirm(`次の操作を取り消します。\n\n${v1231Label(m)}\n\n在庫数は操作前に戻ります。履歴には「取消」として残ります。`))return;
+    const meta=operationMeta("qr_cancel",{qrKey:q});
+    const ans=await callRpc("cancel_qr_lot_operation",{p_cancel_operation_id:meta.operationId,p_original_operation_id:m.operation_id,p_user_id:db.userId||null,p_user_name:db.user||null,p_device_meta:{deviceId:meta.deviceId,userAgent:navigator.userAgent||""},p_operation_meta:meta,p_memo:`画面から${m.movement_type}を取消`});
+    if(!ans?.ok)throw new Error(ans?.message||"取消に失敗しました");
+    addOperationLog("qr_cancel",{operationId:m.operation_id,movementType:m.movement_type},{cancelled:true},meta);
+    await qrLotDetail(q,`${m.movement_type}を取り消しました。在庫数は${fmt(ans.after_quantity??0)}に戻りました。`);
+  }catch(e){
+    const s=String(e&&e.message||e);
+    alert(/check constraint|23514/.test(s)?"取消の準備（SQL 002）がまだ実行されていません。管理者に連絡してください。":s);
+  }finally{v1231Busy=false}
+}
+window.v1231CancelLatest=v1231CancelLatest;
+async function v1231DecorateHistory(q){
+  const card=[...document.querySelectorAll(".wrap .card")].find(c=>{const b=c.querySelector(":scope > b");return b&&b.textContent.trim()==="履歴"});
+  if(!card||card.dataset.v1231)return;
+  card.dataset.v1231="1";
+  const shown=await qrSelect("qr_lot_movements",`select=id,reversed_operation_id,cancelled_at&qr_key=eq.${encodeURIComponent(q)}&order=occurred_at.desc&limit=30`).catch(()=>[]);
+  const trs=[...card.querySelectorAll("table tr")].slice(1);
+  shown.forEach((m,i)=>{
+    const tr=trs[i];if(!tr||!v1231IsCancelled(m))return;
+    tr.style.opacity="0.55";
+    const td=tr.children[1];
+    if(td)td.insertAdjacentHTML("beforeend",`<div class="small" style="color:#b45309;font-weight:700">取消済み</div>`);
+  });
+  if(!canQrOperate())return;
+  const latest=(await qrSelect("qr_lot_movements",`select=*&qr_key=eq.${encodeURIComponent(q)}&order=created_at.desc&limit=1`).catch(()=>[]))[0];
+  if(!latest||!latest.operation_id||v1231IsCancelled(latest)||!V1231_CANCELABLE.includes(String(latest.movement_type||"")))return;
+  const box=document.createElement("div");
+  box.style.margin="10px 0";
+  box.innerHTML=`<button class="btn orange" style="width:100%">最新の操作を取消：${esc(v1231Label(latest))}</button><div class="small" style="margin-top:6px">取り消すと在庫数が操作前に戻り、廃棄の場合は廃棄一覧・週次レポートからも外れます。取り消せるのは一番新しい操作だけです。</div>`;
+  box.querySelector("button").addEventListener("click",()=>v1231CancelLatest(q,latest.id));
+  card.querySelector(":scope > b").insertAdjacentElement("afterend",box);
+}
+const v1231QrLotDetailBase=qrLotDetail;
+qrLotDetail=async function(q,msg=""){
+  await v1231QrLotDetailBase(q,msg);
+  try{await v1231DecorateHistory(q)}catch(e){console.warn("[QR取消]",e)}
+};
+window.qrLotDetail=qrLotDetail;
+
 </script>
 </body>
 </html>
