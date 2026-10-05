@@ -13803,6 +13803,45 @@ qrLotDetail=async function(q,msg=""){
 };
 window.qrLotDetail=qrLotDetail;
 
+/* ===== v1.199-c26 段階1：競合時の自動統合から在庫入力・廃棄・在庫修正を外し、履歴テーブルを正とする ===== */
+const V1234_HISTORY_KEYS=["records","movements","wasteRecords"];
+let v1234History=null;
+function v1234TableRole(role){return role==="admin"||role==="worker"?["records","movements","wasteRecords"]:(role==="clerk"||role==="sales")?["wasteRecords"]:[]}
+async function v1234LoadHistoryTruth(){
+  const keys=v1234TableRole(db?.role);if(!keys.length)return null;
+  try{await saveHistoryTablesNow();v188SetHistoryPending(false)}
+  catch(e){v188SetHistoryPending(true);setSyncState("競合","履歴をクラウドへ保存できないため統合を中止しました。入力は端末に保持しています");throw new Error("在庫入力・廃棄の履歴をクラウドへ保存できないため、統合を中止しました。入力は端末に保持しています。通信を確認して、もう一度再送してください。\n"+v161ErrorText(e))}
+  const out={};
+  for(const k of keys){
+    const rows=await fetchHistoryTable(HISTORY_TABLES[k]);
+    const sortKey=k==="wasteRecords"?r=>new Date(r.date||r.createdAt||0):r=>new Date(r.createdAt||0);
+    out[k]=mergeHistoryById(db[k]||[],rows).sort((a,b)=>sortKey(a)-sortKey(b));
+  }
+  return out;
+}
+const v1234MergePayloadBase=v121MergePayload;
+v121MergePayload=function(base,local,remote){
+  if(!v1234History)return v1234MergePayloadBase(base,local,remote);
+  const strip=x=>{const c=v121Clone(x||{});for(const k of V1234_HISTORY_KEYS)delete c[k];return c};
+  const result=v1234MergePayloadBase(strip(base),strip(local),strip(remote));
+  const merged={...(result.merged||{})};
+  for(const k of V1234_HISTORY_KEYS){
+    const present=[base,local,remote].some(x=>x&&Object.prototype.hasOwnProperty.call(x,k));
+    if(present&&Array.isArray(v1234History[k]))merged[k]=v121Clone(v1234History[k]);
+  }
+  return{...result,merged};
+};
+window.v121MergePayload=v121MergePayload;
+const v1234ResolveBase=v178ResolvePendingInventoryConflict;
+v178ResolvePendingInventoryConflict=async function(...args){
+  if(!v161ReadQueue()[0])return v1234ResolveBase.apply(this,args);
+  const truth=await v1234LoadHistoryTruth();
+  v1234History=truth;
+  try{return await v1234ResolveBase.apply(this,args)}
+  finally{v1234History=null}
+};
+window.v178ResolvePendingInventoryConflict=v178ResolvePendingInventoryConflict;
+
 </script>
 </body>
 </html>
