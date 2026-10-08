@@ -3459,7 +3459,7 @@ const limit=Math.max(100,Math.min(2000,Number(displayLimit)||100));qrLotListStat
 sortOrder:sortOrder==="oldest"?"oldest":"newest",stockFilter:stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",
 displayLimit:limit};qrLotDetailReturnsToList=false
 ;setScreen("qrLotListPage",[qrLotListState.selectedItem,qrLotListState.sortOrder,qrLotListState.stockFilter,limit]);try{
-const stock=stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",stockQuery=stock==="outOfStock"?"&current_qty=lte.0":stock==="inStock"?"&current_qty=gt.0":"",selected=String(selectedItem||"").trim(),sort=sortOrder==="oldest"?"oldest":"newest",itemQuery=v1200QrItemQuery(selected),dbOrder=sort==="oldest"?"received_date.asc.nullslast,created_at.asc":"received_date.desc.nullslast,created_at.desc",lotsRaw=await qrSelect("qr_lots",`select=*&active=eq.true${stockQuery}${itemQuery}&order=${dbOrder}&limit=${limit+1}`),lots=v1200QrFilterByGroup(lotsRaw,selected),hasMore=lots.length>limit,visibleLots=lots.slice(0,limit),operate=canQrOperate(),nameRows=await qrSelect("qr_lots",`select=item_name&active=eq.true${stockQuery}&limit=5000`),itemNames=v1200QrCanonicalNames(nameRows,selected),dateValue=lot=>String(lot.received_date||lot.created_at||""),filteredLots=visibleLots.slice().sort((a,b)=>{
+const stock=stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",stockQuery=stock==="outOfStock"?"&current_qty=lte.0":stock==="inStock"?"&current_qty=gt.0":"",selected=String(selectedItem||"").trim(),sort=sortOrder==="oldest"?"oldest":"newest",itemQuery=v1200QrItemQuery(selected),dbOrder=sort==="oldest"?"received_date.asc.nullslast,created_at.asc":"received_date.desc.nullslast,created_at.desc",lotsRaw=await qrSelect("qr_lots",`select=*&active=eq.true${stockQuery}${itemQuery}&order=${dbOrder}&limit=${limit+1}`),lots=v1200QrFilterByGroup(lotsRaw,selected),hasMore=(lotsRaw||[]).length>limit,visibleLots=lots.slice(0,limit),operate=canQrOperate(),nameRows=await qrSelect("qr_lots",`select=item_name&active=eq.true${stockQuery}&limit=5000`),itemNames=v1200QrCanonicalNames(nameRows,selected),dateValue=lot=>String(lot.received_date||lot.created_at||""),filteredLots=visibleLots.slice().sort((a,b)=>{
 const result=dateValue(a).localeCompare(dateValue(b));if(result)return sort==="oldest"?result:-result
 ;const tie=String(a.created_at||"").localeCompare(String(b.created_at||""));return sort==="oldest"?tie:-tie
 }),selectedLabel=selected||"すべての品目",sortLabel=sort==="oldest"?"入庫日が古い順":"入庫日が新しい順",stockLabel=stock==="outOfStock"?"在庫なし":stock==="all"?"すべて":"在庫あり",description=`${stockLabel} ${filteredLots.length}件`,fifo='',listControls=`<div class="card"><div class="row"><div><label class="label" for="qrLotItemFilter">品目で切替</label><select id="qrLotItemFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="">すべての品目</option>${itemNames.map(name=>`<option value="${esc(name)}" ${name===v1200QrCanonName(selected)?"selected":""}>${esc(name)}</option>`).join("")}</select></div><div><label class="label" for="qrLotStockFilter">在庫状態</label><select id="qrLotStockFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="inStock" ${stock==="inStock"?"selected":""}>在庫あり</option><option value="outOfStock" ${stock==="outOfStock"?"selected":""}>在庫なし</option><option value="all" ${stock==="all"?"selected":""}>すべて</option></select></div><div><label class="label" for="qrLotSortOrder">表示順</label><select id="qrLotSortOrder" class="input" ${seikaEventAttrs('change','seikaQrLotSort',[limit])}><option value="newest" ${sort==="newest"?"selected":""}>入庫日が新しい順</option><option value="oldest" ${sort==="oldest"?"selected":""}>入庫日が古い順</option></select></div></div></div>`,tools=operate?`<button class="btn green" style="width:100%" data-seika-click-action="qrCreatePage" data-seika-click-args="%5B%5D">QR入庫</button><button class="btn blue" style="width:100%;margin-top:8px" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button><button class="btn btn2" style="width:100%;margin-top:8px" data-seika-click-action="qrManagedItemsPage" data-seika-click-args="%5B%5D">QR対象品目設定</button>`:`<div class="small" style="margin-bottom:8px">${qrReadOnlyMessage()}</div><button class="btn blue" style="width:100%" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button>`,more=hasMore?`<button class="btn btn2 qrLoadMore" ${seikaEventAttrs('click','qrLotListPage',[selected,sort,stock,limit+100])}>さらに100件読み込む</button>`:`<div class="small" style="text-align:center;margin:16px 0">すべて読み込みました</div>`
@@ -13841,6 +13841,43 @@ v178ResolvePendingInventoryConflict=async function(...args){
   finally{v1234History=null}
 };
 window.v178ResolvePendingInventoryConflict=v178ResolvePendingInventoryConflict;
+
+/* ===== v1.199-c27 棚卸し確定・取消の直後に履歴テーブルへ保存 ===== */
+async function v1235SaveHistoryAfterCount(){
+  if(!historyTablesReady||!["admin","worker"].includes(db?.role))return;
+  try{v188SetHistoryPending(true);await saveHistoryTablesNow();v188SetHistoryPending(false)}
+  catch(e){v188SetHistoryPending(true);setSyncState("未同期","棚卸しの在庫履歴をクラウドへ保存できていません。通信を確認して再送してください");console.error("[棚卸し履歴保存]",e)}
+}
+for(const name of ["v188Confirm","confirmInventoryCount","reverseInventoryCount"]){
+  const base=window[name];if(typeof base!=="function")continue;
+  const wrapped=async function(...args){const r=await base.apply(this,args);await v1235SaveHistoryAfterCount();return r};
+  window[name]=wrapped;
+}
+v188Confirm=window.v188Confirm;confirmInventoryCount=window.confirmInventoryCount;reverseInventoryCount=window.reverseInventoryCount;
+/* ===== v1.199-c27 QRロット一覧：品目の絞り込みを常にサーバー側で行う ===== */
+function v1235QuoteLike(s){return '"*'+String(s||"").replace(/["\\]/g,"").replace(/[*%,()]/g,"")+'*"'}
+function v1235QrWords(raw){
+  const rule=v1200QrRuleFor(raw);
+  const list=[raw,...v1200QrNameGroup(raw)];
+  if(rule&&typeof rule!=="string")list.push(rule.name||rule.item_name||"",...(rule.aliases||[]));
+  return{rule,words:[...new Set(list.map(x=>String(x||"").replace(/\s+/g,"").replace(/[（）()]/g,"").trim()).filter(Boolean))]};
+}
+v1200QrItemQuery=function(selected){
+  const raw=String(selected||"").trim();if(!raw)return"";
+  if(v1200QrIsPotatoName(raw)){const list=v1200QrNameGroup(raw).map(n=>'"'+n.replace(/"/g,"")+'"').join(",");return`&item_name=in.(${encodeURIComponent(list)})`}
+  const{rule,words}=v1235QrWords(raw);
+  if(rule&&typeof rule!=="string"&&(v1200QrRuleMode(rule)==="all"||rule.all===true))return"";
+  if(!words.length)return"";
+  const conds=words.map(w=>`item_name.ilike.${v1235QuoteLike(w)}`).join(",");
+  return`&or=(${encodeURIComponent(conds)})`;
+};
+v1200QrFilterByGroup=function(lots,selected){
+  const raw=String(selected||"").trim();if(!raw)return lots||[];
+  if(v1200QrIsPotatoName(raw))return lots||[];
+  const rule=v1200QrRuleFor(raw),names=new Set(v1200QrNameGroup(raw).concat(raw).map(qrNormalizeName));
+  return(lots||[]).filter(l=>{const n=l&&l.item_name;return names.has(qrNormalizeName(n))||(rule?qrManagedItemMatches(rule,n):false)});
+};
+window.v1200QrItemQuery=v1200QrItemQuery;window.v1200QrFilterByGroup=v1200QrFilterByGroup;
 
 </script>
 </body>
