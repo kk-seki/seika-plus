@@ -13879,6 +13879,39 @@ v1200QrFilterByGroup=function(lots,selected){
 };
 window.v1200QrItemQuery=v1200QrItemQuery;window.v1200QrFilterByGroup=v1200QrFilterByGroup;
 
+/* ===== v1.199-c28 ログイン画面の名前一覧をサーバーから取得 ===== */
+let v1241LoginFetching=false;
+async function v1241FetchLoginUsers(){
+  const res=await v188NativeFetch(`${SUPABASE_URL}/rest/v1/rpc/list_login_users_v1241`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json"},body:"{}"});
+  if(!res.ok)throw new Error(await res.text());
+  const rows=await res.json();
+  return Array.isArray(rows)?rows.filter(r=>r&&r.legacy_user_id):[];
+}
+async function v1241RefreshLoginUsers(render){
+  if(v1241LoginFetching)return;v1241LoginFetching=true;
+  try{
+    const rows=await v1241FetchLoginUsers();if(!rows.length)return;
+    const before=localStorage.getItem(STORE+"_login_users_v188")||"";
+    v188SaveLoginUsers(rows.map(r=>({legacy_user_id:r.legacy_user_id,display_name:r.display_name,role:r.role,active:true})));
+    const after=localStorage.getItem(STORE+"_login_users_v188")||"";
+    if(before===after||currentScreen!=="login"||db?.user)return;
+    const sel=document.getElementById("loginUser"),pass=document.getElementById("loginPass");
+    const uid=sel?.value||"",pw=pass?.value||"",focused=document.activeElement?.id||"";
+    render();
+    const sel2=document.getElementById("loginUser"),pass2=document.getElementById("loginPass");
+    if(sel2&&uid&&[...sel2.options].some(o=>o.value===uid))sel2.value=uid;
+    if(pass2&&pw)pass2.value=pw;
+    if(focused)document.getElementById(focused)?.focus();
+  }catch(e){console.warn("[ログイン名一覧]",e)}
+  finally{v1241LoginFetching=false}
+}
+(function(){
+  const baseLogin=login,baseSetScreen=setScreen;
+  setScreen=function(name,args){const r=baseSetScreen.apply(this,arguments);if(name==="login")setTimeout(()=>v1241RefreshLoginUsers(()=>baseLogin()),0);return r};
+  window.setScreen=setScreen;
+  if(typeof currentScreen!=="undefined"&&currentScreen==="login")v1241RefreshLoginUsers(()=>baseLogin());
+})();
+
 </script>
 </body>
 </html>
