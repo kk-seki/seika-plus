@@ -12931,7 +12931,7 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
         b.setAttribute('data-seika-click-args','%5B%5D');
         b.innerHTML='QR在庫 合計kg<br><span style="font-size:15px;font-weight:800">品目ごとの現在庫をkgで確認</span>';
         const list=box.querySelector('[data-seika-click-action="qrLotListPage"]');
-        if(list&&list.nextSibling)box.insertBefore(b,list.nextSibling); else box.appendChild(b);
+        if(list&&list.parentNode)list.parentNode.insertBefore(b,list.nextSibling); else box.appendChild(b);
       }
     }catch(e){}
     return r;
@@ -13913,18 +13913,43 @@ async function v1241RefreshLoginUsers(render){
 })();
 
 /* ===== v1.199-c29 保管期間アラート（品目別の使用期限・5段階） ===== */
-const V1250_STORAGE_LIMIT_GROUPS=[
-  [30,["じゃがいも","じゃが芋","ジャガイモ","馬鈴薯","ばれいしょ","牛蒡","ごぼう","ゴボウ"]],
-  [20,["玉葱","玉ねぎ","たまねぎ","タマネギ","さつまいも","さつま芋","サツマイモ","薩摩芋"]],
-  [14,["南瓜","かぼちゃ","カボチャ","レモン"]],
-  [7,["長葱","長ねぎ","長ネギ","人参","にんじん","ニンジン","大根","カット大根","葉付き大根","葉付大根","かぶ","カブ","蕪","レンコン","れんこん","蓮根","キャベツ","紫キャベツ","白菜","長芋","長いも","里芋","さといも","ぶなしめじ","しめじ","まいたけ","舞茸","しいたけ","椎茸","エリンギ","ピーマン","とんがりピーマン","赤ピーマン","赤パプリカ","黄パプリカ","パプリカ","ししとう","ズッキーニ","ゴーヤ"]],
-  [5,["胡瓜","きゅうり","キュウリ","ミニトマト","トマト","レタス","ロメインレタス","ロメイン","グリーンリーフ","リーフ","グリーンカール","リーフレタス","サニーレタス","サニー","ほうれん草","ほうれんそう","小松菜","わさび菜","水菜","春菊","なす","茄子","長茄子","セロリ","ニラ","にら","青梗菜","チンゲン菜","チンゲンサイ"]],
-  [4,["小葱","青葱","青ねぎ","青ネギ"]],
-  [3,["みつ葉","三つ葉","大葉","もやし","皮むき玉葱","皮むき牛蒡"]]
-];
-const V1250_LIMIT_MAP=new Map();
-for(const[days,names]of V1250_STORAGE_LIMIT_GROUPS)for(const n of names)V1250_LIMIT_MAP.set(qrNormalizeName(n),days);
-const V1250_LIMIT_KEYS=[...V1250_LIMIT_MAP.keys()].sort((a,b)=>b.length-a.length);
+const V1250_DEFAULT_LIMITS=[
+  [30,["じゃがいも","牛蒡"]],[20,["玉葱","さつまいも"]],[14,["南瓜","レモン"]],
+  [7,["長葱","人参","大根","カット大根","葉付き大根","かぶ","レンコン","キャベツ","紫キャベツ","白菜","長芋","里芋","ぶなしめじ","まいたけ","しいたけ","エリンギ","ピーマン","とんがりピーマン","赤ピーマン","赤パプリカ","黄パプリカ","ししとう","ズッキーニ","ゴーヤ"]],
+  [5,["胡瓜","ミニトマト","トマト","レタス","ロメインレタス","グリーンリーフ","サニーレタス","ほうれん草","小松菜","わさび菜","水菜","春菊","なす","セロリ","ニラ","青梗菜"]],
+  [4,["小葱","青葱"]],[3,["みつ葉","大葉","もやし","皮むき玉葱","皮むき牛蒡"]]
+].flatMap(([d,names])=>names.map(n=>({item_name:n,limit_days:d})));
+const V1250_ALIASES={"じゃがいも":["じゃが芋","ジャガイモ","馬鈴薯","ばれいしょ"],"牛蒡":["ごぼう","ゴボウ"],"玉葱":["玉ねぎ","たまねぎ","タマネギ"],"さつまいも":["さつま芋","サツマイモ","薩摩芋"],"南瓜":["かぼちゃ","カボチャ"],"長葱":["長ねぎ","長ネギ"],"人参":["にんじん","ニンジン"],"葉付き大根":["葉付大根"],"かぶ":["カブ","蕪"],"レンコン":["れんこん","蓮根"],"長芋":["長いも"],"里芋":["さといも"],"ぶなしめじ":["しめじ"],"まいたけ":["舞茸"],"しいたけ":["椎茸"],"赤パプリカ":["パプリカ"],"胡瓜":["きゅうり","キュウリ"],"ロメインレタス":["ロメイン"],"グリーンリーフ":["リーフ","グリーンカール","リーフレタス"],"サニーレタス":["サニー"],"ほうれん草":["ほうれんそう"],"なす":["茄子","長茄子"],"ニラ":["にら"],"青梗菜":["チンゲン菜","チンゲンサイ"],"青葱":["青ねぎ","青ネギ"],"みつ葉":["三つ葉"]};
+let v1250LimitRows=V1250_DEFAULT_LIMITS.slice(),v1250LimitSource="default",v1250LimitsAt=0;
+let V1250_LIMIT_MAP=new Map(),V1250_LIMIT_KEYS=[],v1250PotatoName="じゃがいも";
+function v1250BuildLimitMap(){
+  const m=new Map(),own=new Set();
+  for(const r of v1250LimitRows){const k=qrNormalizeName(r.item_name);if(k){m.set(k,Number(r.limit_days));own.add(k)}}
+  for(const[canon,aliases]of Object.entries(V1250_ALIASES)){
+    const d=m.get(qrNormalizeName(canon));if(d==null)continue;
+    for(const a of aliases){const k=qrNormalizeName(a);if(!own.has(k))m.set(k,d)}
+  }
+  V1250_LIMIT_MAP=m;V1250_LIMIT_KEYS=[...m.keys()].sort((a,b)=>b.length-a.length);
+}
+v1250BuildLimitMap();
+async function v1250LoadLimits(force=false){
+  if(!force&&Date.now()-v1250LimitsAt<300000)return v1250LimitRows;
+  try{
+    const rows=await qrSelect("qr_storage_limits_v1250","select=item_name,limit_days,sort_order,updated_by_name,updated_at&order=sort_order.asc,item_name.asc");
+    if(Array.isArray(rows)&&rows.length){v1250LimitRows=rows;v1250LimitSource="db"}
+    else{v1250LimitRows=V1250_DEFAULT_LIMITS.slice();v1250LimitSource="default"}
+    v1250LimitsAt=Date.now();v1250BuildLimitMap();
+  }catch(e){console.warn("[保管目安] 読み込めないため初期値で判定します",e);v1250LimitSource="default"}
+  return v1250LimitRows;
+}
+function v1250LimitDays(name){
+  const raw=String(name||"").trim();if(!raw)return null;
+  const n=qrNormalizeName(raw),plain=qrNormalizeName(raw.replace(/[（(][^）)]*[）)]/g,""));
+  for(const k of[n,plain])if(V1250_LIMIT_MAP.has(k))return V1250_LIMIT_MAP.get(k);
+  if(typeof v1200QrIsPotatoName==="function"&&v1200QrIsPotatoName(raw)){const d=V1250_LIMIT_MAP.get(qrNormalizeName(v1250PotatoName));if(d!=null)return d}
+  const hit=V1250_LIMIT_KEYS.find(k=>plain.includes(k)||n.includes(k));
+  return hit?V1250_LIMIT_MAP.get(hit):null;
+}
 const V1250_LEVELS={
   1:{label:"良好",card:"v1250L1",badge:"v1250B1"},
   2:{label:"要観察",card:"v1250L2",badge:"v1250B2"},
@@ -13932,14 +13957,6 @@ const V1250_LEVELS={
   4:{label:"要品質確認",card:"v1250L4",badge:"v1250B4"},
   5:{label:"使用不可/保留",card:"v1250L5",badge:"v1250B5"}
 };
-function v1250LimitDays(name){
-  const raw=String(name||"").trim();if(!raw)return null;
-  const n=qrNormalizeName(raw),plain=qrNormalizeName(raw.replace(/[（(][^）)]*[）)]/g,""));
-  for(const k of[n,plain])if(V1250_LIMIT_MAP.has(k))return V1250_LIMIT_MAP.get(k);
-  if(typeof v1200QrIsPotatoName==="function"&&v1200QrIsPotatoName(raw))return 30;
-  const hit=V1250_LIMIT_KEYS.find(k=>plain.includes(k)||n.includes(k));
-  return hit?V1250_LIMIT_MAP.get(hit):null;
-}
 function v1250LevelOf(elapsed,limit){
   if(elapsed>=limit+2)return 5;
   if(elapsed>=limit)return 4;
@@ -14085,6 +14102,128 @@ window.v195AddTrimLotObject=v195AddTrimLotObject;
 .v1250Need{margin-top:10px;padding:10px;border-radius:12px;background:#fee2e2;color:#991b1b;font-weight:900}
 .v1250Checked{margin-top:10px;padding:10px;border-radius:12px;background:#ffedd5;color:#9a3412;font-weight:900}`;
   const st=document.createElement("style");st.id="v1250Style";st.textContent=css;document.head.appendChild(st);
+})();
+
+/* ===== v1.199-c31 保管目安の設定画面（QR在庫管理ホームから変更） ===== */
+function v1250CanEditLimits(){return["admin","worker"].includes(db?.role)}
+function v1250LevelGuide(d){
+  d=Number(d);const watch=Math.ceil(d*0.5),parts=[];
+  if(watch<d-1)parts.push(`要観察 ${watch}〜${d-2}日`);
+  if(d-1>=0)parts.push(`優先使用 ${d-1}日`);
+  parts.push(`要品質確認 ${d}〜${d+1}日`,`使用不可 ${d+2}日〜`);
+  return parts.join(" ／ ");
+}
+async function qrStorageLimitsPage(msg=""){
+  setScreen("qrStorageLimitsPage",[msg]);
+  pageShell("保管目安の設定","品目ごとの保管期間（日数）",'<div class="card"><div class="notice">読み込んでいます。</div></div>');
+  await v1250LoadLimits(true);
+  const edit=v1250CanEditLimits()&&v1250LimitSource==="db";
+  const rows=v1250LimitRows.map((r,i)=>({...r,i}));
+  const days=[...new Set(rows.map(r=>Number(r.limit_days)))].sort((a,b)=>b-a);
+  const info=`<div class="card"><b>保管目安とは</b><div class="small" style="margin-top:4px">入荷日からの日数と保管目安を比べて、QRロット一覧に5段階のアラートを出します。品目名はQRロットの品名と同じ名前にしてください。ロメイン・サニー・しめじなどの別名や、じゃがいもの品種（男爵など）は自動で同じ目安になります。</div>${v1250LimitSource==="db"?"":`<div class="err" style="margin-top:8px">保管目安の保存先がまだ準備されていないため、初期値で判定しています（SQL 008 の実行が必要です）。</div>`}${!v1250CanEditLimits()?`<div class="small" style="margin-top:8px">変更できるのは管理者・青果社員です。</div>`:""}</div>`;
+  const add=edit?`<div class="card"><b>品目を追加</b><div class="row" style="margin-top:8px"><div><label class="label" for="v1250NewName">品目名</label><input id="v1250NewName" class="input" placeholder="例：ブロッコリー"></div><div><label class="label" for="v1250NewDays">保管目安（日）</label><input id="v1250NewDays" class="input" type="number" inputmode="numeric" min="1" max="365" step="1"></div></div><button class="btn green" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','v1250AddLimit',[])}>追加する</button></div>`:"";
+  const groups=days.map(d=>{
+    const list=rows.filter(r=>Number(r.limit_days)===d).map(r=>edit
+      ?`<div class="v1250LimitRow"><input id="v1250Name_${r.i}" class="input" value="${esc(r.item_name)}" aria-label="品目名"><input id="v1250Days_${r.i}" class="input" type="number" inputmode="numeric" min="1" max="365" step="1" value="${esc(r.limit_days)}" aria-label="保管目安（日）"><button class="btn blue" ${seikaEventAttrs('click','v1250SaveLimit',[r.i])}>保存</button><button class="btn danger" ${seikaEventAttrs('click','v1250DeleteLimit',[r.i])}>削除</button></div>`
+      :`<div class="v1250LimitRow v1250LimitView"><b>${esc(r.item_name)}</b><span>${esc(r.limit_days)}日</span></div>`).join("");
+    return`<div class="card"><b>${d}日（${rows.filter(r=>Number(r.limit_days)===d).length}品目）</b><div class="small" style="margin:4px 0 8px">${esc(v1250LevelGuide(d))}（入荷日からの日数）</div>${list}</div>`;
+  }).join("");
+  pageShell("保管目安の設定",`${rows.length}品目`,`${msg?`<div class="ok">${esc(msg)}</div>`:""}${info}${add}${groups}`);
+}
+async function v1250LimitRpc(name,args){
+  const ans=await callRpc(name,args);
+  if(!ans?.ok)throw new Error(ans?.message||"保存できませんでした");
+  return ans;
+}
+function v1250ReadDays(id){
+  const v=String(document.getElementById(id)?.value||"").trim(),n=Number(v);
+  if(!/^\d+$/.test(v)||n<1||n>365)throw new Error("保管目安は1〜365の整数（日）で入力してください");
+  return n;
+}
+async function v1250SaveLimit(i){
+  const r=v1250LimitRows[i];if(!r)return qrStorageLimitsPage();
+  try{
+    const name=String(document.getElementById(`v1250Name_${i}`)?.value||"").trim();
+    if(!name)throw new Error("品目名を入力してください");
+    const d=v1250ReadDays(`v1250Days_${i}`);
+    if(name===r.item_name&&d===Number(r.limit_days))return;
+    await v1250LimitRpc("save_qr_storage_limit_v1250",{p_item_name:name,p_limit_days:d,p_old_name:r.item_name});
+    return qrStorageLimitsPage(`${name}を${d}日にしました`);
+  }catch(e){alert(e.message||e)}
+}
+async function v1250AddLimit(){
+  try{
+    const name=String(document.getElementById("v1250NewName")?.value||"").trim();
+    if(!name)throw new Error("品目名を入力してください");
+    if(v1250LimitRows.some(r=>qrNormalizeName(r.item_name)===qrNormalizeName(name)))throw new Error("同じ品目名がすでに登録されています。一覧の日数を変更してください");
+    const d=v1250ReadDays("v1250NewDays");
+    await v1250LimitRpc("save_qr_storage_limit_v1250",{p_item_name:name,p_limit_days:d,p_old_name:null});
+    return qrStorageLimitsPage(`${name}（${d}日）を追加しました`);
+  }catch(e){alert(e.message||e)}
+}
+async function v1250DeleteLimit(i){
+  const r=v1250LimitRows[i];if(!r)return;
+  if(!confirm(`「${r.item_name}」の保管目安を削除しますか？\n削除すると、この品目は保管期間アラートの対象外になります。`))return;
+  try{await v1250LimitRpc("delete_qr_storage_limit_v1250",{p_item_name:r.item_name});return qrStorageLimitsPage(`${r.item_name}を削除しました`)}
+  catch(e){alert(e.message||e)}
+}
+function v1250HomeButton(id,cls,action,html){
+  const b=document.createElement("button");b.id=id;b.type="button";b.className="btn "+cls;
+  b.setAttribute("data-seika-click-action",action);b.setAttribute("data-seika-click-args","%5B%5D");b.innerHTML=html;return b;
+}
+function v1250InjectHomeButtons(tries=0){
+  if(currentScreen!=="qrHome")return;
+  const box=document.querySelector(".homePrimary"),list=box&&box.querySelector('[data-seika-click-action="qrLotListPage"]');
+  if(!box||!list){if(tries<40)setTimeout(()=>v1250InjectHomeButtons(tries+1),100);return}
+  let totals=document.getElementById("v1204TotalsBtn");
+  if(!totals&&typeof qrTotalsPage==="function"){
+    totals=v1250HomeButton("v1204TotalsBtn","homeBtnQrTotals","qrTotalsPage",'QR在庫 合計kg<br><span style="font-size:15px;font-weight:800">品目ごとの現在庫をkgで確認</span>');
+    list.parentNode.insertBefore(totals,list.nextSibling);
+  }
+  if(!document.getElementById("v1250LimitsBtn")){
+    const b=v1250HomeButton("v1250LimitsBtn","homeBtnStorageLimit","qrStorageLimitsPage",'保管目安の設定<br><span style="font-size:15px;font-weight:800">品目ごとの保管期間（日数）を確認・変更</span>');
+    const after=totals||list;after.parentNode.insertBefore(b,after.nextSibling);
+  }
+}
+const v1250HomeBase=qrHome;
+qrHome=async function(...args){
+  const r=await v1250HomeBase.apply(this,args);
+  v1250InjectHomeButtons();
+  v1250LoadLimits();
+  return r;
+};
+window.qrHome=qrHome;
+const v1250ListLimitsBase=qrLotListPage;
+qrLotListPage=async function(...args){await v1250LoadLimits();return v1250ListLimitsBase.apply(this,args)};
+window.qrLotListPage=qrLotListPage;
+const v1250OpLimitsBase=qrOperationLotPage;
+qrOperationLotPage=async function(...args){if(args[0]==="out")await v1250LoadLimits();return v1250OpLimitsBase.apply(this,args)};
+window.qrOperationLotPage=qrOperationLotPage;
+if(typeof v195LoadTrimLots==="function"){
+  const v1250TrimLoadBase=v195LoadTrimLots;
+  v195LoadTrimLots=async function(...args){await v1250LoadLimits();return v1250TrimLoadBase.apply(this,args)};
+  window.v195LoadTrimLots=v195LoadTrimLots;
+}
+(function(){
+  const st=document.createElement("style");
+  st.textContent=`.homeBtnStorageLimit{background:linear-gradient(90deg,#9f1239 0%,#e11d48 52%,#fda4af 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.25) !important;border-color:transparent !important;}
+.v1250LimitRow{display:grid;grid-template-columns:1fr 84px auto auto;gap:6px;align-items:center;margin-top:6px}
+.v1250LimitRow .btn{margin:0;padding:10px 12px}
+.v1250LimitView{grid-template-columns:1fr auto;padding:6px 2px;border-bottom:1px solid #e5e7eb}`;
+  document.head.appendChild(st);
+  try{
+    if(typeof V198_GUIDE_SECTIONS!=="undefined"){
+      V198_GUIDE_SECTIONS.v1250StorageLimits={title:"保管目安と保管期間アラート",where:"ホーム → QR在庫管理 → 保管目安の設定 ／ QRロット一覧",
+        steps:["QRロット一覧では、入荷日からの日数と品目ごとの保管目安を比べて「要観察」「優先使用」「要品質確認」「使用不可/保留」を色とバッジで表示します。",
+               "「アラートが高い順」で危ないロットから並べ、「要品質確認以上だけ表示」で対象を絞り込めます。",
+               "要品質確認のロットは、実物を確認して「品質確認済みにする」を押すと、その日のあいだは優先使用として扱います。",
+               "使用不可/保留のロットは、管理者・青果社員が実物を確認して「OK」を押したときだけ出庫・使用できます（確認した人を記録します）。",
+               "保管目安の日数は「保管目安の設定」で変更・追加・削除できます（管理者・青果社員）。"],
+        check:"アラートの出たロットから先に使い、要品質確認は毎日確認します。",
+        caution:"品目名はQRロットの品名と同じにしてください。保管目安に無い品目はアラートの対象外です。"};
+      if(typeof V198_ROLE_ADD!=="undefined")for(const k of Object.keys(V198_ROLE_ADD))if(Array.isArray(V198_ROLE_ADD[k])&&!V198_ROLE_ADD[k].includes("v1250StorageLimits"))V198_ROLE_ADD[k].push("v1250StorageLimits");
+    }
+  }catch(e){}
 })();
 
 </script>
