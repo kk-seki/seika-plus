@@ -2479,8 +2479,8 @@ function seikaCloseLoginFeature(){document.getElementById("loginFeatureModal")?.
 function seikaStopLotCameraAndReturn(kind){return qrStopActiveCamera("lot").finally(()=>qrOperationSelectPage(kind))}
 function seikaStopCountCameraAndReturn(id){return qrStopActiveCamera("count").finally(()=>inventoryCountPage(id))}
 function seikaQrSelectLot(kind,key){return kind==="detail"?qrScannedLotActionPage(key):qrOperationLotPage(kind,key)}
-function seikaQrLotFilter(){return qrLotListPage(document.getElementById("qrLotItemFilter")?.value||"",document.getElementById("qrLotSortOrder")?.value||"newest",document.getElementById("qrLotStockFilter")?.value||"inStock",100)}
-function seikaQrLotSort(limit){return qrLotListPage(document.getElementById("qrLotItemFilter")?.value||"",document.getElementById("qrLotSortOrder")?.value||"newest",document.getElementById("qrLotStockFilter")?.value||"inStock",limit)}
+function seikaQrLotFilter(){return qrLotListPage(document.getElementById("qrLotItemFilter")?.value||"",document.getElementById("qrLotSortOrder")?.value||"newest",document.getElementById("qrLotStockFilter")?.value||"inStock",100,!!qrLotListState.alertOnly)}
+function seikaQrLotSort(limit){return qrLotListPage(document.getElementById("qrLotItemFilter")?.value||"",document.getElementById("qrLotSortOrder")?.value||"newest",document.getElementById("qrLotStockFilter")?.value||"inStock",limit,!!qrLotListState.alertOnly)}
 function seikaCountInput(id,lineId){return countInputValue(countSession(id),lineId)}
 function seikaInventoryField(index,lineIndex,field,value){const line=formState[index]?.lines?.[lineIndex];if(!line)return;line[field]=value;renderInventory(lastMessage)}
 function seikaInventoryRemoveLine(index,lineIndex){if(!formState[index]?.lines)return;formState[index].lines.splice(lineIndex,1);renderInventory(lastMessage)}
@@ -3240,7 +3240,7 @@ function qrPerWeight(l){const total=Number(l.total_weight||0),initial=Number((l.
 text:`入庫から${days}日（60日超）`};if(days>=30)return{card:"qrAge30",badge:"qrAgeBadge30",text:`入庫から${days}日（30日超）`};return{card:"",badge:"",text:""}}
 let qrLotListState={selectedItem:"",sortOrder:"newest",stockFilter:"inStock",displayLimit:100},qrLotDetailReturnsToList=false
 ;function qrOpenLotDetail(q){qrLotDetailReturnsToList=currentScreen==="qrLotListPage";return qrLotDetail(q)}function qrReturnToLotList(){
-const s=qrLotListState;qrLotDetailReturnsToList=false;return qrLotListPage(s.selectedItem,s.sortOrder,s.stockFilter,s.displayLimit)}
+const s=qrLotListState;qrLotDetailReturnsToList=false;return qrLotListPage(s.selectedItem,s.sortOrder,s.stockFilter,s.displayLimit,!!s.alertOnly)}
 function qrLotCard(l,showDetail=true,showAge=false){
 const visibleSpec=qrVisibleMemo(l.memo||"").replace(/\s+/g," ").trim(),type=l.container_type||"",large=qrIsLargeContainer(type),q=esc(l.qr_key),age=showAge?qrLotAgeInfo(l):{
 card:"",badge:"",text:""
@@ -3454,16 +3454,16 @@ function v1200QrNameGroup(name){const raw=String(name||"").trim();if(!raw)return
 function v1200QrItemQuery(selected){const raw=String(selected||"").trim();if(!raw)return"";if(!v1200QrIsPotatoName(raw)){const rule=v1200QrRuleFor(raw);if(rule&&v1200QrRuleMode(rule)!=="exact")return""}const list=v1200QrNameGroup(raw).map(n=>'"'+n.replace(/"/g,"")+'"').join(",");return`&item_name=in.(${encodeURIComponent(list)})`}
 function v1200QrFilterByGroup(lots,selected){const raw=String(selected||"").trim();if(!raw)return lots||[];if(v1200QrIsPotatoName(raw))return lots||[];const rule=v1200QrRuleFor(raw);if(!rule||v1200QrRuleMode(rule)==="exact")return lots||[];return(lots||[]).filter(l=>qrManagedItemMatches(rule,l&&l.item_name))}
 function v1200QrCanonicalNames(rows,selected){const set=new Set();for(const r of rows||[]){const n=String(r&&r.item_name||"").trim();if(!n)continue;set.add(v1200QrCanonName(n))}const sel=v1200QrCanonName(selected);if(sel)set.add(sel);return[...set].filter(Boolean).sort((a,b)=>a.localeCompare(b,"ja"))}
-async function qrLotListPage(selectedItem="",sortOrder="newest",stockFilter="inStock",displayLimit=100){
+async function qrLotListPage(selectedItem="",sortOrder="newest",stockFilter="inStock",displayLimit=100,alertOnly=false){
 const limit=Math.max(100,Math.min(2000,Number(displayLimit)||100));qrLotListState={selectedItem:String(selectedItem||"").trim(),
-sortOrder:sortOrder==="oldest"?"oldest":"newest",stockFilter:stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",
+sortOrder:["oldest","alert"].includes(sortOrder)?sortOrder:"newest",alertOnly:!!alertOnly,stockFilter:stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",
 displayLimit:limit};qrLotDetailReturnsToList=false
-;setScreen("qrLotListPage",[qrLotListState.selectedItem,qrLotListState.sortOrder,qrLotListState.stockFilter,limit]);try{
-const stock=stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",stockQuery=stock==="outOfStock"?"&current_qty=lte.0":stock==="inStock"?"&current_qty=gt.0":"",selected=String(selectedItem||"").trim(),sort=sortOrder==="oldest"?"oldest":"newest",itemQuery=v1200QrItemQuery(selected),dbOrder=sort==="oldest"?"received_date.asc.nullslast,created_at.asc":"received_date.desc.nullslast,created_at.desc",lotsRaw=await qrSelect("qr_lots",`select=*&active=eq.true${stockQuery}${itemQuery}&order=${dbOrder}&limit=${limit+1}`),lots=v1200QrFilterByGroup(lotsRaw,selected),hasMore=(lotsRaw||[]).length>limit,visibleLots=lots.slice(0,limit),operate=canQrOperate(),nameRows=await qrSelect("qr_lots",`select=item_name&active=eq.true${stockQuery}&limit=5000`),itemNames=v1200QrCanonicalNames(nameRows,selected),dateValue=lot=>String(lot.received_date||lot.created_at||""),filteredLots=visibleLots.slice().sort((a,b)=>{
+;setScreen("qrLotListPage",[qrLotListState.selectedItem,qrLotListState.sortOrder,qrLotListState.stockFilter,limit,!!alertOnly]);try{
+const stock=stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",stockQuery=stock==="outOfStock"?"&current_qty=lte.0":stock==="inStock"?"&current_qty=gt.0":"",selected=String(selectedItem||"").trim(),sort=["oldest","alert"].includes(sortOrder)?sortOrder:"newest",v1250Full=sort==="alert"||!!alertOnly,itemQuery=v1200QrItemQuery(selected),dbOrder=sort!=="newest"?"received_date.asc.nullslast,created_at.asc":"received_date.desc.nullslast,created_at.desc",lotsRaw=await qrSelect("qr_lots",`select=*&active=eq.true${stockQuery}${itemQuery}&order=${dbOrder}&limit=${v1250Full?2001:limit+1}`),lots=v1200QrFilterByGroup(lotsRaw,selected),hasMore=(lotsRaw||[]).length>(v1250Full?2000:limit),visibleLots=lots.slice(0,v1250Full?2000:limit),operate=canQrOperate(),nameRows=await qrSelect("qr_lots",`select=item_name&active=eq.true${stockQuery}&limit=5000`),itemNames=v1200QrCanonicalNames(nameRows,selected),dateValue=lot=>String(lot.received_date||lot.created_at||""),filteredLots=v1250ApplyList(visibleLots.slice().sort((a,b)=>{
 const result=dateValue(a).localeCompare(dateValue(b));if(result)return sort==="oldest"?result:-result
 ;const tie=String(a.created_at||"").localeCompare(String(b.created_at||""));return sort==="oldest"?tie:-tie
-}),selectedLabel=selected||"すべての品目",sortLabel=sort==="oldest"?"入庫日が古い順":"入庫日が新しい順",stockLabel=stock==="outOfStock"?"在庫なし":stock==="all"?"すべて":"在庫あり",description=`${stockLabel} ${filteredLots.length}件`,fifo='',listControls=`<div class="card"><div class="row"><div><label class="label" for="qrLotItemFilter">品目で切替</label><select id="qrLotItemFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="">すべての品目</option>${itemNames.map(name=>`<option value="${esc(name)}" ${name===v1200QrCanonName(selected)?"selected":""}>${esc(name)}</option>`).join("")}</select></div><div><label class="label" for="qrLotStockFilter">在庫状態</label><select id="qrLotStockFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="inStock" ${stock==="inStock"?"selected":""}>在庫あり</option><option value="outOfStock" ${stock==="outOfStock"?"selected":""}>在庫なし</option><option value="all" ${stock==="all"?"selected":""}>すべて</option></select></div><div><label class="label" for="qrLotSortOrder">表示順</label><select id="qrLotSortOrder" class="input" ${seikaEventAttrs('change','seikaQrLotSort',[limit])}><option value="newest" ${sort==="newest"?"selected":""}>入庫日が新しい順</option><option value="oldest" ${sort==="oldest"?"selected":""}>入庫日が古い順</option></select></div></div></div>`,tools=operate?`<button class="btn green" style="width:100%" data-seika-click-action="qrCreatePage" data-seika-click-args="%5B%5D">QR入庫</button><button class="btn blue" style="width:100%;margin-top:8px" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button><button class="btn btn2" style="width:100%;margin-top:8px" data-seika-click-action="qrManagedItemsPage" data-seika-click-args="%5B%5D">QR対象品目設定</button>`:`<div class="small" style="margin-bottom:8px">${qrReadOnlyMessage()}</div><button class="btn blue" style="width:100%" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button>`,more=hasMore?`<button class="btn btn2 qrLoadMore" ${seikaEventAttrs('click','qrLotListPage',[selected,sort,stock,limit+100])}>さらに100件読み込む</button>`:`<div class="small" style="text-align:center;margin:16px 0">すべて読み込みました</div>`
-;pageShell(`QRロット一覧（${esc(selectedLabel)}）`,esc(description),`${listControls}<div class="card">${tools}</div>${fifo}${filteredLots.map(lot=>qrLotCard(lot,true,true)).join("")||'<div class="notice">該当するロットがありません。</div>'}${more}`)
+}),sort,!!alertOnly),selectedLabel=selected||"すべての品目",sortLabel=sort==="alert"?"アラートが高い順":sort==="oldest"?"入庫日が古い順":"入庫日が新しい順",stockLabel=stock==="outOfStock"?"在庫なし":stock==="all"?"すべて":"在庫あり",description=`${stockLabel} ${filteredLots.length}件`,fifo='',listControls=`<div class="card"><div class="row"><div><label class="label" for="qrLotItemFilter">品目で切替</label><select id="qrLotItemFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="">すべての品目</option>${itemNames.map(name=>`<option value="${esc(name)}" ${name===v1200QrCanonName(selected)?"selected":""}>${esc(name)}</option>`).join("")}</select></div><div><label class="label" for="qrLotStockFilter">在庫状態</label><select id="qrLotStockFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="inStock" ${stock==="inStock"?"selected":""}>在庫あり</option><option value="outOfStock" ${stock==="outOfStock"?"selected":""}>在庫なし</option><option value="all" ${stock==="all"?"selected":""}>すべて</option></select></div><div><label class="label" for="qrLotSortOrder">表示順</label><select id="qrLotSortOrder" class="input" ${seikaEventAttrs('change','seikaQrLotSort',[limit])}><option value="newest" ${sort==="newest"?"selected":""}>入庫日が新しい順</option><option value="oldest" ${sort==="oldest"?"selected":""}>入庫日が古い順</option><option value="alert" ${sort==="alert"?"selected":""}>アラートが高い順</option></select></div></div></div>`,tools=operate?`<button class="btn green" style="width:100%" data-seika-click-action="qrCreatePage" data-seika-click-args="%5B%5D">QR入庫</button><button class="btn blue" style="width:100%;margin-top:8px" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button><button class="btn btn2" style="width:100%;margin-top:8px" data-seika-click-action="qrManagedItemsPage" data-seika-click-args="%5B%5D">QR対象品目設定</button>`:`<div class="small" style="margin-bottom:8px">${qrReadOnlyMessage()}</div><button class="btn blue" style="width:100%" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button>`,more=hasMore?`<button class="btn btn2 qrLoadMore" ${seikaEventAttrs('click','qrLotListPage',[selected,sort,stock,limit+100,!!alertOnly])}>さらに100件読み込む</button>`:`<div class="small" style="text-align:center;margin:16px 0">すべて読み込みました</div>`
+;pageShell(`QRロット一覧（${esc(selectedLabel)}）`,esc(description),`${listControls}<div class="card">${tools}</div>${fifo}${v1250ListBar(sort,!!alertOnly,v1250Full)}${filteredLots.map(lot=>qrLotCard(lot,true,true)).join("")||'<div class="notice">該当するロットがありません。</div>'}${more}`)
 }catch(e){pageShell("QRロット一覧","エラー",`<div class="err">${esc(e.message)}</div>`)}}const MESH_CONTAINER_ITEMS=[{id:"bluePurple",name:"せき青紫"},{
 id:"orange",name:"せきオレンジ"},{id:"newContainer",name:"せき(新)"},{id:"nikken",name:"日建せき"}];function seikaLogoHtml(size=""){
 return`<div class="seikaLogo ${size}" aria-label="SEIKA plus logo"><span class="word">SEIKA</span><span class="plusWrap">+<svg class="seikaLeaf" viewBox="0 0 64 64" aria-hidden="true"><path class="leafFill" d="M14 48C16 25 32 12 55 9C54 32 39 49 17 51C16 51 15 50 14 48Z"/><path class="leafVein" d="M22 43C31 33 40 24 51 15"/></svg></span></div>`
@@ -13910,6 +13910,181 @@ async function v1241RefreshLoginUsers(render){
   setScreen=function(name,args){const r=baseSetScreen.apply(this,arguments);if(name==="login")setTimeout(()=>v1241RefreshLoginUsers(()=>baseLogin()),0);return r};
   window.setScreen=setScreen;
   if(typeof currentScreen!=="undefined"&&currentScreen==="login")v1241RefreshLoginUsers(()=>baseLogin());
+})();
+
+/* ===== v1.199-c29 保管期間アラート（品目別の使用期限・5段階） ===== */
+const V1250_STORAGE_LIMIT_GROUPS=[
+  [30,["じゃがいも","じゃが芋","ジャガイモ","馬鈴薯","ばれいしょ","牛蒡","ごぼう","ゴボウ"]],
+  [20,["玉葱","玉ねぎ","たまねぎ","タマネギ","さつまいも","さつま芋","サツマイモ","薩摩芋"]],
+  [14,["南瓜","かぼちゃ","カボチャ","レモン"]],
+  [7,["長葱","長ねぎ","長ネギ","人参","にんじん","ニンジン","大根","カット大根","葉付き大根","葉付大根","かぶ","カブ","蕪","レンコン","れんこん","蓮根","キャベツ","紫キャベツ","白菜","長芋","長いも","里芋","さといも","ぶなしめじ","しめじ","まいたけ","舞茸","しいたけ","椎茸","エリンギ","ピーマン","とんがりピーマン","赤ピーマン","赤パプリカ","黄パプリカ","パプリカ","ししとう","ズッキーニ","ゴーヤ"]],
+  [5,["胡瓜","きゅうり","キュウリ","ミニトマト","トマト","レタス","ロメインレタス","ロメイン","グリーンリーフ","リーフ","グリーンカール","リーフレタス","サニーレタス","サニー","ほうれん草","ほうれんそう","小松菜","わさび菜","水菜","春菊","なす","茄子","長茄子","セロリ","ニラ","にら","青梗菜","チンゲン菜","チンゲンサイ"]],
+  [4,["小葱","青葱","青ねぎ","青ネギ"]],
+  [3,["みつ葉","三つ葉","大葉","もやし","皮むき玉葱","皮むき牛蒡"]]
+];
+const V1250_LIMIT_MAP=new Map();
+for(const[days,names]of V1250_STORAGE_LIMIT_GROUPS)for(const n of names)V1250_LIMIT_MAP.set(qrNormalizeName(n),days);
+const V1250_LIMIT_KEYS=[...V1250_LIMIT_MAP.keys()].sort((a,b)=>b.length-a.length);
+const V1250_LEVELS={
+  1:{label:"良好",card:"v1250L1",badge:"v1250B1"},
+  2:{label:"要観察",card:"v1250L2",badge:"v1250B2"},
+  3:{label:"優先使用",card:"v1250L3",badge:"v1250B3"},
+  4:{label:"要品質確認",card:"v1250L4",badge:"v1250B4"},
+  5:{label:"使用不可/保留",card:"v1250L5",badge:"v1250B5"}
+};
+function v1250LimitDays(name){
+  const raw=String(name||"").trim();if(!raw)return null;
+  const n=qrNormalizeName(raw),plain=qrNormalizeName(raw.replace(/[（(][^）)]*[）)]/g,""));
+  for(const k of[n,plain])if(V1250_LIMIT_MAP.has(k))return V1250_LIMIT_MAP.get(k);
+  if(typeof v1200QrIsPotatoName==="function"&&v1200QrIsPotatoName(raw))return 30;
+  const hit=V1250_LIMIT_KEYS.find(k=>plain.includes(k)||n.includes(k));
+  return hit?V1250_LIMIT_MAP.get(hit):null;
+}
+function v1250LevelOf(elapsed,limit){
+  if(elapsed>=limit+2)return 5;
+  if(elapsed>=limit)return 4;
+  if(elapsed===limit-1)return 3;
+  if(elapsed>=limit*0.5)return 2;
+  return 1;
+}
+let v1250Checks=new Map(),v1250ChecksDate="",v1250ChecksAt=0;
+async function v1250LoadChecks(force=false){
+  const today=todayKey();
+  if(!force&&v1250ChecksDate===today&&Date.now()-v1250ChecksAt<60000)return v1250Checks;
+  try{
+    const rows=await qrSelect("qr_lot_storage_checks_v1250",`select=lot_id,checked_by_name,created_at&check_date=eq.${today}`);
+    v1250Checks=new Map((rows||[]).map(r=>[String(r.lot_id),r]));v1250ChecksDate=today;v1250ChecksAt=Date.now();
+  }catch(e){console.warn("[保管期間アラート] 品質確認の記録を読み込めません",e)}
+  return v1250Checks;
+}
+function v1250Info(lot){
+  if(!lot||Number(lot.current_qty??0)<=0)return null;
+  const limit=v1250LimitDays(lot.item_name);if(!limit)return null;
+  const elapsed=qrLotAgeDays(lot),level=v1250LevelOf(elapsed,limit);
+  const check=level===4&&v1250ChecksDate===todayKey()?v1250Checks.get(String(lot.id))||null:null;
+  return{level,effective:check?3:level,elapsed,limit,check};
+}
+function v1250CanConfirm(){return["admin","worker"].includes(db?.role)}
+const v1250AgeInfoBase=qrLotAgeInfo;
+qrLotAgeInfo=function(l){
+  const info=v1250Info(l);
+  if(!info){
+    if(l&&Number(l.current_qty??0)>0&&v1250LimitDays(l.item_name)==null)return v1250AgeInfoBase(l);
+    return{card:"",badge:"",text:""};
+  }
+  const lv=V1250_LEVELS[info.effective],head=info.check?"品質確認済み・優先使用":lv.label;
+  return{card:lv.card,badge:lv.badge,text:`${head}｜入荷から${info.elapsed}日（目安${info.limit}日）`};
+};
+window.qrLotAgeInfo=qrLotAgeInfo;
+function v1250ExtraHtml(l){
+  const info=v1250Info(l);if(!info||info.level<4)return"";
+  if(info.level===5)return`<div class="v1250Stop">使用不可/保留：目安を2日以上超えています。${v1250CanConfirm()?"使う場合は実物を確認してから出庫・使用してください（確認した人を記録します）。":"出庫・使用はできません。青果社員に相談してください。"}</div>`;
+  if(info.check)return`<div class="v1250Checked">本日 品質確認済み（${esc(info.check.checked_by_name||"")}）</div>`;
+  return`<div class="v1250Need">要品質確認：実物を確認してください。${v1250CanConfirm()?`<button class="btn red" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','v1250ConfirmQuality',[String(l.id),String(l.qr_key||"")])}>品質確認済みにする</button>`:""}</div>`;
+}
+const v1250LotCardBase=qrLotCard;
+qrLotCard=function(l,showDetail=true,showAge=false){
+  const html=v1250LotCardBase.apply(this,arguments);
+  if(!showAge)return html;
+  const extra=v1250ExtraHtml(l);if(!extra)return html;
+  const i=html.lastIndexOf("</div>");
+  return i<0?html+extra:html.slice(0,i)+extra+html.slice(i);
+};
+window.qrLotCard=qrLotCard;
+let v1250LastCounts=null;
+function v1250ApplyList(lots,sort,alertOnly){
+  const rows=(lots||[]).map(l=>({l,info:v1250Info(l)}));
+  const counts={1:0,2:0,3:0,4:0,5:0,checked:0};
+  for(const r of rows)if(r.info){counts[r.info.effective]++;if(r.info.check)counts.checked++}
+  v1250LastCounts=counts;
+  let out=alertOnly?rows.filter(r=>r.info&&r.info.effective>=4):rows;
+  if(sort==="alert"){
+    const recv=l=>String(l.received_date||l.created_at||"");
+    out=out.slice().sort((a,b)=>(b.info?.effective||0)-(a.info?.effective||0)
+      ||((b.info?b.info.elapsed-b.info.limit:-999)-(a.info?a.info.elapsed-a.info.limit:-999))
+      ||recv(a.l).localeCompare(recv(b.l)));
+  }
+  return out.map(r=>r.l);
+}
+function v1250ListBar(sort,alertOnly,full){
+  const c=v1250LastCounts||{1:0,2:0,3:0,4:0,5:0,checked:0};
+  const counts=full?`<div class="v1250Counts"><span class="v1250B5">使用不可 ${c[5]}</span><span class="v1250B4">要品質確認 ${c[4]}</span><span class="v1250B3">優先使用 ${c[3]}${c.checked?`（確認済み ${c.checked}）`:""}</span><span class="v1250B2">要観察 ${c[2]}</span></div>`:`<div class="small" style="margin-top:4px">「アラートが高い順」または絞り込みを押すと、在庫のあるロットをすべて読み込んで判定します。</div>`;
+  return`<div class="card"><b>保管期間アラート</b>${counts}<div class="row" style="margin-top:8px"><button class="btn ${alertOnly?"red":"btn2"}" ${seikaEventAttrs('click','v1250ToggleAlertOnly',[])}>${alertOnly?"絞り込み中：要品質確認以上（解除）":"要品質確認以上だけ表示"}</button><button class="btn ${sort==="alert"?"orange":"btn2"}" ${seikaEventAttrs('click','v1250SortAlert',[])}>アラートが高い順</button></div></div>`;
+}
+function v1250ToggleAlertOnly(){const s=qrLotListState;return qrLotListPage(s.selectedItem,s.sortOrder,s.stockFilter,s.displayLimit,!s.alertOnly)}
+function v1250SortAlert(){const s=qrLotListState;return qrLotListPage(s.selectedItem,"alert",s.stockFilter,s.displayLimit,!!s.alertOnly)}
+async function v1250ConfirmQuality(lotId,qrKey){
+  if(!v1250CanConfirm())return alert("品質確認は管理者・青果社員が行います。");
+  if(!confirm("実物を確認し、品質に問題がないことを確認しましたか？\n確認済みにすると、本日中は「優先使用」として扱います。"))return;
+  try{
+    const ans=await callRpc("confirm_qr_lot_storage_check_v1250",{p_lot_id:lotId,p_note:""});
+    if(!ans?.ok)throw new Error(ans?.message||"品質確認を保存できませんでした");
+    await v1250LoadChecks(true);
+    if(currentScreen==="qrLotListPage")return qrReturnToLotList();
+    if(currentScreen==="qrOperationLotPage"&&qrKey)return qrOperationLotPage("out",qrKey);
+    alert("品質確認済みにしました。");
+  }catch(e){alert(/PGRST202|Could not find the function|qr_lot_storage_checks_v1250/.test(String(e.message||e))?"品質確認の保存先がまだ準備されていません（SQL 007 の実行が必要です）。":(e.message||e))}
+}
+const v1250ListPageBase=qrLotListPage;
+qrLotListPage=async function(...args){await v1250LoadChecks();return v1250ListPageBase.apply(this,args)};
+window.qrLotListPage=qrLotListPage;
+const v1250OpPageBase=qrOperationLotPage;
+qrOperationLotPage=async function(kind,q){
+  if(kind==="out")await v1250LoadChecks();
+  const r=await v1250OpPageBase.apply(this,arguments);
+  if(kind!=="out")return r;
+  try{
+    const lot=await qrFindLot(q),info=v1250Info(lot),main=document.querySelector(".wrap");
+    if(info&&info.effective>=3&&main&&!main.querySelector(".v1250OpBanner")){
+      const lv=V1250_LEVELS[info.effective];
+      main.insertAdjacentHTML("afterbegin",`<div class="card v1250OpBanner ${lv.card}"><span class="qrAgeBadge ${lv.badge}">${esc(info.check?"品質確認済み・優先使用":lv.label)}｜入荷から${info.elapsed}日（目安${info.limit}日）</span>${v1250ExtraHtml(lot)}</div>`);
+    }
+  }catch(e){console.warn("[保管期間アラート]",e)}
+  return r;
+};
+window.qrOperationLotPage=qrOperationLotPage;
+function v1250GuardUse(lot,what){
+  const info=v1250Info(lot);
+  if(!info||info.effective<5)return true;
+  const msg=`このロットは「使用不可/保留」です。\n${lot.item_name||""}：入荷から${info.elapsed}日（目安${info.limit}日）`;
+  if(!v1250CanConfirm()){alert(`${msg}\n\n${what}できません。青果社員に相談してください。`);return false}
+  if(!confirm(`${msg}\n\n実物を確認し、使える品質であることを確認しましたか？\n「OK」で${what}します（確認した人を記録します）。`))return false;
+  callRpc("confirm_qr_lot_storage_check_v1250",{p_lot_id:String(lot.id),p_note:`使用不可/保留を確認して${what}`}).catch(e=>console.warn("[保管期間アラート] 確認記録を保存できません",e));
+  return true;
+}
+const v1250SaveMoveBase=qrSaveLotMovement;
+qrSaveLotMovement=async function(kind,q){
+  if(kind==="out"){
+    const lot=await qrFindLot(q).catch(()=>null);
+    if(lot&&!v1250GuardUse(lot,"出庫"))return;
+  }
+  return v1250SaveMoveBase.apply(this,arguments);
+};
+window.qrSaveLotMovement=qrSaveLotMovement;
+const v1250AddTrimBase=v195AddTrimLotObject;
+v195AddTrimLotObject=function(lot){
+  if(lot&&!v1250GuardUse(lot,"使用原料に追加"))throw new Error("使用不可/保留のロットのため追加しませんでした");
+  return v1250AddTrimBase.apply(this,arguments);
+};
+window.v195AddTrimLotObject=v195AddTrimLotObject;
+(function(){
+  const css=`.v1250L1{border-left:6px solid #16a34a}
+.v1250L2{background:#fefce8;border:2px solid #facc15}
+.v1250L3{background:#ffedd5;border:2px solid #f97316}
+.v1250L4{background:#fef2f2;border:3px solid #dc2626;box-shadow:0 0 0 2px #fecaca}
+.v1250L5{background:#ffe4e6;border:3px solid #881337}
+.v1250B1{background:#dcfce7;color:#166534}
+.v1250B2{background:#fef08a;color:#854d0e}
+.v1250B2::before{content:"▲ "}
+.v1250B3{background:#f97316;color:#fff}
+.v1250B4{background:#dc2626;color:#fff}
+.v1250B5{background:#881337;color:#fff}
+.v1250Counts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.v1250Counts span{border-radius:999px;padding:4px 10px;font-size:12px;font-weight:900}
+.v1250Stop{margin-top:10px;padding:10px;border-radius:12px;background:#881337;color:#fff;font-weight:900}
+.v1250Need{margin-top:10px;padding:10px;border-radius:12px;background:#fee2e2;color:#991b1b;font-weight:900}
+.v1250Checked{margin-top:10px;padding:10px;border-radius:12px;background:#ffedd5;color:#9a3412;font-weight:900}`;
+  const st=document.createElement("style");st.id="v1250Style";st.textContent=css;document.head.appendChild(st);
 })();
 
 </script>
