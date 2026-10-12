@@ -14543,6 +14543,124 @@ qrHome=async function(...args){
 window.qrHome=qrHome;
 (function(){const st=document.createElement("style");st.textContent=`.homeBtnQualityReport{background:linear-gradient(90deg,#065f46 0%,#059669 52%,#6ee7b7 100%) !important;color:#fff !important;border-color:transparent !important;}`;document.head.appendChild(st)})();
 
+/* ===== v1.199-c34 仕入先・単協名の候補を全員で共有（追加・非表示・削除・名称修正）／QRホームとメニューに入口 ===== */
+let v1280Cache=null,v1280CacheAt=0;
+async function v1280Load(force=false){
+  if(!force&&v1280Cache&&Date.now()-v1280CacheAt<20000)return v1280Cache;
+  try{
+    const rows=await qrSelect("qr_party_names_v1280","select=kind,norm,name,status&limit=5000");
+    const c={supplier:new Map(),cooperative:new Map()};
+    for(const r of rows||[])if(c[r.kind])c[r.kind].set(qrNormalizeName(r.name),{name:r.name,status:r.status});
+    v1280Cache=c;v1280CacheAt=Date.now();
+  }catch(e){if(force||!v1280Cache)v1280Cache=null}
+  return v1280Cache;
+}
+async function v1280Candidates(kind,limit=300){
+  qrEnsureMasters();
+  const isSup=kind!=="cooperative",col=isSup?"supplier":"cooperative_name";
+  const t=await v1280Load(),map=t?t[isSup?"supplier":"cooperative"]:null;
+  const legacyHidden=new Set((isSup?db.qrSupplierHidden:db.qrCooperativeHidden).map(qrNormalizeName));
+  let arr=[];
+  if(map)for(const v of map.values())if(v.status==="active")arr.push(v.name);
+  arr=arr.concat(isSup?db.qrSuppliers:db.qrCooperatives);
+  try{const rows=await qrSelect("qr_lots",`select=${col}&${col}=not.is.null&order=created_at.desc&limit=${limit}`);arr=arr.concat(rows.map(r=>r[col]).filter(Boolean))}catch(e){}
+  const seen=new Set,out=[];
+  for(const raw of arr){
+    const v=String(raw||"").trim(),k=qrNormalizeName(v);
+    if(!k||seen.has(k))continue;seen.add(k);
+    const rec=map&&map.get(k);
+    if(rec?rec.status!=="active":legacyHidden.has(k))continue;
+    out.push(rec?rec.name:v);
+  }
+  return out;
+}
+async function v1280HiddenNames(kind){
+  const t=await v1280Load(),map=t?t[kind!=="cooperative"?"supplier":"cooperative"]:null;
+  if(!map){qrEnsureMasters();return[...(kind!=="cooperative"?db.qrSupplierHidden:db.qrCooperativeHidden)]}
+  return[...map.values()].filter(v=>v.status==="hidden").map(v=>v.name).sort((a,b)=>a.localeCompare(b,"ja"));
+}
+qrSupplierList=async function(){return(await v1280Candidates("supplier")).slice(0,200)};
+window.qrSupplierList=qrSupplierList;
+qrCooperativeList=async function(){return(await v1280Candidates("cooperative")).slice(0,200)};
+window.qrCooperativeList=qrCooperativeList;
+window.v1208IsHidden=(kind,name)=>{const m=v1280Cache&&v1280Cache[kind!=="cooperative"?"supplier":"cooperative"],r=m&&m.get(qrNormalizeName(name));return r?r.status!=="active":false};
+
+async function v1280Set(kind,name,status,renamedTo=null){
+  const ans=await callRpc("set_qr_party_name_v1280",{p_kind:kind!=="cooperative"?"supplier":"cooperative",p_name:name,p_status:status,p_renamed_to:renamedTo});
+  if(!ans?.ok)throw new Error(ans?.message||"保存できませんでした");
+  await v1280Load(true);
+}
+async function v1280Do(kind,fn,doneMsg){
+  try{v161ShowProcessing?.("保存しています");await fn();v1208CandidatePage(kind,doneMsg)}
+  catch(e){const raw=String(e?.message||e);alert(/PGRST202|PGRST205|set_qr_party_name_v1280|qr_party_names_v1280/.test(raw)?"候補の共有がまだ準備されていません（SQL 010 の実行が必要です）。":raw)}
+  finally{try{v161HideProcessing?.()}catch(_){}}
+}
+v1208CandidatePage=async function(kind="supplier",msg=""){
+  setScreen("v1208CandidatePage",[kind,msg]);
+  if(!canQrOperate()){alert("仕入先・単協名の候補を編集できるのは管理者・青果社員です");return qrHome()}
+  const isSup=kind!=="cooperative",label=isSup?"仕入先":"単協名";
+  pageShell("仕入先・単協マスタ","読み込み中",'<div class="card"><div class="notice">読み込んでいます。</div></div>');
+  const t=await v1280Load(true);
+  const shown=await v1280Candidates(kind,1000),hid=await v1280HiddenNames(kind);
+  const map=t?t[isSup?"supplier":"cooperative"]:null;
+  const btn=(cls,action,args,text)=>`<button class="btn ${cls}" style="padding:6px 12px" ${seikaEventAttrs('click',action,args)}>${text}</button>`;
+  const tabs=`<div class="card"><div class="row"><button class="btn ${isSup?"blue":"btn2"}" ${seikaEventAttrs('click','v1208CandidatePage',["supplier",""])}>仕入先</button><button class="btn ${isSup?"btn2":"blue"}" ${seikaEventAttrs('click','v1208CandidatePage',["cooperative",""])}>単協名</button></div>${t?"":'<div class="err" style="margin-top:8px">共有の準備がまだです（SQL 010 の実行が必要です）。いまは表示のみです。</div>'}</div>`;
+  const add=`<div class="card"><b>${label}を追加</b><div class="small">登録すると、全員の入力候補に出ます。</div><input id="v1208AddName" class="input" placeholder="例：${isSup?"中央園芸":"茨城中央"}" autocomplete="off"><button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1208AddCandidate',[kind])}>追加する</button></div>`;
+  const row=(n,btns,note="")=>`<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid #eee;flex-wrap:wrap"><div style="flex:1;min-width:120px">${esc(n)}${note}</div>${btns}</div>`;
+  const list=`<div class="card"><b>候補に出る${label}（${shown.length}件）</b><div class="small">「削除」は候補から完全に消します（また出てくることはありません）。「非表示」はあとで戻せます。どちらも過去の記録は消えません。</div>${shown.length?shown.map(n=>row(n,btn("btn2","v1208HideCandidate",[kind,n],"非表示")+btn("btn2","v1208RenameCandidate",[kind,n],"名称修正")+btn("danger","v1280DeleteCandidate",[kind,n],"削除"),map&&map.get(qrNormalizeName(n))?.status==="active"?' <span class="small">（登録済み）</span>':' <span class="small">（過去の入力）</span>')).join(""):'<div class="small">候補がありません。</div>'}</div>`;
+  const hiddenBox=`<div class="card"><b>非表示にした${label}（${hid.length}件）</b>${hid.length?hid.map(n=>row(n,btn("btn2","v1208ShowCandidate",[kind,n],"戻す")+btn("danger","v1280DeleteCandidate",[kind,n],"削除"))).join(""):'<div class="small">ありません。</div>'}</div>`;
+  pageShell("仕入先・単協マスタ","入力候補の追加・非表示・削除・名称修正（全員の端末に反映）",okHtml(msg)+tabs+add+list+hiddenBox);
+};
+window.v1208CandidatePage=v1208CandidatePage;
+v1208AddCandidate=function(kind){
+  const name=String(document.getElementById("v1208AddName")?.value||"").trim();
+  if(!name)return alert("名称を入力してください");
+  return v1280Do(kind,()=>v1280Set(kind,name,"active"),`「${name}」を追加しました`);
+};
+v1208HideCandidate=function(kind,name){
+  if(!confirm(`「${name}」を候補から非表示にします。\nあとで戻せます。過去の記録は消えません。`))return;
+  return v1280Do(kind,()=>v1280Set(kind,name,"hidden"),`「${name}」を非表示にしました`);
+};
+v1208ShowCandidate=function(kind,name){return v1280Do(kind,()=>v1280Set(kind,name,"active"),`「${name}」を候補に戻しました`)};
+function v1280DeleteCandidate(kind,name){
+  if(!confirm(`「${name}」を候補から削除します。\n全員の端末で候補に出なくなります。過去のQRロットの記録は消えません。\nよろしいですか？`))return;
+  return v1280Do(kind,()=>v1280Set(kind,name,"deleted"),`「${name}」を削除しました`);
+}
+v1208RenameCandidate=function(kind,name){
+  const next=prompt(`「${name}」の正しい名称を入力してください。\n元の名称は候補から削除され、正しい名称が候補に出ます。`,name);
+  if(next===null)return;
+  const fixed=String(next).trim();if(!fixed)return alert("名称が空です");
+  if(qrNormalizeName(fixed)===qrNormalizeName(name))return v1280Do(kind,()=>v1280Set(kind,fixed,"active"),`「${fixed}」に修正しました`);
+  return v1280Do(kind,()=>v1280Set(kind,name,"deleted",fixed),`「${name}」を「${fixed}」に修正しました`);
+};
+window.v1208AddCandidate=v1208AddCandidate;window.v1208HideCandidate=v1208HideCandidate;window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208RenameCandidate;window.v1280DeleteCandidate=v1280DeleteCandidate;
+
+function v1280InjectHome(tries=0){
+  if(currentScreen!=="qrHome")return;
+  document.getElementById("v1208CandEntry")?.remove();
+  if(!canQrOperate())return;
+  const box=document.querySelector(".homePrimary"),dest=box&&box.querySelector('[data-seika-click-action="v194DestinationsPage"]');
+  if(!box){if(tries<40)setTimeout(()=>v1280InjectHome(tries+1),100);return}
+  if(document.getElementById("v1280PartyBtn"))return;
+  const b=document.createElement("button");b.id="v1280PartyBtn";b.type="button";b.className="btn homeBtnParty";
+  b.setAttribute("data-seika-click-action","v1208CandidatePage");b.setAttribute("data-seika-click-args",encodeURIComponent(JSON.stringify(["supplier",""])));
+  b.innerHTML='仕入先・単協マスタ<br><span style="font-size:15px;font-weight:800">入力候補の追加・削除・名称修正</span>';
+  if(dest)dest.parentNode.insertBefore(b,dest.nextSibling);else box.appendChild(b);
+}
+const v1280QrHomeBase=qrHome;
+qrHome=async function(...args){const r=await v1280QrHomeBase.apply(this,args);v1280InjectHome();setTimeout(()=>document.getElementById("v1208CandEntry")?.remove(),300);return r};
+window.qrHome=qrHome;
+const v1280MenuBase=accountMenu;
+accountMenu=function(...args){
+  const r=v1280MenuBase.apply(this,args);
+  const add=()=>{const m=document.querySelector(".menu");if(!m||!canQrOperate()||document.getElementById("v1280MenuParty"))return;
+    m.insertAdjacentHTML("afterbegin",`<button id="v1280MenuParty" class="btn btn2" ${seikaEventAttrs('click','v1208CandidatePage',["supplier",""])}>仕入先・単協マスタ（入力候補）</button>`)};
+  add();setTimeout(add,300);
+  return r;
+};
+window.accountMenu=accountMenu;
+(function(){const st=document.createElement("style");st.textContent=`.homeBtnParty{background:linear-gradient(90deg,#3f6212 0%,#65a30d 52%,#bef264 100%) !important;color:#fff !important;border-color:transparent !important;}`;document.head.appendChild(st)})();
+
 </script>
 </body>
 </html>
