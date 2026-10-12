@@ -7406,10 +7406,10 @@ qrLotDetail=async function(q,msg=''){await v136QrLotDetailCore(q,msg);if(!canAdm
 
 function v136RowsTable(headers,rows){return rows.length?`<div class="weeklyWrap"><table class="table"><thead><tr>${headers.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:'<div class="notice">条件に一致する集計データがありません。期間・入力状況を確認してください。</div>';}
 function v136DateRangeHtml(prefix,days){const to=todayKey(),from=new Date(Date.now()-(days-1)*86400000).toLocaleDateString('sv-SE');return `<div class="row"><div><label class="label">開始日</label><input id="${prefix}From" type="date" class="input" value="${from}"></div><div><label class="label">終了日</label><input id="${prefix}To" type="date" class="input" value="${to}"></div></div>`;}
-function v136AnalysisHome(){setScreen('v136AnalysisHome');if(!v136RoleCanAnalyze())return home();pageShell('第3段階 分析・判断支援','閲覧：管理者・青果社員・仕入担当・事務員。設定変更は管理者のみです。集計結果は参考情報で、自動出庫・自動廃棄・仕入先ランキングは行いません。',`<div class="homePrimary"><button class="btn homeBtnWaste" data-seika-click-action="v136LossPage" data-seika-click-args="%5B%5D">在庫ロス分析</button><button class="btn homeBtnQr" data-seika-click-action="v136SupplierQualityPage" data-seika-click-args="%5B%5D">仕入先品質分析</button><button class="btn homeBtnCheck" data-seika-click-action="v136DecisionPage" data-seika-click-args="%5B%5D">判断支援</button>${canAdmin()?'<button class="btn homeBtnSettings" data-seika-click-action="v136SettingsPage" data-seika-click-args="%5B%5D">第3段階設定（管理者）</button>':''}</div>`);}
+function v136AnalysisHome(){setScreen('v136AnalysisHome');if(!v136RoleCanAnalyze())return home();pageShell('第3段階 分析・判断支援','閲覧：管理者・青果社員・仕入担当・事務員。設定変更は管理者のみです。集計結果は参考情報で、自動出庫・自動廃棄・仕入先ランキングは行いません。',`<div class="homePrimary"><button class="btn homeBtnWaste" data-seika-click-action="v136LossPage" data-seika-click-args="%5B%5D">在庫ロス分析</button><button class="btn homeBtnQr" data-seika-click-action="v136SupplierQualityPage" data-seika-click-args="%5B%5D">品質レポート</button><button class="btn homeBtnCheck" data-seika-click-action="v136DecisionPage" data-seika-click-args="%5B%5D">判断支援</button>${canAdmin()?'<button class="btn homeBtnSettings" data-seika-click-action="v136SettingsPage" data-seika-click-args="%5B%5D">第3段階設定（管理者）</button>':''}</div>`);}
 function v136LossPage(){setScreen('v136LossPage');if(!v136RoleCanAnalyze())return home();pageShell('在庫ロス分析','通常廃棄とQR廃棄を別ソースで集計します。単価未設定は0円扱いにしません。',`<div class="card">${v136DateRangeHtml('v136Loss',30)}<label class="label">品目・仕入先・産地で絞込（任意）</label><input id="v136LossFilter" class="input" placeholder="返却済み集計内を絞り込み"><button class="btn blue" style="width:100%;margin-top:12px" data-seika-click-action="v136RunLoss" data-seika-click-args="%5B%5D">集計する</button></div><div id="v136LossResult"></div>`);}
 async function v136RunLoss(){const host=document.getElementById('v136LossResult');if(!host)return;host.innerHTML='<div class="notice">集計中...</div>';try{const data=await v136Rpc('get_inventory_loss_cockpit_v1136',{p_from:document.getElementById('v136LossFrom').value,p_to:document.getElementById('v136LossTo').value}),filter=(document.getElementById('v136LossFilter').value||'').trim().toLowerCase(),rows=(data.rows||[]).filter(r=>!filter||[r.item_name,r.origin,r.supplier,r.unit,r.source].some(v=>String(v||'').toLowerCase().includes(filter))),unpriced=rows.reduce((n,r)=>n+Number(r.unassessed_price_records||0),0),amountKnown=rows.some(r=>r.amount_yen!==null&&r.amount_yen!==undefined);host.innerHTML=`<div class="card notice"><b>集計ルール</b><div class="small">${esc(data.aggregation_rule||'')}</div><div class="small">単価未設定：${unpriced}件${amountKnown?' / 金額がNULLの行は「金額未確定」です。':' / 金額確定済みの行はありません。'}。異なる単位は合算しません。</div></div>${v136RowsTable(['ソース','品目','産地','仕入先','単位','件数','数量','単価未設定','金額'],rows.map(r=>`<tr><td>${esc(r.source)}</td><td>${esc(r.item_name||'-')}</td><td>${esc(r.origin||'-')}</td><td>${esc(r.supplier||'-')}</td><td>${esc(r.unit||'不明')}</td><td>${fmt(r.record_count)}</td><td>${fmt(r.quantity)} ${esc(r.unit||'')}</td><td>${fmt(r.unassessed_price_records)}</td><td>${r.amount_yen===null||r.amount_yen===undefined?'<b>金額未確定</b>':money(r.amount_yen)+'円'}</td></tr>`))}`;}catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">ロス分析を取得できませんでした。${esc(error.message||error)}</div>`;}}
-function v136SupplierQualityPage(){setScreen('v136SupplierQualityPage');if(!v136RoleCanAnalyze())return home();pageShell('仕入先品質分析','評価件数と比率を参考表示します。仕入先名の自動統合・優劣ランキング・設定の自動変更は行いません。',`<div class="card">${v136DateRangeHtml('v136Supplier',90)}<label class="label">仕入先（任意・完全一致）</label><input id="v136SupplierName" class="input" placeholder="SQL集計対象の仕入先"><label class="label">品目・産地で表示絞込（任意）</label><input id="v136SupplierFilter" class="input" placeholder="返却済み集計内を絞り込み"><button class="btn blue" style="width:100%;margin-top:12px" data-seika-click-action="v136RunSupplierQuality" data-seika-click-args="%5B%5D">集計する</button></div><div id="v136SupplierResult"></div>`);}
+function v136SupplierQualityPage(){setScreen('v136SupplierQualityPage');if(!v136RoleCanAnalyze())return home();pageShell('品質レポート','評価件数と比率を参考表示します。仕入先名の自動統合・優劣ランキング・設定の自動変更は行いません。',`<div class="card">${v136DateRangeHtml('v136Supplier',90)}<label class="label">仕入先（任意・完全一致）</label><input id="v136SupplierName" class="input" placeholder="SQL集計対象の仕入先"><label class="label">品目・産地で表示絞込（任意）</label><input id="v136SupplierFilter" class="input" placeholder="返却済み集計内を絞り込み"><button class="btn blue" style="width:100%;margin-top:12px" data-seika-click-action="v136RunSupplierQuality" data-seika-click-args="%5B%5D">集計する</button></div><div id="v136SupplierResult"></div>`);}
 async function v136RunSupplierQuality(){const host=document.getElementById('v136SupplierResult');if(!host)return;host.innerHTML='<div class="notice">集計中...</div>';try{const data=await v136Rpc('get_supplier_quality_analysis_v1136',{p_from:document.getElementById('v136SupplierFrom').value,p_to:document.getElementById('v136SupplierTo').value,p_supplier:document.getElementById('v136SupplierName').value.trim()||null}),filter=(document.getElementById('v136SupplierFilter').value||'').trim().toLowerCase(),rows=(data.rows||[]).filter(r=>!filter||[r.supplier,r.cooperative_name,r.item_name,r.item_id].some(v=>String(v||'').toLowerCase().includes(filter)));host.innerHTML=`<div class="card notice"><b>参考情報（ランキングではありません）</b><div class="small">${esc(data.note||'')}</div><div class="small">評価件数が少ない行は傾向判断に使わず、ロット・季節・品目を確認してください。</div></div>${v136RowsTable(['仕入先','単協名','品目','評価数','良好','要確認','不良','良好率','要確認率','不良率'],rows.map(r=>`<tr><td>${esc(r.supplier||'未入力')}</td><td>${esc(r.cooperative_name||'-')}</td><td>${esc(r.item_name||r.item_id||'-')}</td><td>${fmt(r.evaluation_count)}</td><td>${fmt(r.good_count)}</td><td>${fmt(r.review_count)}</td><td>${fmt(r.bad_count)}</td><td>${(Number(r.good_ratio||0)*100).toFixed(1)}%</td><td>${(Number(r.review_ratio||0)*100).toFixed(1)}%</td><td>${(Number(r.bad_ratio||0)*100).toFixed(1)}%</td></tr>`))}`;}catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">品質分析を取得できませんでした。${esc(error.message||error)}</div>`;}}
 function v136DecisionPage(){setScreen('v136DecisionPage');if(!v136RoleCanAnalyze())return home();pageShell('判断支援','外部AIは使用しません。ルール根拠を表示するだけで、在庫・出庫・廃棄・仕入先設定を自動変更しません。',`<div class="card"><label class="label">品目・ロットで絞込（任意）</label><input id="v136DecisionFilter" class="input"><button class="btn blue" style="width:100%;margin-top:12px" data-seika-click-action="v136RunDecisions" data-seika-click-args="%5B%5D">確認候補を表示</button></div><div id="v136DecisionResult"></div>`);}
 async function v136RunDecisions(){const host=document.getElementById('v136DecisionResult');if(!host)return;host.innerHTML='<div class="notice">確認中...</div>';try{const data=await v136Rpc('get_rule_based_decisions_v1136',{p_limit:100}),filter=(document.getElementById('v136DecisionFilter').value||'').trim().toLowerCase(),rows=(data.rows||[]).filter(r=>!filter||[r.item_name,r.item_id,r.lot_no,r.qr_key,r.action].some(v=>String(v||'').toLowerCase().includes(filter)));host.innerHTML=`<div class="card notice"><b>判断支援のみ</b><div class="small">${esc(data.message||'')}</div></div>${rows.length?rows.map(r=>{const b=r.rule_basis||{},th=b.thresholds||{};return `<div class="card"><b>${esc(r.item_name||'-')} / ${esc(r.lot_no||'-')}</b><div class="small">入庫日：${esc(r.received_date||'-')} / 経過：${fmt(b.age_days)}日 / 残数：${fmt(r.current_qty)} ${esc(r.unit||'')}<br>品質：${esc(b.quality_status||'unassessed')} / 保留：${b.hold_active?'あり':'なし'}<br>根拠：注意 ${th.attention_days??'-'}日・警告 ${th.warning_days??'-'}日・重大 ${th.critical_days??'-'}日 / ルール版 ${esc(b.rule_version||'-')}</div><div class="notice" style="margin-top:8px"><b>確認候補：</b>${esc(r.action||'')}</div></div>`;}).join(''):'<div class="notice">確認候補はありません。</div>'}`;}catch(error){host.innerHTML=error?.v136MissingDb?v136DbNotAppliedHtml():`<div class="err">判断支援を取得できませんでした。${esc(error.message||error)}</div>`;}}
@@ -11534,7 +11534,7 @@ const V198_GUIDE_SECTIONS={
   caution:"確定後の修正は管理者のみです。前の月の棚卸しが終わっていないと新しく開始できないことがあります。"},
  analysis:{title:"分析・判断支援を見る",where:"ホーム → 分析・判断支援",
   steps:["「在庫ロス分析」で、期間ごとの廃棄と在庫ロスの傾向を確認します。",
-   "「仕入先品質分析」で、仕入先ごとの品質評価の傾向を確認します。",
+   "「品質レポート」で、仕入先ごとの品質評価の傾向を確認します。",
    "「判断支援」で、確認したほうがよい品目の候補を表示します。"],
   check:"数字の元になっているのは、廃棄入力・品質評価・QR操作の履歴です。",
   caution:"入力が漏れている期間は正しく集計されません。"},
@@ -12872,7 +12872,7 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
   /* ② QR品目ごとの合計kg一覧（別画面） */
   async function qrTotalsPage(){
     setScreen('qrTotalsPage',[]);
-    pageShell('QR在庫 合計kg','品目ごとの現在庫','<div class="card"><div class="notice">在庫を集計しています。</div></div>');
+    pageShell('品目別在庫量','品目ごとの現在庫','<div class="card"><div class="notice">在庫を集計しています。</div></div>');
     try{
       const lots=await v1204FetchLots('');
       const groups=new Map();
@@ -12900,7 +12900,7 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
       const totalRow=rows.length?`<tr><td><b>合計</b></td><td style="text-align:right"><b>${v1204KgText(total.kg)}</b></td>`
         +roomNames.map(n=>`<td style="text-align:right">${total.rooms.get(n)?v1204KgText(total.rooms.get(n)):'-'}</td>`).join('')
         +`<td style="text-align:right">${total.lots}件</td></tr>`:'';
-      pageShell('QR在庫 合計kg',`${rows.length}品目 ／ 合計 ${v1204KgText(total.kg)}`,
+      pageShell('品目別在庫量',`${rows.length}品目 ／ 合計 ${v1204KgText(total.kg)}`,
         `<div class="card"><b>品目ごとの現在庫（在庫ありロットの合計）</b>`
         +`<div class="small" style="margin-top:4px">量目と現在残数からkg換算しています。量目が未設定のロットは「kg不明」として件数だけ表示します。</div>`
         +`<div class="row" style="margin-top:8px"><button class="btn blue" ${seikaEventAttrs('click','qrTotalsPage',[])}>最新に更新</button>`
@@ -12909,7 +12909,7 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
         +(total.unknown?`<div class="small" style="margin-top:6px;color:#b45309">kg換算できないロットが ${total.unknown}件あります。ロット編集で量目を入力すると合計に含まれます。</div>`:'')
         +`</div>`);
     }catch(e){
-      pageShell('QR在庫 合計kg','読み込みエラー',
+      pageShell('品目別在庫量','読み込みエラー',
         `<div class="err">${esc(typeof v161ErrorText==='function'?v161ErrorText(e):(e&&e.message||e))}</div>`
         +`<button class="btn blue" ${seikaEventAttrs('click','qrTotalsPage',[])}>再読み込み</button>`);
     }
@@ -12929,7 +12929,7 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
         b.className='btn homeBtnQrTotals';
         b.setAttribute('data-seika-click-action','qrTotalsPage');
         b.setAttribute('data-seika-click-args','%5B%5D');
-        b.innerHTML='QR在庫 合計kg<br><span style="font-size:15px;font-weight:800">品目ごとの現在庫をkgで確認</span>';
+        b.innerHTML='品目別在庫量<br><span style="font-size:15px;font-weight:800">QR品目の在庫をkgで一覧</span>';
         const list=box.querySelector('[data-seika-click-action="qrLotListPage"]');
         if(list&&list.parentNode)list.parentNode.insertBefore(b,list.nextSibling); else box.appendChild(b);
       }
@@ -12948,9 +12948,9 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
   /* 操作ガイドに追記 */
   try{
     if(typeof V198_GUIDE_SECTIONS!=='undefined'){
-      V198_GUIDE_SECTIONS.v1204QrTotals={title:'QR在庫の合計kgを確認する',where:'ホーム → QR在庫管理 → QR在庫 合計kg',
+      V198_GUIDE_SECTIONS.v1204QrTotals={title:'QR在庫の合計kgを確認する',where:'ホーム → QR在庫管理 → 品目別在庫量',
         steps:['QRロット一覧を開くと、いちばん上に選んだ品目の在庫合計kgと冷蔵庫別の内訳が出ます。',
-               '「QR在庫 合計kg」を開くと、QR品目すべての現在庫kgを一覧で比べられます。品名を押すとその品目のロット一覧へ移ります。',
+               '「品目別在庫量」を開くと、QR品目すべての現在庫kgを一覧で比べられます。品名を押すとその品目のロット一覧へ移ります。',
                '量目が未設定のロットはkg換算できないため「kg不明」として件数だけ表示します。ロット編集で量目を入れると合計に入ります。'],
         check:'冷蔵庫別の内訳と現物が合っているか確認します。',
         caution:'在庫ありのロットだけを集計します。在庫なしのロットは含みません。'};
@@ -14104,7 +14104,7 @@ window.v195AddTrimLotObject=v195AddTrimLotObject;
   const st=document.createElement("style");st.id="v1250Style";st.textContent=css;document.head.appendChild(st);
 })();
 
-/* ===== v1.199-c31 保管目安の設定画面（QR在庫管理ホームから変更） ===== */
+/* ===== v1.199-c31 保管期限マスタ画面（QR在庫管理ホームから変更） ===== */
 function v1250CanEditLimits(){return["admin","worker"].includes(db?.role)}
 function v1250LevelGuide(d){
   d=Number(d);const watch=Math.ceil(d*0.5),parts=[];
@@ -14115,7 +14115,7 @@ function v1250LevelGuide(d){
 }
 async function qrStorageLimitsPage(msg=""){
   setScreen("qrStorageLimitsPage",[msg]);
-  pageShell("保管目安の設定","品目ごとの保管期間（日数）",'<div class="card"><div class="notice">読み込んでいます。</div></div>');
+  pageShell("保管期限マスタ","品目ごとの保管期間（日数）",'<div class="card"><div class="notice">読み込んでいます。</div></div>');
   await v1250LoadLimits(true);
   const edit=v1250CanEditLimits()&&v1250LimitSource==="db";
   const rows=v1250LimitRows.map((r,i)=>({...r,i}));
@@ -14128,7 +14128,7 @@ async function qrStorageLimitsPage(msg=""){
       :`<div class="v1250LimitRow v1250LimitView"><b>${esc(r.item_name)}</b><span>${esc(r.limit_days)}日</span></div>`).join("");
     return`<div class="card"><b>${d}日（${rows.filter(r=>Number(r.limit_days)===d).length}品目）</b><div class="small" style="margin:4px 0 8px">${esc(v1250LevelGuide(d))}（入荷日からの日数）</div>${list}</div>`;
   }).join("");
-  pageShell("保管目安の設定",`${rows.length}品目`,`${msg?`<div class="ok">${esc(msg)}</div>`:""}${info}${add}${groups}`);
+  pageShell("保管期限マスタ",`${rows.length}品目`,`${msg?`<div class="ok">${esc(msg)}</div>`:""}${info}${add}${groups}`);
 }
 async function v1250LimitRpc(name,args){
   const ans=await callRpc(name,args);
@@ -14177,11 +14177,11 @@ function v1250InjectHomeButtons(tries=0){
   if(!box||!list){if(tries<40)setTimeout(()=>v1250InjectHomeButtons(tries+1),100);return}
   let totals=document.getElementById("v1204TotalsBtn");
   if(!totals&&typeof qrTotalsPage==="function"){
-    totals=v1250HomeButton("v1204TotalsBtn","homeBtnQrTotals","qrTotalsPage",'QR在庫 合計kg<br><span style="font-size:15px;font-weight:800">品目ごとの現在庫をkgで確認</span>');
+    totals=v1250HomeButton("v1204TotalsBtn","homeBtnQrTotals","qrTotalsPage",'品目別在庫量<br><span style="font-size:15px;font-weight:800">QR品目の在庫をkgで一覧</span>');
     list.parentNode.insertBefore(totals,list.nextSibling);
   }
   if(!document.getElementById("v1250LimitsBtn")){
-    const b=v1250HomeButton("v1250LimitsBtn","homeBtnStorageLimit","qrStorageLimitsPage",'保管目安の設定<br><span style="font-size:15px;font-weight:800">品目ごとの保管期間（日数）を確認・変更</span>');
+    const b=v1250HomeButton("v1250LimitsBtn","homeBtnStorageLimit","qrStorageLimitsPage",'保管期限マスタ<br><span style="font-size:15px;font-weight:800">品目ごとの保管日数を確認・変更</span>');
     const after=totals||list;after.parentNode.insertBefore(b,after.nextSibling);
   }
 }
@@ -14213,12 +14213,12 @@ if(typeof v195LoadTrimLots==="function"){
   document.head.appendChild(st);
   try{
     if(typeof V198_GUIDE_SECTIONS!=="undefined"){
-      V198_GUIDE_SECTIONS.v1250StorageLimits={title:"保管目安と保管期間アラート",where:"ホーム → QR在庫管理 → 保管目安の設定 ／ QRロット一覧",
+      V198_GUIDE_SECTIONS.v1250StorageLimits={title:"保管目安と保管期間アラート",where:"ホーム → QR在庫管理 → 保管期限マスタ ／ QRロット一覧",
         steps:["QRロット一覧では、入荷日からの日数と品目ごとの保管目安を比べて「要観察」「優先使用」「要品質確認」「使用不可/保留」を色とバッジで表示します。",
                "「アラートが高い順」で危ないロットから並べ、「要品質確認以上だけ表示」で対象を絞り込めます。",
                "要品質確認のロットは、実物を確認して「品質確認済みにする」を押すと、その日のあいだは優先使用として扱います。",
                "使用不可/保留のロットは、管理者・青果社員が実物を確認して「OK」を押したときだけ出庫・使用できます（確認した人を記録します）。",
-               "保管目安の日数は「保管目安の設定」で変更・追加・削除できます（管理者・青果社員）。"],
+               "保管目安の日数は「保管期限マスタ」で変更・追加・削除できます（管理者・青果社員）。"],
         check:"アラートの出たロットから先に使い、要品質確認は毎日確認します。",
         caution:"品目名はQRロットの品名と同じにしてください。保管目安に無い品目はアラートの対象外です。"};
       if(typeof V198_ROLE_ADD!=="undefined")for(const k of Object.keys(V198_ROLE_ADD))if(Array.isArray(V198_ROLE_ADD[k])&&!V198_ROLE_ADD[k].includes("v1250StorageLimits"))V198_ROLE_ADD[k].push("v1250StorageLimits");
@@ -14226,7 +14226,7 @@ if(typeof v195LoadTrimLots==="function"){
   }catch(e){}
 })();
 
-/* ===== v1.199-c32 ①仕入先・単協名で検索 ②保管場所の移動 ③品質評価の確認は担当の仕入れ担当者 ④仕入先品質分析の作り替え ===== */
+/* ===== v1.199-c32 ①仕入先・単協名で検索 ②保管場所の移動 ③品質評価の確認は担当の仕入れ担当者 ④品質レポートの作り替え ===== */
 function v1260Norm(s){return String(s||"").normalize("NFKC").replace(/[\s　]+/g,"").toLowerCase()}
 /* ① QRロット一覧・検索：仕入先・単協名 */
 let v1260Party={supplier:"",coop:""},v1260PartyNames=null,v1260PartyNamesAt=0;
@@ -14384,7 +14384,7 @@ v1143LoadQualityTask=async function(generation){
 };
 window.v1143LoadQualityTask=v1143LoadQualityTask;
 
-/* ④ 仕入先品質分析（作り替え）：仕入先別・品目別・月別。ログインしている全員が閲覧可 */
+/* ④ 品質レポート（作り替え）：仕入先別・品目別・月別。ログインしている全員が閲覧可 */
 let v1260QaState={period:"current",from:"",to:"",filter:"",data:null};
 function v1260FiscalRange(offset=0){
   const t=todayKey(),y=Number(t.slice(0,4)),m=Number(t.slice(5,7)),fy=(m>=9?y:y-1)+offset;
@@ -14455,14 +14455,14 @@ async function v1260RunQa(){
     const ans=await callRpc("get_quality_improvement_analysis_v1260",{p_from:from,p_to:to});
     if(!ans?.ok)throw new Error(ans?.message||"集計できませんでした");
     v1260QaState.data={...ans,label};v1260RenderQa();
-  }catch(e){const raw=String(e?.message||e);host.innerHTML=`<div class="err">${esc(/PGRST202|get_quality_improvement_analysis_v1260/.test(raw)?"仕入先品質分析の集計がまだ準備されていません（SQL 009 の実行が必要です）。":raw)}</div>`}
+  }catch(e){const raw=String(e?.message||e);host.innerHTML=`<div class="err">${esc(/PGRST202|get_quality_improvement_analysis_v1260/.test(raw)?"品質レポートの集計がまだ準備されていません（SQL 009 の実行が必要です）。":raw)}</div>`}
 }
 function v1260QaPeriodChanged(){const c=document.getElementById("v1260QaCustom");if(c)c.style.display=document.getElementById("v1260QaPeriod")?.value==="custom"?"":"none"}
 v136SupplierQualityPage=function(){
   setScreen("v136SupplierQualityPage");
   if(!db?.user)return home();
   const p=v1260QaState.period,cur=v1260FiscalRange(0),prev=v1260FiscalRange(-1);
-  pageShell("仕入先品質分析","品質評価を仕入れ改善に使う（仕入先別・品目別・月別）",`<div class="card"><label class="label" for="v1260QaPeriod">期間</label><select id="v1260QaPeriod" class="input" ${seikaEventAttrs('change','v1260QaPeriodChanged',[])}><option value="current" ${p==="current"?"selected":""}>今年度（${cur.label}）</option><option value="previous" ${p==="previous"?"selected":""}>前年度（${prev.label}）</option><option value="custom" ${p==="custom"?"selected":""}>期間を指定</option></select><div id="v1260QaCustom" class="row" style="margin-top:8px;${p==="custom"?"":"display:none"}"><div><label class="label" for="v1260QaFrom">開始日</label><input id="v1260QaFrom" type="date" class="input" value="${esc(v1260QaState.from||cur.from)}"></div><div><label class="label" for="v1260QaTo">終了日</label><input id="v1260QaTo" type="date" class="input" value="${esc(v1260QaState.to||todayKey())}"></div></div><button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1260RunQa',[])}>集計する</button><div class="small" style="margin-top:8px">ロット1つにつき最新の評価1件で数えます（訂正した評価は訂正後）。月は入荷日で分けます。</div></div><div id="v1260QaResult"></div>`);
+  pageShell("品質レポート","品質評価を仕入れ改善に使う（仕入先別・品目別・月別）",`<div class="card"><label class="label" for="v1260QaPeriod">期間</label><select id="v1260QaPeriod" class="input" ${seikaEventAttrs('change','v1260QaPeriodChanged',[])}><option value="current" ${p==="current"?"selected":""}>今年度（${cur.label}）</option><option value="previous" ${p==="previous"?"selected":""}>前年度（${prev.label}）</option><option value="custom" ${p==="custom"?"selected":""}>期間を指定</option></select><div id="v1260QaCustom" class="row" style="margin-top:8px;${p==="custom"?"":"display:none"}"><div><label class="label" for="v1260QaFrom">開始日</label><input id="v1260QaFrom" type="date" class="input" value="${esc(v1260QaState.from||cur.from)}"></div><div><label class="label" for="v1260QaTo">終了日</label><input id="v1260QaTo" type="date" class="input" value="${esc(v1260QaState.to||todayKey())}"></div></div><button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1260RunQa',[])}>集計する</button><div class="small" style="margin-top:8px">ロット1つにつき最新の評価1件で数えます（訂正した評価は訂正後）。月は入荷日で分けます。</div></div><div id="v1260QaResult"></div>`);
   v1260RunQa();
 };
 window.v136SupplierQualityPage=v136SupplierQualityPage;
@@ -14471,9 +14471,9 @@ function v1260InjectQualityButtons(tries=0){
   const box=document.querySelector(".homePrimary"),ql=box&&box.querySelector('[data-seika-click-action="v1103QualityListPage"]');
   if(!box||!ql){if(tries<40)setTimeout(()=>v1260InjectQualityButtons(tries+1),100);return}
   if(document.getElementById("v1260QaBtn"))return;
-  const b=document.createElement("button");b.id="v1260QaBtn";b.type="button";b.className="btn homeBtnQuality";
+  const b=document.createElement("button");b.id="v1260QaBtn";b.type="button";b.className="btn homeBtnQualityReport";
   b.setAttribute("data-seika-click-action","v136SupplierQualityPage");b.setAttribute("data-seika-click-args","%5B%5D");
-  b.innerHTML='仕入先品質分析<br><span style="font-size:15px;font-weight:800">仕入先別・品目別・月別の品質</span>';
+  b.innerHTML='品質レポート<br><span style="font-size:15px;font-weight:800">仕入先・品目・月ごとの良品率</span>';
   ql.parentNode.insertBefore(b,ql.nextSibling);
 }
 const v1260QrHomeBase=qrHome;
@@ -14483,7 +14483,7 @@ const v1260QualityListPageBase=v1103QualityListPage;
 v1103QualityListPage=async function(...args){
   const r=await v1260QualityListPageBase.apply(this,args);
   const s=document.getElementById("v1103QualitySummary");
-  if(s&&!document.getElementById("v1260QaFromList"))(document.querySelector("main.wrap")||s).insertAdjacentHTML("afterbegin",`<button id="v1260QaFromList" class="btn homeBtnQuality" style="width:100%;margin-bottom:10px" ${seikaEventAttrs('click','v136SupplierQualityPage',[])}>仕入先品質分析（仕入先別・品目別・月別）</button>`);
+  if(s&&!document.getElementById("v1260QaFromList"))(document.querySelector("main.wrap")||s).insertAdjacentHTML("afterbegin",`<button id="v1260QaFromList" class="btn homeBtnQualityReport" style="width:100%;margin-bottom:10px" ${seikaEventAttrs('click','v136SupplierQualityPage',[])}>品質レポート（仕入先・品目・月ごとの良品率）</button>`);
   return r;
 };
 window.v1103QualityListPage=v1103QualityListPage;
@@ -14506,8 +14506,8 @@ window.v1103QualityListPage=v1103QualityListPage;
   document.head.appendChild(st);
   try{
     if(typeof V198_GUIDE_SECTIONS!=="undefined"){
-      V198_GUIDE_SECTIONS.v1260QualityAnalysis={title:"仕入先品質分析・保管場所の移動",where:"ホーム → QR在庫管理 → 仕入先品質分析 ／ QRロット詳細 → 保管場所を移動",
-        steps:["仕入先品質分析では、品質評価を仕入先別・品目別・月別に「良好・要確認・不良」の割合で確認できます。月は入荷日で分けます。",
+      V198_GUIDE_SECTIONS.v1260QualityAnalysis={title:"品質レポート・保管場所の移動",where:"ホーム → QR在庫管理 → 品質レポート ／ QRロット詳細 → 保管場所を移動",
+        steps:["品質レポートでは、品質評価を仕入先別・品目別・月別に「良好・要確認・不良」の割合で確認できます。月は入荷日で分けます。",
                "その月の不良率が全体平均の2倍以上（評価5件以上）の仕入先は「要注意」と表示します。",
                "品質評価の「確認済み」は担当の仕入れ担当者が付けます。管理者・青果社員は「確認しました」を押すと自分の通知だけ消えます。",
                "片岡冷蔵庫から第2・第3冷蔵庫などへ移したときは、QRロットの「保管場所を移動」で移動先を選びます（ロットまるごと・履歴に残ります）。",
@@ -14518,6 +14518,30 @@ window.v1103QualityListPage=v1103QualityListPage;
     }
   }catch(e){}
 })();
+
+
+/* ===== v1.199-c33 QRホームの整理・品質レポートの配色・月次Excelの作成済み記録の再試行 ===== */
+function v1270IsNetErr(e){return/Load failed|Failed to fetch|NetworkError|network connection was lost/i.test(String(e?.message||e))}
+async function v1270Retry(fn,waits=[800,1500,3000,5000]){
+  for(let i=0;;i++){
+    try{return await fn()}catch(e){if(!v1270IsNetErr(e)||i>=waits.length)throw e;await new Promise(r=>setTimeout(r,waits[i]))}
+  }
+}
+const v1270RecordCreatedBase=v1101RecordCreated;
+v1101RecordCreated=async function(...args){await new Promise(r=>setTimeout(r,600));return v1270Retry(()=>v1270RecordCreatedBase.apply(this,args))};
+window.v1101RecordCreated=v1101RecordCreated;
+const v1270LoadArchivesBase=v1101LoadArchives;
+v1101LoadArchives=function(...args){return v1270Retry(()=>v1270LoadArchivesBase.apply(this,args))};
+window.v1101LoadArchives=v1101LoadArchives;
+const v1270QrHomeBase=qrHome;
+qrHome=async function(...args){
+  const r=await v1270QrHomeBase.apply(this,args);
+  const rm=()=>document.getElementById("v199QrExcelButtonHome")?.remove();
+  rm();setTimeout(rm,300);setTimeout(rm,1200);
+  return r;
+};
+window.qrHome=qrHome;
+(function(){const st=document.createElement("style");st.textContent=`.homeBtnQualityReport{background:linear-gradient(90deg,#065f46 0%,#059669 52%,#6ee7b7 100%) !important;color:#fff !important;border-color:transparent !important;}`;document.head.appendChild(st)})();
 
 </script>
 </body>
