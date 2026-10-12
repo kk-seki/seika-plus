@@ -3459,11 +3459,11 @@ const limit=Math.max(100,Math.min(2000,Number(displayLimit)||100));qrLotListStat
 sortOrder:["oldest","alert"].includes(sortOrder)?sortOrder:"newest",alertOnly:!!alertOnly,stockFilter:stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",
 displayLimit:limit};qrLotDetailReturnsToList=false
 ;setScreen("qrLotListPage",[qrLotListState.selectedItem,qrLotListState.sortOrder,qrLotListState.stockFilter,limit,!!alertOnly]);try{
-const stock=stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",stockQuery=stock==="outOfStock"?"&current_qty=lte.0":stock==="inStock"?"&current_qty=gt.0":"",selected=String(selectedItem||"").trim(),sort=["oldest","alert"].includes(sortOrder)?sortOrder:"newest",v1250Full=sort==="alert"||!!alertOnly,itemQuery=v1200QrItemQuery(selected),dbOrder=sort!=="newest"?"received_date.asc.nullslast,created_at.asc":"received_date.desc.nullslast,created_at.desc",lotsRaw=await qrSelect("qr_lots",`select=*&active=eq.true${stockQuery}${itemQuery}&order=${dbOrder}&limit=${v1250Full?2001:limit+1}`),lots=v1200QrFilterByGroup(lotsRaw,selected),hasMore=(lotsRaw||[]).length>(v1250Full?2000:limit),visibleLots=lots.slice(0,v1250Full?2000:limit),operate=canQrOperate(),nameRows=await qrSelect("qr_lots",`select=item_name&active=eq.true${stockQuery}&limit=5000`),itemNames=v1200QrCanonicalNames(nameRows,selected),dateValue=lot=>String(lot.received_date||lot.created_at||""),filteredLots=v1250ApplyList(visibleLots.slice().sort((a,b)=>{
+const stock=stockFilter==="outOfStock"?"outOfStock":stockFilter==="all"?"all":"inStock",stockQuery=stock==="outOfStock"?"&current_qty=lte.0":stock==="inStock"?"&current_qty=gt.0":"",selected=String(selectedItem||"").trim(),sort=["oldest","alert"].includes(sortOrder)?sortOrder:"newest",v1250Full=sort==="alert"||!!alertOnly,itemQuery=v1200QrItemQuery(selected),dbOrder=sort!=="newest"?"received_date.asc.nullslast,created_at.asc":"received_date.desc.nullslast,created_at.desc",lotsRaw=await qrSelect("qr_lots",`select=*&active=eq.true${stockQuery}${itemQuery}${v1260PartyQuery()}&order=${dbOrder}&limit=${v1250Full?2001:limit+1}`),lots=v1200QrFilterByGroup(lotsRaw,selected),hasMore=(lotsRaw||[]).length>(v1250Full?2000:limit),visibleLots=lots.slice(0,v1250Full?2000:limit),operate=canQrOperate(),nameRows=await qrSelect("qr_lots",`select=item_name&active=eq.true${stockQuery}&limit=5000`),itemNames=v1200QrCanonicalNames(nameRows,selected),dateValue=lot=>String(lot.received_date||lot.created_at||""),filteredLots=v1250ApplyList(visibleLots.slice().sort((a,b)=>{
 const result=dateValue(a).localeCompare(dateValue(b));if(result)return sort==="oldest"?result:-result
 ;const tie=String(a.created_at||"").localeCompare(String(b.created_at||""));return sort==="oldest"?tie:-tie
 }),sort,!!alertOnly),selectedLabel=selected||"すべての品目",sortLabel=sort==="alert"?"アラートが高い順":sort==="oldest"?"入庫日が古い順":"入庫日が新しい順",stockLabel=stock==="outOfStock"?"在庫なし":stock==="all"?"すべて":"在庫あり",description=`${stockLabel} ${filteredLots.length}件`,fifo='',listControls=`<div class="card"><div class="row"><div><label class="label" for="qrLotItemFilter">品目で切替</label><select id="qrLotItemFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="">すべての品目</option>${itemNames.map(name=>`<option value="${esc(name)}" ${name===v1200QrCanonName(selected)?"selected":""}>${esc(name)}</option>`).join("")}</select></div><div><label class="label" for="qrLotStockFilter">在庫状態</label><select id="qrLotStockFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="inStock" ${stock==="inStock"?"selected":""}>在庫あり</option><option value="outOfStock" ${stock==="outOfStock"?"selected":""}>在庫なし</option><option value="all" ${stock==="all"?"selected":""}>すべて</option></select></div><div><label class="label" for="qrLotSortOrder">表示順</label><select id="qrLotSortOrder" class="input" ${seikaEventAttrs('change','seikaQrLotSort',[limit])}><option value="newest" ${sort==="newest"?"selected":""}>入庫日が新しい順</option><option value="oldest" ${sort==="oldest"?"selected":""}>入庫日が古い順</option><option value="alert" ${sort==="alert"?"selected":""}>アラートが高い順</option></select></div></div></div>`,tools=operate?`<button class="btn green" style="width:100%" data-seika-click-action="qrCreatePage" data-seika-click-args="%5B%5D">QR入庫</button><button class="btn blue" style="width:100%;margin-top:8px" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button><button class="btn btn2" style="width:100%;margin-top:8px" data-seika-click-action="qrManagedItemsPage" data-seika-click-args="%5B%5D">QR対象品目設定</button>`:`<div class="small" style="margin-bottom:8px">${qrReadOnlyMessage()}</div><button class="btn blue" style="width:100%" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button>`,more=hasMore?`<button class="btn btn2 qrLoadMore" ${seikaEventAttrs('click','qrLotListPage',[selected,sort,stock,limit+100,!!alertOnly])}>さらに100件読み込む</button>`:`<div class="small" style="text-align:center;margin:16px 0">すべて読み込みました</div>`
-;pageShell(`QRロット一覧（${esc(selectedLabel)}）`,esc(description),`${listControls}<div class="card">${tools}</div>${fifo}${v1250ListBar(sort,!!alertOnly,v1250Full)}${filteredLots.map(lot=>qrLotCard(lot,true,true)).join("")||'<div class="notice">該当するロットがありません。</div>'}${more}`)
+;pageShell(`QRロット一覧（${esc(selectedLabel)}）`,esc(description),`${listControls}<div class="card">${tools}</div>${fifo}${v1260PartyBar()}${v1250ListBar(sort,!!alertOnly,v1250Full)}${filteredLots.map(lot=>qrLotCard(lot,true,true)).join("")||'<div class="notice">該当するロットがありません。</div>'}${more}`)
 }catch(e){pageShell("QRロット一覧","エラー",`<div class="err">${esc(e.message)}</div>`)}}const MESH_CONTAINER_ITEMS=[{id:"bluePurple",name:"せき青紫"},{
 id:"orange",name:"せきオレンジ"},{id:"newContainer",name:"せき(新)"},{id:"nikken",name:"日建せき"}];function seikaLogoHtml(size=""){
 return`<div class="seikaLogo ${size}" aria-label="SEIKA plus logo"><span class="word">SEIKA</span><span class="plusWrap">+<svg class="seikaLeaf" viewBox="0 0 64 64" aria-hidden="true"><path class="leafFill" d="M14 48C16 25 32 12 55 9C54 32 39 49 17 51C16 51 15 50 14 48Z"/><path class="leafVein" d="M22 43C31 33 40 24 51 15"/></svg></span></div>`
@@ -9102,7 +9102,7 @@ retryPendingSync=async function(){
 v1140QualityCard=function(x){
   const buyers=(x.buyers||[]).map(b=>v1144FormalPurchaseStaffName(b.display_name||b.legacy_user_id)).filter(Boolean).join('、')||v138T('担当未設定');
   const buyerLabel=x.buyer_source==='item_assignment'?v138T('品目担当（旧データ）'):v138T('仕入れ担当者');
-  const canAck=!x.acknowledged_at&&['review','bad'].includes(x.grade)&&(db.role==='admin'||db.role==='buyer'&&(x.buyers||[]).some(b=>b.can_acknowledge===true&&b.legacy_user_id===db.userId));
+  const canAck=!x.acknowledged_at&&['review','bad'].includes(x.grade)&&(db.role==='admin'&&!(x.buyers||[]).some(b=>b.can_acknowledge===true)||db.role==='buyer'&&(x.buyers||[]).some(b=>b.can_acknowledge===true&&b.legacy_user_id===db.userId));
   const color=x.grade==='bad'?'#dc2626':x.grade==='review'?'#f59e0b':'#16a34a',id=String(x.id||''),qrKey=String(x.qr_key||'');
   return `<div class="box" style="margin:10px 0;border-left:7px solid ${color}"><div class="itemHead"><div><b>${esc(x.item_name||'-')}</b><div class="small">${esc(x.lot_no||'-')} / ${esc(v138T('入荷日：'))}${esc(x.received_date||'-')}<br>${dt(x.evaluated_at)}</div></div><span class="badge ${x.grade==='bad'?'shortage':x.grade==='review'?'excess':'normal'}">${esc(v1140GradeLabel(x.grade))}</span></div><div style="margin-top:8px"><b>${esc(v138T('状態：'))}</b>${(x.issues||[]).map(esc).join('、')||v138T('なし')}</div>${x.memo?`<div class="memo"><b>${esc(v138T('メモ：'))}</b>${esc(x.memo)}</div>`:''}<div class="small" style="margin-top:7px">${esc(v138T('評価者：'))}${esc(x.evaluated_by_name||'-')}<br>${esc(buyerLabel)}：${esc(buyers)} / ${esc(v138T('写真：'))}${(x.photos||[]).length}${esc(v138T('枚'))}</div><div style="margin-top:8px">${v1140QualityStatus(x)}</div><div class="grid" style="margin-top:9px"><button type="button" class="btn blue" data-v1140-quality-action="lot" data-qr-key="${esc(qrKey)}">${esc(v138T('QRロット詳細'))}</button>${(x.photos||[]).length?`<button type="button" class="btn btn2" data-v1140-quality-action="photos" data-evaluation-id="${esc(id)}">${esc(v138T('写真を見る'))}</button>`:''}${canAck?`<button type="button" class="btn green" data-v1140-quality-action="ack" data-evaluation-id="${esc(id)}">${esc(v138T('確認済みにする'))}</button>`:''}</div><div id="v1103Photos_${esc(id)}_list"></div></div>`;
 };
@@ -10097,7 +10097,7 @@ v1143TodayTaskHtml=function(){
   else if(role==='worker'){add('本日未入力',todayMissingItems().length,'inventory','在庫入力を開く');add('棚卸しの入力・下書き',v1143ActiveCount(),'inventoryCount','棚卸しを開く');add('この端末の保留・下書き',personal,'personalWork','保留作業を開く');v1143RequiredQualityKey=String(localStorage.getItem(V1111_REQUIRED_QUALITY_KEY)||'');if(v1143RequiredQualityKey)rows.push(v1143TaskRow('QR入庫後の品質評価',1,'requiredQuality','品質評価一覧を開く'))}
   else if(role==='buyer'){add('発注候補',orderCandidatesForBuyer(db.userId).length,'orderCandidates','発注候補を開く');add('過多品目',excessCandidatesForBuyer(db.userId).length,'excessCandidates','過多品目を開く')}
   else if(role==='clerk'){add('月次Excel作成待ち',monthlyExportTasks().length,'monthlyArchive','月次Excelを開く');add('この端末の保留・下書き',personal,'personalWork','保留作業を開く')}
-  const waitsForQuality=['admin','buyer'].includes(role);
+  const waitsForQuality=['admin','buyer','worker'].includes(role);
   if(!rows.length&&!waitsForQuality)return '';
   const empty=`<div id="v1143TodayTaskEmpty" class="small">${esc(v1143TaskText('現在、対応が必要な項目はありません'))}</div>`;
   return `<section id="v1143TodayTasks" class="card v1143TodayTasks"><h2 style="margin:0">${esc(v1143TaskText('今日の作業'))}</h2><div id="v1143TodayTaskRows" class="v1143TaskRows">${rows.join('')||(waitsForQuality?'':empty)}</div>${waitsForQuality?`<div id="v1143QualityTask" class="small" style="margin-top:10px">${esc(v1143TaskText('未確認の低評価'))}：${esc(v1143TaskText('確認中'))}</div>`:''}</section>`;
@@ -14222,6 +14222,299 @@ if(typeof v195LoadTrimLots==="function"){
         check:"アラートの出たロットから先に使い、要品質確認は毎日確認します。",
         caution:"品目名はQRロットの品名と同じにしてください。保管目安に無い品目はアラートの対象外です。"};
       if(typeof V198_ROLE_ADD!=="undefined")for(const k of Object.keys(V198_ROLE_ADD))if(Array.isArray(V198_ROLE_ADD[k])&&!V198_ROLE_ADD[k].includes("v1250StorageLimits"))V198_ROLE_ADD[k].push("v1250StorageLimits");
+    }
+  }catch(e){}
+})();
+
+/* ===== v1.199-c32 ①仕入先・単協名で検索 ②保管場所の移動 ③品質評価の確認は担当の仕入れ担当者 ④仕入先品質分析の作り替え ===== */
+function v1260Norm(s){return String(s||"").normalize("NFKC").replace(/[\s　]+/g,"").toLowerCase()}
+/* ① QRロット一覧・検索：仕入先・単協名 */
+let v1260Party={supplier:"",coop:""},v1260PartyNames=null,v1260PartyNamesAt=0;
+function v1260PgLike(v){return encodeURIComponent(`*${String(v).replace(/[*%,()]/g," ").trim()}*`)}
+function v1260PartyQuery(){
+  let q="";
+  if(v1260Party.supplier)q+=`&supplier=ilike.${v1260PgLike(v1260Party.supplier)}`;
+  if(v1260Party.coop)q+=`&cooperative_name=ilike.${v1260PgLike(v1260Party.coop)}`;
+  return q;
+}
+async function v1260LoadPartyNames(){
+  if(v1260PartyNames&&Date.now()-v1260PartyNamesAt<300000)return v1260PartyNames;
+  try{
+    const rows=await qrSelect("qr_lots","select=supplier,cooperative_name&active=eq.true&limit=5000");
+    const uniq=k=>[...new Set((rows||[]).map(r=>String(r[k]||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));
+    v1260PartyNames={supplier:uniq("supplier"),coop:uniq("cooperative_name")};v1260PartyNamesAt=Date.now();
+  }catch(e){v1260PartyNames={supplier:[],coop:[]}}
+  return v1260PartyNames;
+}
+function v1260PartyInputs(prefix,values){
+  const n=v1260PartyNames||{supplier:[],coop:[]},opts=a=>a.map(x=>`<option value="${esc(x)}"></option>`).join("");
+  return`<div class="row" style="margin-top:10px"><div><label class="label" for="${prefix}Supplier">仕入先（一部でも可）</label><input id="${prefix}Supplier" class="input" list="${prefix}SupplierList" value="${esc(values.supplier||"")}" placeholder="例：○○農協" autocomplete="off"><datalist id="${prefix}SupplierList">${opts(n.supplier)}</datalist></div><div><label class="label" for="${prefix}Coop">単協名（一部でも可）</label><input id="${prefix}Coop" class="input" list="${prefix}CoopList" value="${esc(values.coop||"")}" placeholder="例：○○支所" autocomplete="off"><datalist id="${prefix}CoopList">${opts(n.coop)}</datalist></div></div>`;
+}
+function v1260PartyBar(){
+  const on=v1260Party.supplier||v1260Party.coop;
+  return`<div class="card"><b>仕入先・単協名で検索</b>${v1260PartyInputs("v1260List",v1260Party)}<div class="row" style="margin-top:8px"><button class="btn blue" ${seikaEventAttrs('click','v1260ApplyListParty',[])}>この条件で検索</button>${on?`<button class="btn btn2" ${seikaEventAttrs('click','v1260ClearListParty',[])}>条件を解除</button>`:""}</div>${on?`<div class="small" style="margin-top:6px">検索中：${esc([v1260Party.supplier&&`仕入先「${v1260Party.supplier}」`,v1260Party.coop&&`単協名「${v1260Party.coop}」`].filter(Boolean).join("・"))}</div>`:""}</div>`;
+}
+function v1260ApplyListParty(){
+  v1260Party={supplier:String(document.getElementById("v1260ListSupplier")?.value||"").trim(),coop:String(document.getElementById("v1260ListCoop")?.value||"").trim()};
+  const s=qrLotListState;return qrLotListPage(s.selectedItem,s.sortOrder,s.stockFilter,100,!!s.alertOnly);
+}
+function v1260ClearListParty(){v1260Party={supplier:"",coop:""};const s=qrLotListState;return qrLotListPage(s.selectedItem,s.sortOrder,s.stockFilter,100,!!s.alertOnly)}
+const v1260ListPartyBase=qrLotListPage;
+qrLotListPage=async function(...args){await v1260LoadPartyNames();return v1260ListPartyBase.apply(this,args)};
+window.qrLotListPage=qrLotListPage;
+const v1260ManualPageBase=qrManualSearchPage;
+qrManualSearchPage=function(...args){
+  const r=v1260ManualPageBase.apply(this,args);
+  const fill=()=>{
+    const loc=document.getElementById("qrManualLoc"),row=loc&&loc.closest(".row");
+    if(row&&!document.getElementById("qrManualSupplier"))row.insertAdjacentHTML("afterend",v1260PartyInputs("qrManual",{}));
+  };
+  fill();
+  v1260LoadPartyNames().then(()=>{if(currentScreen!=="qrManualSearchPage")return;const s=document.getElementById("qrManualSupplier");if(s){const sv=s.value,cv=document.getElementById("qrManualCoop")?.value||"";s.closest(".row").outerHTML=v1260PartyInputs("qrManual",{supplier:sv,coop:cv})}else fill()});
+  return r;
+};
+window.qrManualSearchPage=qrManualSearchPage;
+qrRunManualSearch=async function(kind='detail'){
+  if(!canQrOperate())kind='detail';
+  const box=document.getElementById('qrManualResults'),itemName=document.getElementById('qrManualItem')?.value||'',q=String(document.getElementById('qrManualQuery')?.value||'').trim(),d=document.getElementById('qrManualDate')?.value||'',loc=document.getElementById('qrManualLoc')?.value||'';
+  const sup=v1260Norm(document.getElementById('qrManualSupplier')?.value),coop=v1260Norm(document.getElementById('qrManualCoop')?.value);
+  if(q&&/^QR\d|^\{/.test(q)){const key=qrExtractKey(q);return kind==='detail'?qrScannedLotActionPage(key):qrOperationLotPage(kind,key)}
+  if(!itemName&&!q&&!sup&&!coop)return box.innerHTML='<div class="notice">品目を選ぶか、仕入先・単協名を入力してください。</div>';
+  box.innerHTML='<div class="notice">検索中...</div>';
+  try{
+    let lots=await qrSelect('qr_lots','select=*&active=eq.true&current_qty=gt.0&order=received_date.asc&limit=2000');
+    const low=q.toLowerCase();
+    lots=lots.filter(l=>(!itemName||v1156QrItemName(l)===itemName)&&(!d||l.received_date===d)&&(!loc||l.storage_location===loc)&&(!q||[l.lot_no,l.qr_key].some(v=>String(v||'').toLowerCase().includes(low)))&&(!sup||v1260Norm(l.supplier).includes(sup))&&(!coop||v1260Norm(l.cooperative_name).includes(coop)));
+    v1156QrSearchState={kind,itemName:itemName||v1156QrSearchState.itemName,returnEnabled:!!itemName};
+    const title=itemName||[document.getElementById('qrManualSupplier')?.value,document.getElementById('qrManualCoop')?.value].map(x=>String(x||'').trim()).filter(Boolean).join('・')||'検索結果';
+    box.innerHTML=lots.length?`<div class="notice"><b>${esc(title)} ${lots.length}件</b><div class="small">入荷日が古い順です。ロット・残数・保管場所を確認して選んでください。</div></div>${lots.map(l=>qrSelectableLotHtml(l,kind)).join('')}`:'<div class="notice">該当ロットがありません。</div>';
+  }catch(e){box.innerHTML=`<div class="err">検索に失敗しました。${esc(e.message||e)}</div>`}
+};
+window.qrRunManualSearch=qrRunManualSearch;
+
+/* ② 保管場所の移動 */
+const v1260SecondaryBase=qrSecondaryActions;
+qrSecondaryActions=function(lot,...rest){
+  const html=v1260SecondaryBase.call(this,lot,...rest);
+  if(!canQrOperate()||!lot||lot.active===false)return html;
+  return`<button class="btn homeBtnQrMove" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','qrMoveLocationPage',[String(lot.qr_key||"")])}>保管場所を移動（いま：${esc(lot.storage_location||"未設定")}）</button>`+html;
+};
+window.qrSecondaryActions=qrSecondaryActions;
+async function qrMoveLocationPage(q,msg=""){
+  if(!canQrOperate()){alert("保管場所を移動できるのは管理者・青果社員です。");return qrLotDetail(q)}
+  setScreen("qrMoveLocationPage",[q,msg]);
+  pageShell("保管場所を移動","読み込み中",'<div class="card"><div class="notice">読み込んでいます。</div></div>');
+  try{
+    const lot=await qrFindLot(q);if(!lot)throw new Error("対象ロットが見つかりません");
+    const cur=String(lot.storage_location||"").trim();
+    const opts=QR_STORAGE_LOCATIONS.filter(n=>n!==cur).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
+    pageShell("保管場所を移動",`${esc(lot.item_name||"")} / ${esc(lot.lot_no||"")}`,`${msg?`<div class="err">${esc(msg)}</div>`:""}${qrLotCard(lot,false)}<div class="card"><div><b>いまの保管場所：</b>${esc(cur||"未設定")}</div><label class="label" for="v1260MoveTo" style="margin-top:10px">移動先</label><select id="v1260MoveTo" class="input"><option value="">選択してください</option>${opts}</select><label class="label" for="v1260MoveMemo" style="margin-top:10px">メモ（任意）</label><input id="v1260MoveMemo" class="input" placeholder="例：第2冷蔵庫の空きへ"><div class="small" style="margin-top:8px">ロットまるごと移動します。数量は変わりません。移動は「場所移動」として履歴に残ります。</div><button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1260MoveLot',[String(lot.id),String(lot.qr_key||"")])}>移動する</button><button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','qrLotDetail',[String(lot.qr_key||"")])}>やめる</button></div>`);
+  }catch(e){pageShell("保管場所を移動","エラー",`<div class="err">${esc(e.message||e)}</div>`)}
+}
+async function v1260MoveLot(lotId,q){
+  const to=String(document.getElementById("v1260MoveTo")?.value||""),memo=String(document.getElementById("v1260MoveMemo")?.value||"").trim();
+  if(!to)return alert("移動先を選んでください。");
+  if(!confirm(`保管場所を「${to}」へ移動しますか？`))return;
+  try{
+    v161ShowProcessing?.("保管場所を移動しています");
+    const ans=await callRpc("move_qr_lot_location_v1260",{p_lot_id:lotId,p_to_location:to,p_memo:memo});
+    if(!ans?.ok)throw new Error(ans?.message||"移動できませんでした");
+    if(typeof v1204CacheReset==="function")v1204CacheReset();
+    return qrLotDetail(q,`保管場所を「${ans.from_location||"未設定"}」から「${ans.to_location}」へ移動しました。`);
+  }catch(e){
+    const raw=String(e?.message||e);
+    alert(/PGRST202|move_qr_lot_location_v1260/.test(raw)?"保管場所の移動がまだ準備されていません（SQL 009 の実行が必要です）。":raw);
+  }finally{try{v161HideProcessing?.()}catch(_){}}
+}
+
+/* ③ 品質評価の確認：確認済みは担当の仕入れ担当者。管理者・青果社員は「確認しました」で自分の通知だけ消す */
+let v1260MyReads=new Set();
+async function v1260LoadMyReads(){
+  if(!["admin","worker"].includes(db?.role)){v1260MyReads=new Set();return}
+  try{const rows=await qrSelect("qr_quality_alert_reads_v1260","select=evaluation_id&limit=5000");v1260MyReads=new Set((rows||[]).map(r=>String(r.evaluation_id)))}catch(e){}
+}
+function v1260HasAssignedBuyer(x){return(x.buyers||[]).some(b=>b.can_acknowledge===true)}
+function v1260ReadButton(x){
+  if(!["admin","worker"].includes(db?.role)||x.acknowledged_at||!["review","bad"].includes(x.grade))return"";
+  const id=String(x.id||"");
+  if(v1260MyReads.has(id))return`<div class="small" style="grid-column:1/-1">あなたは確認しました（担当の仕入れ担当者の確認待ち）</div>`;
+  return`<button type="button" class="btn btn2" ${seikaEventAttrs('click','v1260MarkRead',[id])}>確認しました（自分の通知を消す）</button>`;
+}
+const v1260QualityCardBase=v1140QualityCard;
+v1140QualityCard=function(x){
+  let html=v1260QualityCardBase.call(this,x);
+  const extra=v1260ReadButton(x);
+  if(extra){const i=html.lastIndexOf('</div><div id="v1103Photos_');if(i>=0)html=html.slice(0,i)+extra+html.slice(i)}
+  if(!x.acknowledged_at&&["review","bad"].includes(x.grade)&&v1260HasAssignedBuyer(x))html=html.replace(`>${esc(v138T("未確認"))}</span>`,`>${esc(v138T("未確認"))}</span><span class="small" style="margin-left:6px">担当の仕入れ担当者が確認します</span>`);
+  return html;
+};
+window.v1140QualityCard=v1140QualityCard;
+const v1260LoadQualityListBase=v1103LoadQualityList;
+v1103LoadQualityList=async function(...args){await v1260LoadMyReads();return v1260LoadQualityListBase.apply(this,args)};
+window.v1103LoadQualityList=v1103LoadQualityList;
+async function v1260MarkRead(id){
+  try{
+    const ans=await callRpc("mark_qr_quality_alert_read_v1260",{p_evaluation_id:id});
+    if(!ans?.ok)throw new Error(ans?.message||"記録できませんでした");
+    v1260MyReads.add(String(id));
+    if(currentScreen==="v1103QualityListPage"&&typeof v1140RenderQualityList==="function")v1140RenderQualityList();
+    else if(currentScreen==="home")home();
+  }catch(e){const raw=String(e?.message||e);alert(/PGRST202|mark_qr_quality_alert_read_v1260/.test(raw)?"「確認しました」の保存先がまだ準備されていません（SQL 009 の実行が必要です）。":raw)}
+}
+v1143LoadQualityTask=async function(generation){
+  if(!["admin","buyer","worker"].includes(db?.role))return;
+  const render=html=>{if(generation!==v1143TodayTaskGeneration||currentScreen!=="home")return null;return document.getElementById("v1143QualityTask")};
+  try{
+    const ans=await callRpc("list_my_unacknowledged_low_quality_evaluations_v1103",{p_limit:100});
+    if(!ans?.ok||!Array.isArray(ans.evaluations))throw new Error(ans?.message||"品質評価データの形式が不正です");
+    const box=render(),taskRows=document.getElementById("v1143TodayTaskRows");if(!box||!taskRows)return;
+    const rows=ans.evaluations;
+    if(rows.length){
+      document.getElementById("v1143TodayTaskEmpty")?.remove();
+      const mine=rows.filter(r=>r.can_acknowledge).length;
+      const label=db.role==="buyer"?"未確認の低評価（担当分）":"未確認の低評価";
+      box.innerHTML=v1143TaskRow(label,rows.length,"qualityList","品質評価一覧を開く")+(db.role==="admin"&&mine?`<div class="small" style="margin-top:4px">うち担当未設定で管理者の確認が必要：${mine}件</div>`:"");
+      return;
+    }
+    box.innerHTML="";if(!taskRows.querySelector("[data-v1143-task-action]"))taskRows.innerHTML=`<div id="v1143TodayTaskEmpty" class="small">${esc(v1143TaskText("現在、対応が必要な項目はありません"))}</div>`;
+  }catch(e){
+    const box=render();if(!box)return;
+    box.innerHTML=`<div class="small err">品質評価情報を取得できません：${esc(typeof v161ErrorText==="function"?v161ErrorText(e):(e?.message||e))}</div><button class="btn blue" style="width:100%;margin-top:10px" data-seika-click-action="v1143RetryQualityTask" data-seika-click-args="%5B%5D">品質評価を再読み込み</button>`;
+  }
+};
+window.v1143LoadQualityTask=v1143LoadQualityTask;
+
+/* ④ 仕入先品質分析（作り替え）：仕入先別・品目別・月別。ログインしている全員が閲覧可 */
+let v1260QaState={period:"current",from:"",to:"",filter:"",data:null};
+function v1260FiscalRange(offset=0){
+  const t=todayKey(),y=Number(t.slice(0,4)),m=Number(t.slice(5,7)),fy=(m>=9?y:y-1)+offset;
+  return{from:`${fy}-09-01`,to:`${fy+1}-08-31`,label:`${fy}年9月〜${fy+1}年8月`};
+}
+function v1260Pct(n,d){return d?Math.round(n/d*1000)/10:0}
+function v1260PctText(n,d){return d?`${v1260Pct(n,d).toFixed(1)}%`:"—"}
+function v1260ItemKey(name){try{return v1200QrCanonName(name)||name}catch(e){return name}}
+function v1260Sum(rows){const s={good:0,review:0,bad:0};for(const r of rows){s.good+=Number(r.good||0);s.review+=Number(r.review||0);s.bad+=Number(r.bad||0)}s.n=s.good+s.review+s.bad;return s}
+function v1260GroupBy(rows,keyFn){const m=new Map();for(const r of rows){const k=keyFn(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r)}return m}
+function v1260MonthLabel(m){return`${Number(m.slice(5,7))}月`}
+function v1260MonthFull(m){return`${m.slice(0,4)}年${Number(m.slice(5,7))}月`}
+function v1260Bar(s){
+  if(!s.n)return"";
+  const w=k=>v1260Pct(s[k],s.n);
+  return`<div class="v1260Bar"><span style="width:${w("good")}%;background:#16a34a"></span><span style="width:${w("review")}%;background:#f59e0b"></span><span style="width:${w("bad")}%;background:#dc2626"></span></div>`;
+}
+function v1260Ratios(s){return`<div class="v1260Ratios"><span>良好 <b>${v1260PctText(s.good,s.n)}</b></span><span>要確認 <b>${v1260PctText(s.review,s.n)}</b></span><span>不良 <b>${v1260PctText(s.bad,s.n)}</b></span></div>`}
+function v1260CautionMonths(rows,overallBad){
+  const out=[];
+  for(const[m,list]of v1260GroupBy(rows,r=>r.month)){const s=v1260Sum(list);if(s.n>=5&&s.bad>=1&&v1260Pct(s.bad,s.n)>=overallBad*2)out.push({month:m,...s})}
+  return out.sort((a,b)=>a.month.localeCompare(b.month));
+}
+function v1260MonthLines(rows,caution){
+  const set=new Set(caution.map(c=>c.month));
+  return[...v1260GroupBy(rows,r=>r.month)].sort((a,b)=>a[0].localeCompare(b[0])).map(([m,list])=>{const s=v1260Sum(list);return`<div class="v1260MonthLine${set.has(m)?" v1260Warn":""}">${v1260MonthFull(m)} → 不良 <b>${v1260PctText(s.bad,s.n)}</b> <span class="small">（要確認＋不良 ${v1260PctText(s.review+s.bad,s.n)}・${s.n}件）</span>${set.has(m)?' <span class="v1260WarnBadge">要注意</span>':""}</div>`}).join("");
+}
+function v1260GroupCards(rows,keyFn,overallBad,sub){
+  const groups=[...v1260GroupBy(rows,keyFn)].map(([k,list])=>({k,list,s:v1260Sum(list)})).sort((a,b)=>b.s.n-a.s.n||a.k.localeCompare(b.k,"ja"));
+  const f=v1260Norm(v1260QaState.filter);
+  return groups.filter(g=>!f||v1260Norm(g.k).includes(f)||g.list.some(r=>v1260Norm(r.supplier+r.cooperative_name+r.item_name).includes(f))).map(g=>{
+    const caution=v1260CautionMonths(g.list,overallBad);
+    const subHtml=sub?[...v1260GroupBy(g.list,sub.key)].map(([sk,sl])=>({sk,s:v1260Sum(sl)})).sort((a,b)=>b.s.n-a.s.n).map(x=>`<div class="v1260SubLine"><b>${esc(x.sk)}</b> <span class="small">${x.s.n}件</span> 良好 ${v1260PctText(x.s.good,x.s.n)} ／ 要確認 ${v1260PctText(x.s.review,x.s.n)} ／ 不良 ${v1260PctText(x.s.bad,x.s.n)}</div>`).join(""):"";
+    return`<div class="card v1260Group${caution.length?" v1260GroupWarn":""}"><div class="itemHead"><div><b style="font-size:17px">${esc(g.k)}</b><div class="small">評価 ${g.s.n}件</div></div>${caution.length?`<span class="v1260WarnBadge">要注意 ${caution.map(c=>v1260MonthLabel(c.month)).join("・")}</span>`:""}</div>${v1260Ratios(g.s)}${v1260Bar(g.s)}<details style="margin-top:8px"><summary class="small" style="cursor:pointer">月別${sub?`・${sub.label}`:""}を見る</summary><div style="margin-top:6px">${v1260MonthLines(g.list,caution)}</div>${subHtml?`<div style="margin-top:8px"><b class="small">${sub.label}</b>${subHtml}</div>`:""}</details></div>`;
+  }).join("")||'<div class="card"><div class="notice">該当するデータがありません。</div></div>';
+}
+function v1260RenderQa(tab){
+  const host=document.getElementById("v1260QaResult");if(!host)return;
+  const d=v1260QaState.data;if(!d)return;
+  tab=tab||v1260QaState.tab||"supplier";v1260QaState.tab=tab;
+  const rows=(d.rows||[]).map(r=>({...r,item_name:v1260ItemKey(r.item_name)}));
+  const all=v1260Sum(rows),overallBad=v1260Pct(all.bad,all.n);
+  if(!all.n){host.innerHTML='<div class="card"><div class="notice">この期間の品質評価はまだありません。</div></div>';return}
+  const cautions=[];
+  for(const[sup,list]of v1260GroupBy(rows,r=>r.supplier))for(const c of v1260CautionMonths(list,overallBad))cautions.push({...c,supplier:sup});
+  cautions.sort((a,b)=>b.month.localeCompare(a.month)||v1260Pct(b.bad,b.n)-v1260Pct(a.bad,a.n));
+  const monthly=[...v1260GroupBy(rows,r=>r.month)].sort((a,b)=>a[0].localeCompare(b[0])).map(([m,list])=>{const s=v1260Sum(list),p=v1260Pct(s.bad,s.n);return`<div class="v1260MonthRow"><span class="v1260MonthName">${v1260MonthFull(m)}</span><span class="v1260MonthTrack"><span style="width:${Math.min(100,p*4)}%"></span></span><b>${v1260PctText(s.bad,s.n)}</b><span class="small">要確認＋不良 ${v1260PctText(s.review+s.bad,s.n)}・${s.n}件</span></div>`}).join("");
+  const tabs=[["supplier","仕入先別"],["item","品目別"],["month","月別"]].map(([k,l])=>`<button class="btn ${tab===k?"blue":"btn2"}" ${seikaEventAttrs('click','v1260RenderQa',[k])}>${l}</button>`).join("");
+  const body=tab==="month"?`<div class="card"><b>月別の不良率</b><div class="small" style="margin:4px 0 8px">入荷日の月で集計。棒は不良率（25%で満杯）。</div>${monthly}</div>`
+    :tab==="item"?v1260GroupCards(rows,r=>r.item_name,overallBad,{key:r=>r.supplier,label:"仕入先ごと"})
+    :v1260GroupCards(rows,r=>r.supplier,overallBad,{key:r=>r.cooperative_name,label:"単協名ごと"});
+  host.innerHTML=`<div class="card"><b>全体（${esc(d.label||"")}）</b><div class="small">評価 ${all.n}件</div>${v1260Ratios(all)}${v1260Bar(all)}</div>`
+    +`<div class="card"><b>要注意（仕入先×月）</b><div class="small" style="margin:4px 0 8px">その月の不良率が全体平均（${overallBad.toFixed(1)}%）の2倍以上、かつ評価5件以上</div>${cautions.length?cautions.map(c=>`<div class="v1260MonthLine v1260Warn">${v1260MonthFull(c.month)}　<b>${esc(c.supplier)}</b>　不良 ${v1260PctText(c.bad,c.n)}（${c.n}件中${c.bad}件）</div>`).join(""):'<div class="small">いまは該当がありません。</div>'}</div>`
+    +`<div class="row" style="margin:6px 0">${tabs}</div>`
+    +(tab!=="month"?`<div class="card"><label class="label" for="v1260QaFilter">仕入先・単協名・品目で絞り込み</label><input id="v1260QaFilter" class="input" value="${esc(v1260QaState.filter)}" placeholder="例：レタス"><button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','v1260QaApplyFilter',[])}>絞り込む</button></div>`:"")
+    +body;
+}
+function v1260QaApplyFilter(){v1260QaState.filter=String(document.getElementById("v1260QaFilter")?.value||"").trim();v1260RenderQa()}
+async function v1260RunQa(){
+  const host=document.getElementById("v1260QaResult");if(!host)return;
+  const period=document.getElementById("v1260QaPeriod")?.value||"current";v1260QaState.period=period;
+  let from,to,label;
+  if(period==="custom"){from=document.getElementById("v1260QaFrom")?.value;to=document.getElementById("v1260QaTo")?.value;label=`${from}〜${to}`;if(!from||!to||from>to)return alert("開始日と終了日を正しく入れてください。")}
+  else{const r=v1260FiscalRange(period==="previous"?-1:0);from=r.from;to=r.to;label=(period==="previous"?"前年度 ":"今年度 ")+r.label}
+  v1260QaState.from=from;v1260QaState.to=to;
+  host.innerHTML='<div class="card"><div class="notice">集計中</div></div>';
+  try{
+    const ans=await callRpc("get_quality_improvement_analysis_v1260",{p_from:from,p_to:to});
+    if(!ans?.ok)throw new Error(ans?.message||"集計できませんでした");
+    v1260QaState.data={...ans,label};v1260RenderQa();
+  }catch(e){const raw=String(e?.message||e);host.innerHTML=`<div class="err">${esc(/PGRST202|get_quality_improvement_analysis_v1260/.test(raw)?"仕入先品質分析の集計がまだ準備されていません（SQL 009 の実行が必要です）。":raw)}</div>`}
+}
+function v1260QaPeriodChanged(){const c=document.getElementById("v1260QaCustom");if(c)c.style.display=document.getElementById("v1260QaPeriod")?.value==="custom"?"":"none"}
+v136SupplierQualityPage=function(){
+  setScreen("v136SupplierQualityPage");
+  if(!db?.user)return home();
+  const p=v1260QaState.period,cur=v1260FiscalRange(0),prev=v1260FiscalRange(-1);
+  pageShell("仕入先品質分析","品質評価を仕入れ改善に使う（仕入先別・品目別・月別）",`<div class="card"><label class="label" for="v1260QaPeriod">期間</label><select id="v1260QaPeriod" class="input" ${seikaEventAttrs('change','v1260QaPeriodChanged',[])}><option value="current" ${p==="current"?"selected":""}>今年度（${cur.label}）</option><option value="previous" ${p==="previous"?"selected":""}>前年度（${prev.label}）</option><option value="custom" ${p==="custom"?"selected":""}>期間を指定</option></select><div id="v1260QaCustom" class="row" style="margin-top:8px;${p==="custom"?"":"display:none"}"><div><label class="label" for="v1260QaFrom">開始日</label><input id="v1260QaFrom" type="date" class="input" value="${esc(v1260QaState.from||cur.from)}"></div><div><label class="label" for="v1260QaTo">終了日</label><input id="v1260QaTo" type="date" class="input" value="${esc(v1260QaState.to||todayKey())}"></div></div><button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1260RunQa',[])}>集計する</button><div class="small" style="margin-top:8px">ロット1つにつき最新の評価1件で数えます（訂正した評価は訂正後）。月は入荷日で分けます。</div></div><div id="v1260QaResult"></div>`);
+  v1260RunQa();
+};
+window.v136SupplierQualityPage=v136SupplierQualityPage;
+function v1260InjectQualityButtons(tries=0){
+  if(currentScreen!=="qrHome")return;
+  const box=document.querySelector(".homePrimary"),ql=box&&box.querySelector('[data-seika-click-action="v1103QualityListPage"]');
+  if(!box||!ql){if(tries<40)setTimeout(()=>v1260InjectQualityButtons(tries+1),100);return}
+  if(document.getElementById("v1260QaBtn"))return;
+  const b=document.createElement("button");b.id="v1260QaBtn";b.type="button";b.className="btn homeBtnQuality";
+  b.setAttribute("data-seika-click-action","v136SupplierQualityPage");b.setAttribute("data-seika-click-args","%5B%5D");
+  b.innerHTML='仕入先品質分析<br><span style="font-size:15px;font-weight:800">仕入先別・品目別・月別の品質</span>';
+  ql.parentNode.insertBefore(b,ql.nextSibling);
+}
+const v1260QrHomeBase=qrHome;
+qrHome=async function(...args){const r=await v1260QrHomeBase.apply(this,args);v1260InjectQualityButtons();return r};
+window.qrHome=qrHome;
+const v1260QualityListPageBase=v1103QualityListPage;
+v1103QualityListPage=async function(...args){
+  const r=await v1260QualityListPageBase.apply(this,args);
+  const s=document.getElementById("v1103QualitySummary");
+  if(s&&!document.getElementById("v1260QaFromList"))(document.querySelector("main.wrap")||s).insertAdjacentHTML("afterbegin",`<button id="v1260QaFromList" class="btn homeBtnQuality" style="width:100%;margin-bottom:10px" ${seikaEventAttrs('click','v136SupplierQualityPage',[])}>仕入先品質分析（仕入先別・品目別・月別）</button>`);
+  return r;
+};
+window.v1103QualityListPage=v1103QualityListPage;
+(function(){
+  const st=document.createElement("style");
+  st.textContent=`.homeBtnQrMove{background:linear-gradient(90deg,#334155 0%,#475569 52%,#94a3b8 100%) !important;color:#fff !important;border-color:transparent !important;}
+.v1260Bar{display:flex;height:12px;border-radius:999px;overflow:hidden;background:#e5e7eb;margin-top:6px}
+.v1260Bar span{display:block;height:100%}
+.v1260Ratios{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px}
+.v1260Ratios span:nth-child(1) b{color:#15803d}.v1260Ratios span:nth-child(2) b{color:#b45309}.v1260Ratios span:nth-child(3) b{color:#b91c1c}
+.v1260MonthLine{padding:5px 0;border-bottom:1px dashed #e5e7eb}
+.v1260Warn{color:#991b1b;font-weight:800}
+.v1260WarnBadge{background:#dc2626;color:#fff;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:900;white-space:nowrap}
+.v1260GroupWarn{border:2px solid #fca5a5}
+.v1260SubLine{padding:4px 0;font-size:13px;border-bottom:1px solid #f1f5f9}
+.v1260MonthRow{display:grid;grid-template-columns:96px 1fr 56px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9}
+.v1260MonthRow .small{grid-column:1/-1;margin-top:-4px}
+.v1260MonthTrack{height:12px;background:#f1f5f9;border-radius:999px;overflow:hidden}
+.v1260MonthTrack span{display:block;height:100%;background:#dc2626}`;
+  document.head.appendChild(st);
+  try{
+    if(typeof V198_GUIDE_SECTIONS!=="undefined"){
+      V198_GUIDE_SECTIONS.v1260QualityAnalysis={title:"仕入先品質分析・保管場所の移動",where:"ホーム → QR在庫管理 → 仕入先品質分析 ／ QRロット詳細 → 保管場所を移動",
+        steps:["仕入先品質分析では、品質評価を仕入先別・品目別・月別に「良好・要確認・不良」の割合で確認できます。月は入荷日で分けます。",
+               "その月の不良率が全体平均の2倍以上（評価5件以上）の仕入先は「要注意」と表示します。",
+               "品質評価の「確認済み」は担当の仕入れ担当者が付けます。管理者・青果社員は「確認しました」を押すと自分の通知だけ消えます。",
+               "片岡冷蔵庫から第2・第3冷蔵庫などへ移したときは、QRロットの「保管場所を移動」で移動先を選びます（ロットまるごと・履歴に残ります）。",
+               "QRロット一覧・検索では、仕入先・単協名の一部を入れて探せます。"],
+        check:"要注意の仕入先は、仕入れ担当者が産地・時期を確認します。",
+        caution:"保管場所の移動は数量を変えません。一部だけ移す場合は対応していません。"};
+      if(typeof V198_ROLE_ADD!=="undefined")for(const k of Object.keys(V198_ROLE_ADD))if(Array.isArray(V198_ROLE_ADD[k])&&!V198_ROLE_ADD[k].includes("v1260QualityAnalysis"))V198_ROLE_ADD[k].push("v1260QualityAnalysis");
     }
   }catch(e){}
 })();
