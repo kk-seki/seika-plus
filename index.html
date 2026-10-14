@@ -3433,9 +3433,9 @@ return large?`<div class="posterRow"><div class="posterLabel">品名</div><div c
 ;qr.addData(String(payload));qr.make();return qr.createDataURL(18,2)}for(const def of sheetDefs){
 const payload=location.origin+location.pathname+"?qr="+encodeURIComponent(lot.qr_key)+(def.palletNo?"&pallet="+encodeURIComponent(def.palletNo):"")
 ;def.qrSrc=qrDataUrlForPoster(payload)}function sheet(def){
-return`<main class="pdfSheet ${large?"largePoster":"normalPoster"}"><section class="pdfPoster"><div class="posterLeft"><div class="posterBrand">SEIKA＋ QRロット管理</div><div class="posterRows">${rows(def)}</div></div><aside class="posterRight"><img class="posterQr" src="${def.qrSrc}" alt="QRコード"><div class="posterScan">QRを読み取って<br>残数・履歴を確認</div><div class="posterLot">${lotNoText}${def.palletNo?" / パレット"+def.palletNo:""}</div>${typeof v1310PosterGradesHtml==="function"?v1310PosterGradesHtml(lot):""}</aside></section></main>`
+return`<main class="pdfSheet ${large?"largePoster":"normalPoster"}"><section class="pdfPoster${!large&&typeof v1310PosterGradesHtml==="function"&&v1310PosterGradesHtml(lot)?" gradedPoster":""}"><div class="posterLeft"><div class="posterBrand">SEIKA＋ QRロット管理</div><div class="posterRows">${rows(def)}</div></div><aside class="posterRight"><img class="posterQr" src="${def.qrSrc}" alt="QRコード"><div class="posterScan">QRを読み取って<br>残数・履歴を確認</div><div class="posterLot">${lotNoText}${def.palletNo?" / パレット"+def.palletNo:""}</div>${typeof v1310PosterGradesHtml==="function"?v1310PosterGradesHtml(lot):""}</aside></section></main>`
 }
-const posterCss=`*{box-sizing:border-box}.pdfRenderRoot{position:fixed;left:-20000px;top:0;width:1122px;background:#fff;z-index:0;pointer-events:none}.pdfSheet{width:1122px;height:794px;background:#fff;padding:34px;overflow:hidden}.pdfPoster{width:100%;height:100%;border:18px solid #000;padding:22px 30px;display:grid;grid-template-columns:minmax(0,1fr) 158px;column-gap:16px;overflow:hidden;color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.posterLeft{min-width:0;height:100%;display:flex;flex-direction:column}.posterBrand{font-size:40px;font-weight:900;margin-bottom:7px;line-height:1.05}.posterRows{min-height:0;flex:1;display:grid;gap:3px}.largePoster .posterRows{grid-template-rows:repeat(7,minmax(0,1fr))}.normalPoster .posterRows{grid-template-rows:repeat(6,minmax(0,1fr))}.posterRow{display:grid;grid-template-columns:166px minmax(0,1fr);align-items:center;border-bottom:5px solid #000;padding:3px 0;min-height:0;overflow:hidden}.posterLabel{font-size:39px;font-weight:900}.posterValue{min-width:0;font-size:50px;font-weight:900;line-height:.98;overflow-wrap:anywhere;max-height:2em;overflow:hidden}.posterValue.item{font-size:67px}.posterValue.date{font-size:80px}.posterValue.strong{font-size:68px}.posterValue.qty,.posterValue.pack{font-size:74px}.posterRight{width:158px;display:flex;flex-direction:column;align-items:center;background:#fff}.posterQr{width:142px;height:142px;image-rendering:pixelated}.posterScan{margin-top:6px;font-size:16px;font-weight:900;text-align:center;line-height:1.2}.posterLot{margin-top:6px;font-size:13px;font-weight:900;text-align:center;overflow-wrap:anywhere;line-height:1.18}.normalPoster .posterBrand{font-size:43px;margin-bottom:6px}.normalPoster .posterRow{grid-template-columns:166px minmax(0,1fr);padding:4px 0}.normalPoster .posterLabel{font-size:43px}.normalPoster .posterValue{font-size:56px}.normalPoster .posterValue.item{font-size:74px}.normalPoster .posterValue.date{font-size:86px}.normalPoster .posterValue.strong{font-size:75px}.normalPoster .posterValue.qty,.normalPoster .posterValue.pack{font-size:82px}`
+const posterCss=`*{box-sizing:border-box}.pdfRenderRoot{position:fixed;left:-20000px;top:0;width:1122px;background:#fff;z-index:0;pointer-events:none}.pdfSheet{width:1122px;height:794px;background:#fff;padding:34px;overflow:hidden}.pdfPoster{width:100%;height:100%;border:18px solid #000;padding:22px 30px;display:grid;grid-template-columns:minmax(0,1fr) 158px;column-gap:16px;overflow:hidden;color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.posterLeft{min-width:0;height:100%;display:flex;flex-direction:column}.posterBrand{font-size:40px;font-weight:900;margin-bottom:7px;line-height:1.05}.posterRows{min-height:0;flex:1;display:grid;gap:3px}.largePoster .posterRows{grid-template-rows:repeat(7,minmax(0,1fr))}.normalPoster .posterRows{grid-template-rows:repeat(6,minmax(0,1fr))}.posterRow{display:grid;grid-template-columns:166px minmax(0,1fr);align-items:center;border-bottom:5px solid #000;padding:3px 0;min-height:0;overflow:hidden}.posterLabel{font-size:39px;font-weight:900}.posterValue{min-width:0;font-size:50px;font-weight:900;line-height:.98;overflow-wrap:anywhere;max-height:2em;overflow:hidden}.posterValue.item{font-size:67px}.posterValue.date{font-size:80px}.posterValue.strong{font-size:68px}.posterValue.qty,.posterValue.pack{font-size:74px}.posterRight{width:158px;display:flex;flex-direction:column;align-items:center;background:#fff}.posterQr{width:142px;height:142px;image-rendering:pixelated}.posterScan{margin-top:6px;font-size:16px;font-weight:900;text-align:center;line-height:1.2}.posterLot{margin-top:6px;font-size:13px;font-weight:900;text-align:center;overflow-wrap:anywhere;line-height:1.18}.normalPoster .posterBrand{font-size:43px;margin-bottom:6px}.normalPoster .posterRow{grid-template-columns:166px minmax(0,1fr);padding:4px 0}.normalPoster .posterLabel{font-size:43px}.normalPoster .posterValue{font-size:56px}.normalPoster .posterValue.item{font-size:74px}.normalPoster .posterValue.date{font-size:86px}.normalPoster .posterValue.strong{font-size:75px}.normalPoster .posterValue.qty,.normalPoster .posterValue.pack{font-size:82px}.pdfPoster.gradedPoster{grid-template-columns:fit-content(560px) minmax(300px,1fr);column-gap:26px}.gradedPoster .posterRows{justify-items:stretch}.gradedPoster .posterRow{width:auto;grid-template-columns:166px max-content;padding-right:22px}.gradedPoster .posterValue{max-width:370px}.gradedPoster .posterRight{width:auto;min-width:0;height:100%;display:grid;grid-template-columns:142px minmax(0,1fr);grid-template-rows:auto auto 1fr;column-gap:10px;align-items:start;justify-items:start}.gradedPoster .posterQr{grid-row:1/3;grid-column:1}.gradedPoster .posterScan{grid-column:2;text-align:left;margin-top:8px;font-size:18px}.gradedPoster .posterLot{grid-column:2;text-align:left;font-size:15px}.gradedPoster .posterGrades{grid-column:1/3}`
 ;renderRoot=document.createElement("div");renderRoot.className="pdfRenderRoot";renderRoot.setAttribute("aria-hidden","true")
 ;renderRoot.innerHTML=`<style>${posterCss}</style>${sheetDefs.map(sheet).join("")}`;document.body.appendChild(renderRoot)
 ;if(document.fonts&&document.fonts.ready)await document.fonts.ready;await qrWaitForPosterImages(renderRoot)
@@ -15022,29 +15022,73 @@ function v1310ValidQty(raw){if(raw==="")return 0;if(!/^\d+(\.\d+)?$/.test(raw))r
 
 /* 入庫：規格ごとのケース数を入れる欄 */
 let v1310PendingCreate=null;
+/* c38：規格は入荷のたびに入力（候補＝設定＋その品目で過去に使った規格） */
+let v1310PastGrades=new Map(),v1310PastAt=0;
+async function v1310LoadPastGrades(force=false){
+  if(!force&&Date.now()-v1310PastAt<300000)return v1310PastGrades;
+  try{
+    const rows=await v1300SelectBase("qr_lot_grades_v1300","select=grade,qr_lots(item_name)&order=updated_at.desc&limit=3000");
+    const m=new Map();
+    for(const r of Array.isArray(rows)?rows:[]){const k=v1300CanonKey(r?.qr_lots?.item_name||"");if(!k||!r.grade)continue;if(!m.has(k))m.set(k,new Set());m.get(k).add(String(r.grade))}
+    v1310PastGrades=m;
+  }catch(e){}
+  v1310PastAt=Date.now();
+  return v1310PastGrades;
+}
+function v1310GradeCandidates(name,extra=[]){
+  const key=v1300CanonKey(name);
+  return[...new Set([...(v1310GradesForItem(name)||[]),...(key&&v1310PastGrades.get(key)?[...v1310PastGrades.get(key)]:[]),...extra].filter(Boolean))];
+}
+function v1310GradeRowHtml(cls,name="",qty=""){
+  return`<div class="v1310GradeLine"><input class="input ${cls}Name" list="v1310GradeList" type="text" maxlength="20" autocomplete="off" placeholder="規格（例：BL）" value="${esc(name)}" aria-label="規格名"><input class="input ${cls}" type="text" inputmode="numeric" autocomplete="off" placeholder="ケース数" value="${esc(qty)}" aria-label="ケース数"><button type="button" class="btn v1310GradeDel" aria-label="この行を消す">×</button></div>`;
+}
+function v1310GradeDatalist(names){return`<datalist id="v1310GradeList">${names.map(g=>`<option value="${esc(g)}"></option>`).join("")}</datalist>`}
+function v1310BindGradeRows(box,cls,onChange){
+  box.addEventListener("input",e=>{if(e.target.classList.contains(cls)||e.target.classList.contains(cls+"Name"))onChange()});
+  box.addEventListener("click",e=>{
+    if(e.target.classList.contains("v1310GradeDel")){const rows=box.querySelectorAll(".v1310GradeLine");if(rows.length>1)e.target.closest(".v1310GradeLine").remove();else e.target.closest(".v1310GradeLine").querySelectorAll("input").forEach(x=>x.value="");onChange()}
+    if(e.target.classList.contains("v1310GradeAdd")){box.querySelector(".v1310GradeLines").insertAdjacentHTML("beforeend",v1310GradeRowHtml(cls));box.querySelector(".v1310GradeLine:last-child input")?.focus()}
+  });
+}
+function v1310ReadGradeRows(cls){
+  const list=[],seen=new Set();
+  for(const row of document.querySelectorAll(".v1310GradeLine")){
+    const nEl=row.querySelector(`.${cls}Name`),qEl=row.querySelector(`.${cls}`);if(!nEl||!qEl)continue;
+    const g=String(nEl.value||"").trim(),raw=String(qEl.value||"").trim();
+    if(!g&&!raw)continue;
+    if(!g)return{error:"規格名が空の行があります"};
+    if(g.length>20)return{error:`規格「${g}」は20文字以内にしてください`};
+    if(seen.has(g))return{error:`規格「${g}」が2回入っています`};
+    const n=v1310ValidQty(raw);if(n===null)return{error:`規格「${g}」のケース数は数字だけで入力してください`};
+    seen.add(g);if(n>0)list.push({grade:g,qty:n});
+  }
+  return{list};
+}
 function v1310InjectInboundGrades(){
   const itemEl=document.getElementById("qrItemName"),qty=document.getElementById("qrQty");
   const old=document.getElementById("v1310InGrades");
   if(!itemEl||!qty){old?.remove();return}
   const type=document.getElementById("qrContainerType")?.value||"";
-  const grades=qrIsLargeContainer(type)?null:v1310GradesForItem(itemEl.value);
-  if(!grades){if(old){old.remove();qty.readOnly=false;qty.classList.remove("v1310Locked")}return}
-  if(old&&old.dataset.key===grades.join("|"))return;
+  const on=!qrIsLargeContainer(type)&&!!v1310GradesForItem(itemEl.value);
+  if(!on){if(old){old.remove();qty.readOnly=false;qty.classList.remove("v1310Locked")}return}
+  const key=v1300CanonKey(itemEl.value);
+  if(old&&old.dataset.key===key)return;
   old?.remove();
   const unit=document.getElementById("qrUnit")?.value||"ケース";
-  const html=`<div id="v1310InGrades" class="v1310GradeBox" data-key="${esc(grades.join("|"))}"><b>規格ごとのケース数</b><div class="small">このロット（1パレット）に入っている規格ごとの数を入れてください。数量は合計が自動で入ります。入っていない規格は空欄のままにします。</div><div class="v1310GradeGrid">${grades.map(g=>`<label class="v1310GradeCell"><span>${esc(g)}</span><input class="input v1310InGrade" data-grade="${esc(g)}" type="text" inputmode="numeric" autocomplete="off" placeholder="0"></label>`).join("")}</div><div id="v1310InGradeSum" class="v1310GradeSum">合計 0 ${esc(unit)}</div></div>`;
+  const html=`<div id="v1310InGrades" class="v1310GradeBox" data-key="${esc(key)}"><b>規格ごとのケース数</b><div class="small">このロット（1パレット）に入っていた規格を、1行に1つずつ入れてください。規格名は候補から選ぶか、そのまま入力できます。行は「＋規格を追加」で増やせます。数量は合計が自動で入ります。</div>${v1310GradeDatalist(v1310GradeCandidates(itemEl.value))}<div class="v1310GradeLines">${v1310GradeRowHtml("v1310InGrade")}</div><button type="button" class="btn v1310GradeAdd">＋規格を追加</button><div id="v1310InGradeSum" class="v1310GradeSum">合計 0 ${esc(unit)}</div></div>`;
   qty.closest("div")?.insertAdjacentHTML("afterend",html);
   qty.readOnly=true;qty.classList.add("v1310Locked");
-  document.querySelectorAll(".v1310InGrade").forEach(el=>el.addEventListener("input",v1310InboundGradeSum));
+  v1310BindGradeRows(document.getElementById("v1310InGrades"),"v1310InGrade",v1310InboundGradeSum);
   v1310InboundGradeSum();
+  v1310LoadPastGrades().then(()=>{const b=document.getElementById("v1310InGrades");const dl=b?.querySelector("#v1310GradeList");if(dl)dl.outerHTML=v1310GradeDatalist(v1310GradeCandidates(itemEl.value))}).catch(()=>{});
 }
 function v1310InboundGradeSum(){
   let sum=0,bad=false;
-  for(const g of v1310ReadGradeInputs("v1310InGrade")){const n=v1310ValidQty(g.raw);if(n===null)bad=true;else sum+=n}
+  for(const row of document.querySelectorAll("#v1310InGrades .v1310GradeLine")){const n=v1310ValidQty(String(row.querySelector(".v1310InGrade")?.value||"").trim());if(n===null)bad=true;else sum+=n}
   const qty=document.getElementById("qrQty"),unit=document.getElementById("qrUnit")?.value||"ケース";
   if(qty){qty.value=sum>0?String(sum):"";qty.dispatchEvent(new Event("input",{bubbles:true}))}
   const box=document.getElementById("v1310InGradeSum");
-  if(box)box.innerHTML=bad?`<span class="v1310Bad">数字だけを入力してください</span>`:`合計 ${fmt(sum)} ${esc(unit)}`;
+  if(box)box.innerHTML=bad?`<span class="v1310Bad">ケース数は数字だけを入力してください</span>`:`合計 ${fmt(sum)} ${esc(unit)}`;
 }
 document.addEventListener("change",e=>{if(e.target&&["qrItemName","qrContainerType"].includes(e.target.id))setTimeout(v1310InjectInboundGrades,0)});
 document.addEventListener("input",e=>{if(e.target&&e.target.id==="qrItemName")setTimeout(v1310InjectInboundGrades,0)});
@@ -15059,12 +15103,9 @@ window.qrSaveLot=async function(...args){
   await v1310LoadGradeSettings();
   const box=document.getElementById("v1310InGrades");
   if(box){
-    const list=[];
-    for(const g of v1310ReadGradeInputs("v1310InGrade")){
-      const n=v1310ValidQty(g.raw);
-      if(n===null)return alert(`規格「${g.grade}」のケース数は数字だけで入力してください`);
-      if(n>0)list.push({grade:g.grade,qty:n});
-    }
+    const rd=v1310ReadGradeRows("v1310InGrade");
+    if(rd.error)return alert(rd.error);
+    const list=rd.list;
     if(!list.length)return alert("規格ごとのケース数を入力してください");
     const total=list.reduce((a,b)=>a+b.qty,0),qty=Number(document.getElementById("qrQty")?.value||0);
     if(Math.abs(total-qty)>0.000001)return alert(`規格ごとのケース数の合計（${fmt(total)}）と数量（${fmt(qty)}）が一致しません`);
@@ -15207,18 +15248,23 @@ async function v1310FixGradesPage(qrKey){
   await v1310LoadGrades(true);await v1310LoadGradeSettings();
   const lot=await qrFindLot(qrKey),list=v1310GradesOf(lot);
   if(!lot||!list)return alert("規格別ロットが見つかりません");
-  const names=[...new Set([...(v1310GradesForItem(lot.item_name)||[]),...list.map(g=>g.grade)])];
+  await v1310LoadPastGrades();
+  const names=v1310GradeCandidates(lot.item_name,list.map(g=>g.grade));
   setScreen("v1310FixGradesPage",[qrKey]);
-  pageShell("規格の内訳を直す",`${lot.item_name} ／ ${lot.lot_no||""}`,`<div class="card"><div class="small">入庫したときの規格の数を打ち間違えたときに使います。合計（${fmt(Number(lot.current_qty))} ${esc(qrLotUnit(lot))}）は変えられません。出庫・廃棄・調整をしたあとのロットは直せないため、実数調整を使ってください。</div><div class="v1310GradeGrid" style="margin-top:10px">${names.map(g=>{const x=list.find(r=>r.grade===g);return`<label class="v1310GradeCell"><span>${esc(g)}</span><input class="input v1310FixGrade" data-grade="${esc(g)}" type="text" inputmode="numeric" value="${x?esc(x.current_qty):""}" placeholder="0"></label>`}).join("")}</div><button class="btn blue" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','v1310SaveFixGrades',[qrKey])}>この内訳で保存</button></div>`);
+  pageShell("規格の内訳を直す",`${lot.item_name} ／ ${lot.lot_no||""}`,`<div class="card"><div class="small">入庫したときの規格の数を打ち間違えたときや、規格を追加・変更したいときに使います。規格名は候補から選ぶか、そのまま入力できます。合計（${fmt(Number(lot.current_qty))} ${esc(qrLotUnit(lot))}）は変えられません。出庫・廃棄・調整をしたあとのロットは直せないため、実数調整を使ってください。</div><div id="v1310FixBox" style="margin-top:10px">${v1310GradeDatalist(names)}<div class="v1310GradeLines">${list.map(g=>v1310GradeRowHtml("v1310FixGrade",g.grade,String(Number(g.current_qty)))).join("")}</div><button type="button" class="btn v1310GradeAdd">＋規格を追加</button><div id="v1310FixSum" class="v1310GradeSum"></div></div><button class="btn blue" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','v1310SaveFixGrades',[qrKey])}>この内訳で保存</button></div>`);
+  const total=Number(lot.current_qty||0),unit=qrLotUnit(lot)||"ケース";
+  const sum=()=>{let s=0,bad=false;for(const r of document.querySelectorAll("#v1310FixBox .v1310GradeLine")){const n=v1310ValidQty(String(r.querySelector(".v1310FixGrade")?.value||"").trim());if(n===null)bad=true;else s+=n}const b=document.getElementById("v1310FixSum");if(b)b.innerHTML=bad?`<span class="v1310Bad">数字だけを入力してください</span>`:`合計 ${fmt(s)} ／ ${fmt(total)} ${esc(unit)}${Math.abs(s-total)>0.000001?' <span class="v1310Bad">（合計を合わせてください）</span>':""}`};
+  v1310BindGradeRows(document.getElementById("v1310FixBox"),"v1310FixGrade",sum);sum();
 }
 async function v1310SaveFixGrades(qrKey){
   try{
-    const list=[];
-    for(const g of v1310ReadGradeInputs("v1310FixGrade")){const n=v1310ValidQty(g.raw);if(n===null)throw new Error(`規格「${g.grade}」は数字だけで入力してください`);if(n>0)list.push({grade:g.grade,qty:n})}
+    const rd=v1310ReadGradeRows("v1310FixGrade");
+    if(rd.error)throw new Error(rd.error);
+    const list=rd.list;
     if(!list.length)throw new Error("規格ごとの数を入力してください");
     const ans=await callRpc("fix_qr_lot_grades_v1300",{p_qr_key:qrKey,p_grades:list});
     if(!ans?.ok)throw new Error(ans?.message||"保存できませんでした");
-    v1310GradesAt=0;alert("規格の内訳を直しました。");
+    v1310GradesAt=0;v1310PastAt=0;alert("規格の内訳を直しました。");
     return qrLotDetail(qrKey);
   }catch(e){alert(e.message||e)}
 }
@@ -15228,8 +15274,9 @@ Object.assign(window,{v1310FixGradesPage,v1310SaveFixGrades});
 function v1310PosterGradesHtml(lot){
   const list=v1310GradesOf(lot);if(!list)return"";
   const rows=list.filter(g=>Number(g.received_qty)>0),total=rows.reduce((a,g)=>a+Number(g.received_qty||0),0);
-  const td="border:2px solid #000;padding:3px 6px;font-size:20px;font-weight:900;line-height:1.1";
-  return`<table class="posterGrades" style="width:150px;margin-top:10px;border-collapse:collapse;color:#000"><tr><th style="${td};background:#e5e7eb;text-align:left">規格</th><th style="${td};background:#e5e7eb;text-align:right">${esc(qrLotUnit(lot)||"ケース")}</th></tr>${rows.map(g=>`<tr><td style="${td}">${esc(g.grade)}</td><td style="${td};text-align:right">${fmt(Number(g.received_qty))}</td></tr>`).join("")}<tr><td style="${td}">合計</td><td style="${td};text-align:right">${fmt(total)}</td></tr></table>`;
+  const n=rows.length+2,rowH=Math.max(30,Math.min(100,Math.floor(505/n))),fs=Math.max(20,Math.min(64,Math.floor(rowH*0.64)));
+  const td=`border:3px solid #000;padding:0 12px;height:${rowH}px;font-size:${fs}px;font-weight:900;line-height:1;white-space:nowrap`;
+  return`<table class="posterGrades" style="width:100%;margin-top:10px;border-collapse:collapse;color:#000;table-layout:fixed"><tr><th style="${td};background:#e5e7eb;text-align:left">規格</th><th style="${td};background:#e5e7eb;text-align:right">${esc(qrLotUnit(lot)||"ケース")}</th></tr>${rows.map(g=>`<tr><td style="${td};overflow:hidden">${esc(g.grade)}</td><td style="${td};text-align:right">${fmt(Number(g.received_qty))}</td></tr>`).join("")}<tr><td style="${td};background:#f3f4f6">合計</td><td style="${td};text-align:right;background:#f3f4f6">${fmt(total)}</td></tr></table>`;
 }
 window.v1310PosterGradesHtml=v1310PosterGradesHtml;
 const v1310PrintBase=qrPrintLot;
@@ -15365,10 +15412,10 @@ async function qrGradeSettingsPage(msg=""){
   await v1310LoadGradeSettings(true);
   const edit=v1310CanEditGrades()&&v1310GradeSource==="db";
   const rows=v1310GradeSettings.map((s,i)=>edit
-    ?`<div class="card"><div class="v1310GsRow"><input id="v1310GN_${i}" class="input" value="${esc(s.item_name)}" aria-label="品目名"><label class="v1310GsOn"><input id="v1310GE_${i}" type="checkbox" ${s.enabled!==false?"checked":""}> 使う</label></div><label class="label">規格（「、」で区切る・並び順のとおり表示）</label><input id="v1310GG_${i}" class="input" value="${esc((s.grades||[]).join("、"))}"><div class="v1310GsBtns"><button class="btn blue" ${seikaEventAttrs('click','v1310SaveGradeSetting',[i])}>保存</button><button class="btn danger" ${seikaEventAttrs('click','v1310DeleteGradeSetting',[i])}>削除</button></div></div>`
+    ?`<div class="card"><div class="v1310GsRow"><input id="v1310GN_${i}" class="input" value="${esc(s.item_name)}" aria-label="品目名"><label class="v1310GsOn"><input id="v1310GE_${i}" type="checkbox" ${s.enabled!==false?"checked":""}> 使う</label></div><label class="label">規格の候補（「、」で区切る・入庫のときの候補になります）</label><input id="v1310GG_${i}" class="input" value="${esc((s.grades||[]).join("、"))}"><div class="v1310GsBtns"><button class="btn blue" ${seikaEventAttrs('click','v1310SaveGradeSetting',[i])}>保存</button><button class="btn danger" ${seikaEventAttrs('click','v1310DeleteGradeSetting',[i])}>削除</button></div></div>`
     :`<div class="card"><b>${esc(s.item_name)}</b>${s.enabled===false?'<span class="small">（使わない）</span>':""}<div class="small" style="margin-top:4px">規格：${esc((s.grades||[]).join("、"))}</div></div>`).join("");
   const add=edit?`<div class="card"><b>品目を追加</b><input id="v1310GN_new" class="input" placeholder="品目名（QR管理品目と同じ名前）" style="margin-top:6px"><label class="label">規格（「、」で区切る）</label><input id="v1310GG_new" class="input" placeholder="例：L、M、S"><button class="btn green" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1310AddGradeSetting',[])}>追加</button></div>`:"";
-  const info=`<div class="card"><b>規格別ロットとは</b><div class="small" style="margin-top:4px">1パレットに規格がまざって入荷する品目（胡瓜など）を、1つのロットで管理します。入庫のときに規格ごとのケース数を入れ、出庫・廃棄・実数調整も規格ごとに行います。貼り紙・在庫表・月末棚卸し・棚卸表Excelにも規格ごとの数が出ます。</div>${v1310GradeSource==="db"?"":`<div class="err" style="margin-top:8px">規格別ロットの保存先がまだ準備されていません（SQL 013 の実行が必要です）。</div>`}${v1310CanEditGrades()?"":`<div class="small" style="margin-top:8px">変更できるのは管理者・青果社員です。</div>`}<div class="small" style="margin-top:8px">設定を変えても、登録済みのロットの規格は変わりません。</div></div>`;
+  const info=`<div class="card"><b>規格別ロットとは</b><div class="small" style="margin-top:4px">1パレットに規格がまざって入荷する品目（胡瓜など）を、1つのロットで管理します。入庫のときに、入荷した規格を1行ずつ入れます（規格名はその都度入力でき、ここに登録した規格と過去に使った規格が候補に出ます）。出庫・廃棄・実数調整も規格ごとに行います。貼り紙・在庫表・月末棚卸し・棚卸表Excelにも規格ごとの数が出ます。</div>${v1310GradeSource==="db"?"":`<div class="err" style="margin-top:8px">規格別ロットの保存先がまだ準備されていません（SQL 013 の実行が必要です）。</div>`}${v1310CanEditGrades()?"":`<div class="small" style="margin-top:8px">変更できるのは管理者・青果社員です。</div>`}<div class="small" style="margin-top:8px">設定を変えても、登録済みのロットの規格は変わりません。</div></div>`;
   pageShell("規格別ロットの設定",`${v1310GradeSettings.length}品目`,`${msg?`<div class="ok">${esc(msg)}</div>`:""}${info}${rows}${add}`);
 }
 function v1310SplitGrades(id){return String(document.getElementById(id)?.value||"").split(/[、,，\s]+/).map(s=>s.trim()).filter(Boolean)}
@@ -15429,6 +15476,11 @@ window.qrSelect=qrSelect;
 .v1310GradeCell small{font-weight:700;color:#6b7280}
 .v1310GradeSum{margin-top:8px;font-weight:900;font-size:17px}
 .v1310Bad{color:#b91c1c}
+.v1310GradeLines{display:grid;gap:8px;margin-top:8px}
+.v1310GradeLine{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) 46px;gap:6px;align-items:center}
+.v1310GradeLine .input{margin:0}
+.v1310GradeDel{margin:0 !important;min-height:44px;padding:0 !important;background:#fff !important;color:#991b1b !important;border:2px solid #f87171 !important;font-weight:900;font-size:20px !important;opacity:1 !important;box-shadow:none !important}
+.v1310GradeAdd{margin-top:8px !important;width:100%;background:#fff !important;color:#713f12 !important;border:2px dashed #ca8a04 !important;font-weight:900;opacity:1 !important;box-shadow:none !important;text-shadow:none !important}
 .v1310Locked{background:#f3f4f6 !important;color:#111 !important}
 .v1310LotGrades{margin-top:6px;padding:6px 10px;border-radius:10px;background:#fef9c3;color:#713f12;font-weight:800}
 .v1310GsRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
@@ -15441,14 +15493,14 @@ window.qrSelect=qrSelect;
   try{
     if(typeof V198_GUIDE_SECTIONS!=="undefined"){
       V198_GUIDE_SECTIONS.v1310Grades={title:"規格別ロット（胡瓜など）",where:"ホーム → QR在庫管理 → QR入庫 ／ 規格別ロットの設定",
-        steps:["胡瓜は、1パレットに入っている規格（AL・BL・丸・B・Aなど）をまとめて1つのロットで入庫します。品名で胡瓜を選ぶと「規格ごとのケース数」の欄が出るので、入っている規格の数を入れます（数量は合計が自動で入ります）。産地・仕入先が違うものは別のロットにします。",
-               "貼り紙には、右側のQRコードの下に規格ごとのケース数と合計が入ります。",
+        steps:["胡瓜は、1パレットに入っている規格（AL・BL・丸・B・Aなど）をまとめて1つのロットで入庫します。品名で胡瓜を選ぶと「規格ごとのケース数」の欄が出るので、入荷した規格を1行に1つずつ入れます。規格名は候補から選ぶか、そのまま入力できます（過去に使った規格も候補に出ます）。行は「＋規格を追加」で増やせます（数量は合計が自動で入ります）。産地・仕入先が違うものは別のロットにします。",
+               "貼り紙には、右側のQRコードの下に規格ごとのケース数と合計が大きく入ります。",
                "出庫・廃棄・実数調整では、規格ごとに数を入れます。複数の規格をまとめて1回で処理できます（例：BL 5、丸 2）。実数調整は、数え直した数を規格ごとに入れます。",
-               "QRロット一覧・ロット詳細には、規格ごとの残りが出ます。入庫直後に規格の数を打ち間違えたときは、ロット詳細の「規格の内訳を直す」で直せます（出庫などをしたあとは実数調整を使います）。",
+               "QRロット一覧・ロット詳細には、規格ごとの残りが出ます。入庫直後に規格の数を打ち間違えたときや、規格を追加・変更したいときは、ロット詳細の「規格の内訳を直す」で直せます（出庫などをしたあとは実数調整を使います）。",
                "在庫表では胡瓜のセルに合計kgと規格ごとのケース数が出ます。月末棚卸しと棚卸表Excelは「胡瓜（BL）」のように規格ごとに1行で出ます。",
                "製造日報で胡瓜のロットを使用原料に追加したときは、規格も選びます。",
                "品質評価はロット単位です。規格を伝えたいときはメモに書きます。",
-               "規格を使う品目と規格の候補は「規格別ロットの設定」で変更・追加できます（管理者・青果社員）。"],
+               "規格を使う品目と、よく使う規格の候補は「規格別ロットの設定」で変更・追加できます（管理者・青果社員）。設定にない規格も入庫のときにそのまま入力できます。"],
         check:"入庫のとき、規格ごとの数の合計がパレットのケース数と合っているか確認します。",
         caution:"規格別ロットは「QR連続出庫」では出庫できません。通常の出庫で規格ごとに数を入れてください。古い画面のまま操作すると保存されません（再読み込みしてください）。"};
       if(typeof V198_ROLE_ADD!=="undefined")for(const k of Object.keys(V198_ROLE_ADD))if(Array.isArray(V198_ROLE_ADD[k])&&V198_ROLE_ADD[k].includes("v1250StorageLimits")&&!V198_ROLE_ADD[k].includes("v1310Grades"))V198_ROLE_ADD[k].push("v1310Grades");
