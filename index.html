@@ -3433,7 +3433,7 @@ return large?`<div class="posterRow"><div class="posterLabel">品名</div><div c
 ;qr.addData(String(payload));qr.make();return qr.createDataURL(18,2)}for(const def of sheetDefs){
 const payload=location.origin+location.pathname+"?qr="+encodeURIComponent(lot.qr_key)+(def.palletNo?"&pallet="+encodeURIComponent(def.palletNo):"")
 ;def.qrSrc=qrDataUrlForPoster(payload)}function sheet(def){
-return`<main class="pdfSheet ${large?"largePoster":"normalPoster"}"><section class="pdfPoster"><div class="posterLeft"><div class="posterBrand">SEIKA＋ QRロット管理</div><div class="posterRows">${rows(def)}</div></div><aside class="posterRight"><img class="posterQr" src="${def.qrSrc}" alt="QRコード"><div class="posterScan">QRを読み取って<br>残数・履歴を確認</div><div class="posterLot">${lotNoText}${def.palletNo?" / パレット"+def.palletNo:""}</div></aside></section></main>`
+return`<main class="pdfSheet ${large?"largePoster":"normalPoster"}"><section class="pdfPoster"><div class="posterLeft"><div class="posterBrand">SEIKA＋ QRロット管理</div><div class="posterRows">${rows(def)}</div></div><aside class="posterRight"><img class="posterQr" src="${def.qrSrc}" alt="QRコード"><div class="posterScan">QRを読み取って<br>残数・履歴を確認</div><div class="posterLot">${lotNoText}${def.palletNo?" / パレット"+def.palletNo:""}</div>${typeof v1310PosterGradesHtml==="function"?v1310PosterGradesHtml(lot):""}</aside></section></main>`
 }
 const posterCss=`*{box-sizing:border-box}.pdfRenderRoot{position:fixed;left:-20000px;top:0;width:1122px;background:#fff;z-index:0;pointer-events:none}.pdfSheet{width:1122px;height:794px;background:#fff;padding:34px;overflow:hidden}.pdfPoster{width:100%;height:100%;border:18px solid #000;padding:22px 30px;display:grid;grid-template-columns:minmax(0,1fr) 158px;column-gap:16px;overflow:hidden;color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.posterLeft{min-width:0;height:100%;display:flex;flex-direction:column}.posterBrand{font-size:40px;font-weight:900;margin-bottom:7px;line-height:1.05}.posterRows{min-height:0;flex:1;display:grid;gap:3px}.largePoster .posterRows{grid-template-rows:repeat(7,minmax(0,1fr))}.normalPoster .posterRows{grid-template-rows:repeat(6,minmax(0,1fr))}.posterRow{display:grid;grid-template-columns:166px minmax(0,1fr);align-items:center;border-bottom:5px solid #000;padding:3px 0;min-height:0;overflow:hidden}.posterLabel{font-size:39px;font-weight:900}.posterValue{min-width:0;font-size:50px;font-weight:900;line-height:.98;overflow-wrap:anywhere;max-height:2em;overflow:hidden}.posterValue.item{font-size:67px}.posterValue.date{font-size:80px}.posterValue.strong{font-size:68px}.posterValue.qty,.posterValue.pack{font-size:74px}.posterRight{width:158px;display:flex;flex-direction:column;align-items:center;background:#fff}.posterQr{width:142px;height:142px;image-rendering:pixelated}.posterScan{margin-top:6px;font-size:16px;font-weight:900;text-align:center;line-height:1.2}.posterLot{margin-top:6px;font-size:13px;font-weight:900;text-align:center;overflow-wrap:anywhere;line-height:1.18}.normalPoster .posterBrand{font-size:43px;margin-bottom:6px}.normalPoster .posterRow{grid-template-columns:166px minmax(0,1fr);padding:4px 0}.normalPoster .posterLabel{font-size:43px}.normalPoster .posterValue{font-size:56px}.normalPoster .posterValue.item{font-size:74px}.normalPoster .posterValue.date{font-size:86px}.normalPoster .posterValue.strong{font-size:75px}.normalPoster .posterValue.qty,.normalPoster .posterValue.pack{font-size:82px}`
 ;renderRoot=document.createElement("div");renderRoot.className="pdfRenderRoot";renderRoot.setAttribute("aria-hidden","true")
@@ -10375,7 +10375,7 @@ async function v188Repair(id){
     const backup=v188CopySession(session);
     await loadCloud();
     const target=v188Resolve(id,backup)||session,asOfKey=target.asOfKey||v188AsOfKey(target.targetMonth);
-    const oldEntries=v188Entries(target),keyOf=line=>line.type==='qr'?`qr:${line.qrKey}`:line.type==='special'?`sp:${line.tableId}:${line.itemId}`:`nm:${line.itemId}`;
+    const oldEntries=v188Entries(target),keyOf=line=>line.type==='qr'?`qr:${line.qrKey}${line.grade?':'+line.grade:''}`:line.type==='special'?`sp:${line.tableId}:${line.itemId}`:`nm:${line.itemId}`;
     const carry={};for(const line of [...v188SectionLines(target,'normal'),...v188SectionLines(target,'qr')]){const entry=oldEntries[String(line.lineId)];if(entry)carry[keyOf(line)]=entry}
     const lines=v188NormalLines(target.room,asOfKey),qrLines=await v188QrLines(target.room,asOfKey);
     if(!lines.length&&!qrLines.length)throw new Error(`${v188MonthLabel(target.targetMonth)}末時点の在庫が見つかりませんでした。`);
@@ -14964,6 +14964,494 @@ window.v1250ConfirmQuality=v1250ConfirmQuality;
         s.steps=s.steps.map(t=>t.startsWith("要品質確認のロットは")?"要品質確認のロットは、「品質確認済みにする」を押すと赤い確認画面が出ます。実物を確認し「実物を確認しました」にチェックを入れて押すと、その日のあいだは優先使用として扱います。":t.startsWith("使用不可/保留のロットは")?"使用不可/保留のロットを出庫・使用しようとすると、赤い画面いっぱいの確認が出ます。管理者・青果社員が実物を確認し、「実物を確認しました」にチェックを入れたときだけ「確認して出庫する」を押せます（確認した人を記録します）。":t.startsWith("保管目安の日数は")?"保管目安の日数は「保管期限マスタ」で変更・追加・削除できます（管理者・青果社員・仕入れ担当者）。":t);
         s.steps.push("端境期や相場が高い時期など、決まった期間だけ日数を変えたいときは、保管期限マスタの「時期による特別期間」で品目・期間（◯月◯日〜◯月◯日）・日数を登録します。毎年くり返し使え、ロットの入荷日が期間に入っていればその日数で判定します（バッジに「特別期間」と出ます）。");
       }
+    }
+  }catch(e){}
+})();
+
+
+/* ===== v1.199-c37 規格別ロット（胡瓜など：1ロットに複数の規格） ===== */
+/* --- ③ 規格別ロット --- */
+let v1310GradeSettings=[],v1310GradeSettingsAt=0,v1310GradeSource="none";
+let v1310GradeRows=[],v1310GradesAt=0,v1310GradeMap=new Map(),v1310GradeLoading=null;
+async function v1310LoadGradeSettings(force=false){
+  if(!force&&Date.now()-v1310GradeSettingsAt<300000)return v1310GradeSettings;
+  try{
+    const rows=await v1300SelectBase("qr_item_grade_settings_v1300","select=item_name,enabled,grades,updated_by_name,updated_at&order=item_name.asc");
+    v1310GradeSettings=Array.isArray(rows)?rows:[];v1310GradeSource="db";
+  }catch(e){v1310GradeSettings=[];v1310GradeSource="none"}
+  v1310GradeSettingsAt=Date.now();
+  return v1310GradeSettings;
+}
+function v1310GradesForItem(name){
+  const key=v1300CanonKey(name);if(!key)return null;
+  const s=v1310GradeSettings.find(x=>x.enabled!==false&&v1300CanonKey(x.item_name)===key);
+  return s&&Array.isArray(s.grades)&&s.grades.length>=2?s.grades.slice():null;
+}
+async function v1310LoadGrades(force=false){
+  if(!force&&Date.now()-v1310GradesAt<30000)return v1310GradeMap;
+  if(v1310GradeLoading)return v1310GradeLoading;
+  v1310GradeLoading=(async()=>{
+    try{
+      const rows=[];
+      for(let off=0;off<200000;off+=V1300_PAGE){
+        const page=await v1300SelectBase("qr_lot_grades_v1300",`select=lot_id,qr_key,grade,sort_order,received_qty,current_qty&order=lot_id.asc,sort_order.asc&limit=${V1300_PAGE}&offset=${off}`);
+        if(!Array.isArray(page))break;rows.push(...page);if(page.length<V1300_PAGE)break;
+      }
+      const map=new Map();
+      for(const r of rows){const k=String(r.lot_id);if(!map.has(k))map.set(k,[]);map.get(k).push(r)}
+      for(const list of map.values())list.sort((a,b)=>Number(a.sort_order||0)-Number(b.sort_order||0));
+      v1310GradeRows=rows;v1310GradeMap=map;
+    }catch(e){if(!v1310GradeMap.size)v1310GradeMap=new Map()}
+    v1310GradesAt=Date.now();
+    return v1310GradeMap;
+  })();
+  try{return await v1310GradeLoading}finally{v1310GradeLoading=null}
+}
+function v1310GradesOf(lot){
+  if(!lot)return null;
+  const list=v1310GradeMap.get(String(lot.id||""))||v1310GradeRows.filter(r=>String(r.qr_key)===String(lot.qr_key||"_"));
+  return list&&list.length?list:null;
+}
+function v1310GradeText(list,current=true,sep=" ／ "){
+  return(list||[]).filter(g=>!current||Number(g.current_qty)>0).map(g=>`${g.grade} ${fmt(Number(current?g.current_qty:g.received_qty))}`).join(sep);
+}
+function v1310ReadGradeInputs(cls){
+  return[...document.querySelectorAll(`.${cls}`)].map(x=>({grade:x.dataset.grade,raw:String(x.value||"").trim()}));
+}
+function v1310ValidQty(raw){if(raw==="")return 0;if(!/^\d+(\.\d+)?$/.test(raw))return null;return Number(raw)}
+
+/* 入庫：規格ごとのケース数を入れる欄 */
+let v1310PendingCreate=null;
+function v1310InjectInboundGrades(){
+  const itemEl=document.getElementById("qrItemName"),qty=document.getElementById("qrQty");
+  const old=document.getElementById("v1310InGrades");
+  if(!itemEl||!qty){old?.remove();return}
+  const type=document.getElementById("qrContainerType")?.value||"";
+  const grades=qrIsLargeContainer(type)?null:v1310GradesForItem(itemEl.value);
+  if(!grades){if(old){old.remove();qty.readOnly=false;qty.classList.remove("v1310Locked")}return}
+  if(old&&old.dataset.key===grades.join("|"))return;
+  old?.remove();
+  const unit=document.getElementById("qrUnit")?.value||"ケース";
+  const html=`<div id="v1310InGrades" class="v1310GradeBox" data-key="${esc(grades.join("|"))}"><b>規格ごとのケース数</b><div class="small">このロット（1パレット）に入っている規格ごとの数を入れてください。数量は合計が自動で入ります。入っていない規格は空欄のままにします。</div><div class="v1310GradeGrid">${grades.map(g=>`<label class="v1310GradeCell"><span>${esc(g)}</span><input class="input v1310InGrade" data-grade="${esc(g)}" type="text" inputmode="numeric" autocomplete="off" placeholder="0"></label>`).join("")}</div><div id="v1310InGradeSum" class="v1310GradeSum">合計 0 ${esc(unit)}</div></div>`;
+  qty.closest("div")?.insertAdjacentHTML("afterend",html);
+  qty.readOnly=true;qty.classList.add("v1310Locked");
+  document.querySelectorAll(".v1310InGrade").forEach(el=>el.addEventListener("input",v1310InboundGradeSum));
+  v1310InboundGradeSum();
+}
+function v1310InboundGradeSum(){
+  let sum=0,bad=false;
+  for(const g of v1310ReadGradeInputs("v1310InGrade")){const n=v1310ValidQty(g.raw);if(n===null)bad=true;else sum+=n}
+  const qty=document.getElementById("qrQty"),unit=document.getElementById("qrUnit")?.value||"ケース";
+  if(qty){qty.value=sum>0?String(sum):"";qty.dispatchEvent(new Event("input",{bubbles:true}))}
+  const box=document.getElementById("v1310InGradeSum");
+  if(box)box.innerHTML=bad?`<span class="v1310Bad">数字だけを入力してください</span>`:`合計 ${fmt(sum)} ${esc(unit)}`;
+}
+document.addEventListener("change",e=>{if(e.target&&["qrItemName","qrContainerType"].includes(e.target.id))setTimeout(v1310InjectInboundGrades,0)});
+document.addEventListener("input",e=>{if(e.target&&e.target.id==="qrItemName")setTimeout(v1310InjectInboundGrades,0)});
+if(typeof qrRenderContainerFields==="function"){
+  const v1310RenderCFBase=qrRenderContainerFields;
+  qrRenderContainerFields=function(...a){const r=v1310RenderCFBase.apply(this,a);setTimeout(v1310InjectInboundGrades,0);return r};
+  window.qrRenderContainerFields=qrRenderContainerFields;
+}
+const v1310SaveLotBase=window.qrSaveLot;
+window.qrSaveLot=async function(...args){
+  v1310PendingCreate=null;
+  await v1310LoadGradeSettings();
+  const box=document.getElementById("v1310InGrades");
+  if(box){
+    const list=[];
+    for(const g of v1310ReadGradeInputs("v1310InGrade")){
+      const n=v1310ValidQty(g.raw);
+      if(n===null)return alert(`規格「${g.grade}」のケース数は数字だけで入力してください`);
+      if(n>0)list.push({grade:g.grade,qty:n});
+    }
+    if(!list.length)return alert("規格ごとのケース数を入力してください");
+    const total=list.reduce((a,b)=>a+b.qty,0),qty=Number(document.getElementById("qrQty")?.value||0);
+    if(Math.abs(total-qty)>0.000001)return alert(`規格ごとのケース数の合計（${fmt(total)}）と数量（${fmt(qty)}）が一致しません`);
+    v1310PendingCreate={grades:list};
+  }
+  try{return await v1310SaveLotBase.apply(this,args)}
+  finally{v1310PendingCreate=null}
+};
+try{qrSaveLot=window.qrSaveLot}catch(e){}
+
+/* 出庫・廃棄・実数調整：規格ごとの数量 */
+let v1310PendingOp=null;
+const v1310OpPageBase=qrOperationLotPage;
+qrOperationLotPage=async function(kind,q){
+  if(["out","waste","adjust"].includes(kind))await v1310LoadGrades(true);
+  const r=await v1310OpPageBase.apply(this,arguments);
+  if(!["out","waste","adjust"].includes(kind))return r;
+  try{
+    const lot=await qrFindLot(q),grades=v1310GradesOf(lot),qty=document.getElementById("qrMoveQty");
+    if(!lot||!grades||!qty||document.getElementById("v1310OpGrades"))return r;
+    const adj=kind==="adjust",unit=qrLotUnit(lot);
+    const title=adj?"規格ごとの実数（調整後の数）":kind==="waste"?"規格ごとの廃棄数":"規格ごとの出庫数";
+    const html=`<div id="v1310OpGrades" class="v1310GradeBox" data-kind="${kind}"><b>${title}</b><div class="small">${adj?"数え直した数を規格ごとに入れてください。変わらない規格はそのままにします。":"規格ごとに数を入れてください。出さない規格は空欄のままにします。"}数量は合計が自動で入ります。</div><div class="v1310GradeGrid">${grades.map(g=>`<label class="v1310GradeCell"><span>${esc(g.grade)}<small>残 ${fmt(Number(g.current_qty))}</small></span><input class="input v1310OpGrade" data-grade="${esc(g.grade)}" data-cur="${esc(g.current_qty)}" type="text" inputmode="decimal" autocomplete="off" ${adj?`value="${esc(g.current_qty)}"`:'placeholder="0"'}></label>`).join("")}</div><div id="v1310OpGradeSum" class="v1310GradeSum"></div></div>`;
+    qty.closest("div")?.insertAdjacentHTML("afterend",html);
+    qty.readOnly=true;qty.classList.add("v1310Locked");
+    document.querySelectorAll(".v1310OpGrade").forEach(el=>el.addEventListener("input",()=>v1310OpGradeSum(unit)));
+    v1310OpGradeSum(unit);
+  }catch(e){console.warn("[規格別ロット]",e)}
+  return r;
+};
+window.qrOperationLotPage=qrOperationLotPage;
+function v1310OpGradeSum(unit){
+  const box=document.getElementById("v1310OpGrades");if(!box)return;
+  const adj=box.dataset.kind==="adjust";let sum=0,bad="";
+  for(const el of document.querySelectorAll(".v1310OpGrade")){
+    const n=v1310ValidQty(String(el.value||"").trim()),cur=Number(el.dataset.cur||0);
+    if(n===null){bad="数字だけを入力してください";continue}
+    if(!adj&&n>cur)bad=`規格「${el.dataset.grade}」の残りは ${fmt(cur)} です`;
+    sum+=adj&&String(el.value||"").trim()===""?cur:n;
+  }
+  const qty=document.getElementById("qrMoveQty");if(qty)qty.value=String(sum);
+  const s=document.getElementById("v1310OpGradeSum");
+  if(s)s.innerHTML=bad?`<span class="v1310Bad">${esc(bad)}</span>`:`${adj?"調整後の合計":"合計"} ${fmt(sum)} ${esc(unit)}`;
+}
+function v1310ReadOpGrades(){
+  const box=document.getElementById("v1310OpGrades");if(!box)return null;
+  const adj=box.dataset.kind==="adjust",list=[];
+  for(const el of document.querySelectorAll(".v1310OpGrade")){
+    const raw=String(el.value||"").trim(),n=v1310ValidQty(raw),cur=Number(el.dataset.cur||0),g=el.dataset.grade;
+    if(n===null)throw new Error(`規格「${g}」の数は数字だけで入力してください`);
+    if(adj){list.push({grade:g,qty:raw===""?cur:n})}
+    else{if(n>cur)throw new Error(`規格「${g}」の残りは ${fmt(cur)} です`);if(n>0)list.push({grade:g,qty:n})}
+  }
+  if(!adj&&!list.length)throw new Error("規格ごとの数を入力してください");
+  if(adj&&!list.some((x,i)=>Number(x.qty)!==Number(document.querySelectorAll(".v1310OpGrade")[i].dataset.cur||0)))throw new Error("規格ごとの数が変わっていません");
+  return list;
+}
+const v1310SaveMoveBase=qrSaveLotMovement;
+qrSaveLotMovement=async function(kind,q){
+  v1310PendingOp=null;
+  if(["out","waste","adjust"].includes(kind)){
+    let lot=null;try{lot=await qrFindLot(q)}catch(e){}
+    try{
+      const grades=v1310ReadOpGrades();
+      if(grades){v1310OpGradeSum(lot?qrLotUnit(lot):"");v1310PendingOp={qrKey:String(lot?.qr_key||""),grades}}
+    }catch(e){return alert(e.message||e)}
+  }
+  try{return await v1310SaveMoveBase.apply(this,arguments)}
+  finally{v1310PendingOp=null}
+};
+window.qrSaveLotMovement=qrSaveLotMovement;
+
+/* RPCの切り替え：規格別ロットのときは、規格の数も一緒に保存する関数を呼ぶ */
+function v1310GradeLineForOp(args){
+  const session=typeof countSession==="function"?countSession(args.p_session_id):null;
+  if(!session)return null;
+  const seq=(Array.isArray(session.v188Confirmations)?session.v188Confirmations.length:0)+1;
+  for(const line of session.qrLines||[]){
+    if(!line.grade||String(line.qrKey)!==String(args.p_qr_key))continue;
+    for(const s of[seq,seq-1,seq+1])if(qrInventoryStableUuid(`${session.id}:${line.lineId}:${s}`,'v188_qr_adjust')===args.p_operation_id)return line;
+  }
+  return null;
+}
+const v1310RpcBase=callRpc;
+callRpc=async function(name,args){
+  if(name==="create_qr_lot_v185"&&v1310PendingCreate){
+    const pend=v1310PendingCreate;v1310PendingCreate=null;
+    const ans=await v1310RpcBase("create_qr_lot_graded_v1300",{p_lot:args.p_lot,p_operation_id:args.p_operation_id,p_grades:pend.grades,p_device_meta:args.p_device_meta||{},p_operation_meta:args.p_operation_meta||{}});
+    v1310GradesAt=0;return ans;
+  }
+  if(name==="apply_qr_lot_operation"&&v1310PendingOp&&String(args?.p_qr_key||"")===v1310PendingOp.qrKey){
+    const pend=v1310PendingOp,p={};
+    for(const[k,v]of Object.entries(args||{}))p[k.replace(/^p_/,"")]=v;
+    const ans=await v1310RpcBase("apply_qr_lot_grade_operation_v1300",{p_args:p,p_grades:pend.grades});
+    v1310GradesAt=0;return ans;
+  }
+  if(name===V188_QR_RPC&&args){
+    const line=v1310GradeLineForOp(args);
+    if(line){
+      const ans=await v1310RpcBase("apply_month_end_grade_adjustment_v1300",{p_qr_key:args.p_qr_key,p_grade:line.grade,p_operation_id:args.p_operation_id,p_target_month:args.p_target_month,p_as_of_date:args.p_as_of_date,p_book_qty:args.p_book_qty,p_actual_qty:args.p_actual_qty,p_reason:args.p_reason,p_memo:args.p_memo,p_session_id:args.p_session_id,p_count_no:args.p_count_no});
+      v1310GradesAt=0;return ans;
+    }
+  }
+  const ans=await v1310RpcBase(name,args);
+  if(/^(cancel_qr_lot_operation|cancel_qr_inventory_session)$/.test(String(name)))v1310GradesAt=0;
+  if((name==="create_trimming_job"||name==="replace_trimming_job_v1203")&&ans?.ok)await v1310SaveTrimGrades(ans,args).catch(e=>console.warn("[規格別ロット] 日報の規格を保存できません",e));
+  return ans;
+};
+window.callRpc=callRpc;
+
+/* ロットの表示に規格を出す */
+const v1310LotCardBase=qrLotCard;
+qrLotCard=function(l){
+  const html=v1310LotCardBase.apply(this,arguments);
+  const list=v1310GradesOf(l);if(!list)return html;
+  const t=v1310GradeText(list,true)||"残りなし";
+  const add=`<div class="v1310LotGrades"><b>規格</b> ${esc(t)}</div>`;
+  const i=html.lastIndexOf("</div>");
+  return i<0?html+add:html.slice(0,i)+add+html.slice(i);
+};
+window.qrLotCard=qrLotCard;
+
+/* 入庫直後の打ち間違い：規格の内訳を直す（管理者・青果社員） */
+const v1310DetailBase=qrLotDetail;
+qrLotDetail=async function(...args){
+  await v1310LoadGrades(true);
+  const r=await v1310DetailBase.apply(this,args);
+  try{
+    const lot=await qrFindLot(args[0]),list=v1310GradesOf(lot);
+    if(lot&&list&&canQrOperate()&&!document.getElementById("v1310FixBtn")){
+      const wrap=document.querySelector(".wrap");
+      wrap?.insertAdjacentHTML("beforeend",`<div class="card"><b>規格の内訳</b><div class="small" style="margin:4px 0 8px">入庫：${esc(v1310GradeText(list,false))}<br>現在：${esc(v1310GradeText(list,true)||"残りなし")}</div><button id="v1310FixBtn" class="btn btn2" style="width:100%" ${seikaEventAttrs('click','v1310FixGradesPage',[String(lot.qr_key)])}>規格の内訳を直す（入庫直後の打ち間違い）</button></div>`);
+    }
+  }catch(e){}
+  return r;
+};
+window.qrLotDetail=qrLotDetail;
+async function v1310FixGradesPage(qrKey){
+  if(!canQrOperate())return;
+  await v1310LoadGrades(true);await v1310LoadGradeSettings();
+  const lot=await qrFindLot(qrKey),list=v1310GradesOf(lot);
+  if(!lot||!list)return alert("規格別ロットが見つかりません");
+  const names=[...new Set([...(v1310GradesForItem(lot.item_name)||[]),...list.map(g=>g.grade)])];
+  setScreen("v1310FixGradesPage",[qrKey]);
+  pageShell("規格の内訳を直す",`${lot.item_name} ／ ${lot.lot_no||""}`,`<div class="card"><div class="small">入庫したときの規格の数を打ち間違えたときに使います。合計（${fmt(Number(lot.current_qty))} ${esc(qrLotUnit(lot))}）は変えられません。出庫・廃棄・調整をしたあとのロットは直せないため、実数調整を使ってください。</div><div class="v1310GradeGrid" style="margin-top:10px">${names.map(g=>{const x=list.find(r=>r.grade===g);return`<label class="v1310GradeCell"><span>${esc(g)}</span><input class="input v1310FixGrade" data-grade="${esc(g)}" type="text" inputmode="numeric" value="${x?esc(x.current_qty):""}" placeholder="0"></label>`}).join("")}</div><button class="btn blue" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','v1310SaveFixGrades',[qrKey])}>この内訳で保存</button></div>`);
+}
+async function v1310SaveFixGrades(qrKey){
+  try{
+    const list=[];
+    for(const g of v1310ReadGradeInputs("v1310FixGrade")){const n=v1310ValidQty(g.raw);if(n===null)throw new Error(`規格「${g.grade}」は数字だけで入力してください`);if(n>0)list.push({grade:g.grade,qty:n})}
+    if(!list.length)throw new Error("規格ごとの数を入力してください");
+    const ans=await callRpc("fix_qr_lot_grades_v1300",{p_qr_key:qrKey,p_grades:list});
+    if(!ans?.ok)throw new Error(ans?.message||"保存できませんでした");
+    v1310GradesAt=0;alert("規格の内訳を直しました。");
+    return qrLotDetail(qrKey);
+  }catch(e){alert(e.message||e)}
+}
+Object.assign(window,{v1310FixGradesPage,v1310SaveFixGrades});
+
+/* 貼り紙：右側のQRの下に規格ごとのケース数 */
+function v1310PosterGradesHtml(lot){
+  const list=v1310GradesOf(lot);if(!list)return"";
+  const rows=list.filter(g=>Number(g.received_qty)>0),total=rows.reduce((a,g)=>a+Number(g.received_qty||0),0);
+  const td="border:2px solid #000;padding:3px 6px;font-size:20px;font-weight:900;line-height:1.1";
+  return`<table class="posterGrades" style="width:150px;margin-top:10px;border-collapse:collapse;color:#000"><tr><th style="${td};background:#e5e7eb;text-align:left">規格</th><th style="${td};background:#e5e7eb;text-align:right">${esc(qrLotUnit(lot)||"ケース")}</th></tr>${rows.map(g=>`<tr><td style="${td}">${esc(g.grade)}</td><td style="${td};text-align:right">${fmt(Number(g.received_qty))}</td></tr>`).join("")}<tr><td style="${td}">合計</td><td style="${td};text-align:right">${fmt(total)}</td></tr></table>`;
+}
+window.v1310PosterGradesHtml=v1310PosterGradesHtml;
+const v1310PrintBase=qrPrintLot;
+qrPrintLot=async function(...args){await v1310LoadGrades(true);return v1310PrintBase.apply(this,args)};
+window.qrPrintLot=qrPrintLot;
+
+/* 月末棚卸し：規格別ロットは規格ごとに1行 */
+function v1310EndOfDayIso(dayKey){return new Date(`${dayKey}T23:59:59.999+09:00`).toISOString()}
+async function v1310GradeMovesAfter(lotIds,dayKey){
+  if(!lotIds.length)return[];
+  const out=[],iso=v1310EndOfDayIso(dayKey);
+  for(let i=0;i<lotIds.length;i+=50){
+    const ids=lotIds.slice(i,i+50).join(",");
+    const rows=await v1300SelectBase("qr_lot_movements",`select=lot_id,occurred_at,created_at,operation_meta&lot_id=in.(${ids})&occurred_at=gt.${encodeURIComponent(iso)}&limit=1000`);
+    out.push(...(rows||[]));
+  }
+  return out;
+}
+function v1310GradeQtyAt(list,moves,lotId){
+  const q={};for(const g of list)q[g.grade]=Number(g.current_qty||0);
+  for(const m of moves){if(String(m.lot_id)!==String(lotId))continue;const gs=m.operation_meta&&m.operation_meta.grades;if(!Array.isArray(gs))continue;for(const d of gs)if(d&&d.grade in q)q[d.grade]-=Number(d.delta||0)}
+  return q;
+}
+if(typeof v188QrLines==="function"){
+  const v1310QrLinesBase=v188QrLines;
+  v188QrLines=async function(room,asOfKey){
+    const rows=await v1310QrLinesBase.apply(this,arguments);
+    await v1310LoadGrades(true);
+    const graded=rows.filter(r=>r.lotId&&v1310GradeMap.has(String(r.lotId)));
+    if(!graded.length)return rows;
+    const moves=await v1310GradeMovesAfter([...new Set(graded.map(r=>String(r.lotId)))],asOfKey);
+    const out=[];
+    for(const row of rows){
+      const list=row.lotId?v1310GradeMap.get(String(row.lotId)):null;
+      if(!list){out.push(row);continue}
+      const q=v1310GradeQtyAt(list,moves,row.lotId);
+      for(const g of list){
+        const n=yen(q[g.grade]||0);if(!(n>0))continue;
+        out.push({...row,lineId:newId(),grade:g.grade,itemName:`${row.itemName}（${g.grade}）`,systemQty:n});
+      }
+    }
+    return out;
+  };
+  window.v188QrLines=v188QrLines;
+}
+if(typeof v188LoadQrLive==="function"){
+  const v1310LiveLoadBase=v188LoadQrLive;
+  v188LoadQrLive=async function(...a){const r=await v1310LiveLoadBase.apply(this,a);await v1310LoadGrades(true);return r};
+  window.v188LoadQrLive=v188LoadQrLive;
+}
+if(typeof v188LiveQty==="function"){
+  const v1310LiveBase=v188LiveQty;
+  v188LiveQty=function(line){
+    if(line&&line.type==='qr'&&line.grade){
+      const list=v1310GradeRows.filter(r=>String(r.qr_key)===String(line.qrKey));
+      const g=list.find(r=>r.grade===line.grade);
+      return g?yen(Number(g.current_qty||0)):(list.length?0:null);
+    }
+    return v1310LiveBase(line);
+  };
+  window.v188LiveQty=v188LiveQty;
+}
+
+/* 在庫表：規格別ロットの品目は、セルに規格ごとのケース数も出す */
+const v1310ByDayBase=qrInventoryKgByItemForRoomByDay;
+qrInventoryKgByItemForRoomByDay=async function(room,dayKeys){
+  const result=await v1310ByDayBase.apply(this,arguments);
+  try{
+    await v1310LoadGrades(true);
+    if(!v1310GradeMap.size||!result)return result;
+    const ids=[...v1310GradeMap.keys()];
+    const lots=[];
+    for(let i=0;i<ids.length;i+=50){const rows=await v1300SelectBase("qr_lots",`select=*&id=in.(${ids.slice(i,i+50).join(",")})&limit=1000`);lots.push(...(rows||[]))}
+    const locations=qrCountLocations(room),days=[...new Set(dayKeys||[])];
+    const add={},addStand={};
+    for(let i=0;i<lots.length;i+=40){
+      const chunk=lots.slice(i,i+40),moves=await v1300SelectBase("qr_lot_movements",`select=*&lot_id=in.(${chunk.map(l=>l.id).join(",")})&order=created_at.asc&limit=1000`);
+      for(const lot of chunk){
+        const lotMoves=(moves||[]).filter(m=>String(m.lot_id)===String(lot.id)),list=v1310GradeMap.get(String(lot.id))||[];
+        const resolved=qrResolveInventoryItem(lot),rule=resolved.rule||qrManagedRuleForName(lot.item_name);
+        for(const dayKey of days){
+          const snap=v1101LotSnapshotAtDayEnd(lot,lotMoves,dayKey);
+          if(!snap||!locations.includes(snap.location)||!(snap.qty>0))continue;
+          const iso=v1310EndOfDayIso(dayKey),q=v1310GradeQtyAt(list,lotMoves.filter(m=>new Date(m.occurred_at||m.created_at)>new Date(iso)),lot.id);
+          let target;
+          if(resolved.item){add[resolved.item.id]=add[resolved.item.id]||{};target=add[resolved.item.id]}
+          else if(rule){const k=qrStandaloneInventoryIdentity(lot,rule).key;addStand[k]=addStand[k]||{};target=addStand[k]}
+          else continue;
+          target[dayKey]=target[dayKey]||{};
+          for(const g of list)target[dayKey][g.grade]=(target[dayKey][g.grade]||0)+Number(q[g.grade]||0);
+        }
+      }
+    }
+    const order=g=>{for(const l of v1310GradeMap.values()){const x=l.find(r=>r.grade===g);if(x)return Number(x.sort_order||0)}return 999};
+    const put=(dest,src)=>{for(const[id,byDay]of Object.entries(src)){dest[id]=dest[id]||{};for(const[day,grades]of Object.entries(byDay)){const t=Object.entries(grades).filter(([,n])=>n>0).sort((a,b)=>order(a[0])-order(b[0])).map(([g,n])=>`${g}${fmt(n)}`).join("・");if(!t)continue;dest[id][day]=dest[id][day]||[];dest[id][day].push(`規格 ${t}（ケース）`)}}};
+    result.specs=result.specs||{};result.standaloneSpecs=result.standaloneSpecs||{};
+    put(result.specs,add);put(result.standaloneSpecs,addStand);
+  }catch(e){console.warn("[規格別ロット] 在庫表の規格表示を作れません",e)}
+  return result;
+};
+window.qrInventoryKgByItemForRoomByDay=qrInventoryKgByItemForRoomByDay;
+
+/* 製造日報：使用原料に規格を選ぶ */
+const v1310TrimRenderBase=v1115RenderTrimming;
+v1115RenderTrimming=function(...a){
+  const r=v1310TrimRenderBase.apply(this,a);
+  try{
+    for(const line of v1115Trimming.lots||[]){
+      const mode=document.getElementById(`trimLotMode_${line.id}`);if(!mode||document.getElementById(`v1310TrimGrade_${line.id}`))continue;
+      const list=v1310GradeRows.filter(g=>String(g.qr_key)===String(line.qrKey));if(!list.length)continue;
+      const label=mode.previousElementSibling&&mode.previousElementSibling.tagName==="LABEL"?mode.previousElementSibling:mode;
+      label.insertAdjacentHTML("beforebegin",`<label class="label" style="margin-top:7px">規格</label><select id="v1310TrimGrade_${line.id}" class="input" ${seikaEventAttrs('change','v1310SetTrimGrade',[line.id])}><option value="">規格を選ぶ</option>${list.map(g=>`<option value="${esc(g.grade)}" ${line.grade===g.grade?"selected":""}>${esc(g.grade)}（残 ${fmt(Number(g.current_qty))}）</option>`).join("")}</select>`);
+    }
+  }catch(e){console.warn("[規格別ロット]",e)}
+  return r;
+};
+window.v1115RenderTrimming=v1115RenderTrimming;
+function v1310SetTrimGrade(id){const line=(v1115Trimming.lots||[]).find(x=>x.id===id);if(line)line.grade=document.getElementById(`v1310TrimGrade_${id}`)?.value||""}
+window.v1310SetTrimGrade=v1310SetTrimGrade;
+async function v1310SaveTrimGrades(ans,args){
+  const lines=(typeof v1115Trimming!=="undefined"&&v1115Trimming.lots||[]).filter(x=>x.grade);
+  if(!lines.length)return;
+  const jobId=ans.job?.id||ans.job_id||ans.new_job_id||ans.id;
+  if(!jobId)return;
+  await v1310RpcBase("set_trimming_job_lot_grades_v1300",{p_job_id:String(jobId),p_grades:lines.map(x=>({qr_key:x.qrKey,grade:x.grade}))});
+}
+
+/* 規格別ロットの設定画面（管理者・青果社員が変更、ほかの人は見るだけ） */
+function v1310CanEditGrades(){return["admin","worker"].includes(db?.role)}
+async function qrGradeSettingsPage(msg=""){
+  setScreen("qrGradeSettingsPage",[msg]);
+  pageShell("規格別ロットの設定","1ロットに複数の規格を入れる品目",'<div class="card"><div class="notice">読み込んでいます。</div></div>');
+  await v1310LoadGradeSettings(true);
+  const edit=v1310CanEditGrades()&&v1310GradeSource==="db";
+  const rows=v1310GradeSettings.map((s,i)=>edit
+    ?`<div class="card"><div class="v1310GsRow"><input id="v1310GN_${i}" class="input" value="${esc(s.item_name)}" aria-label="品目名"><label class="v1310GsOn"><input id="v1310GE_${i}" type="checkbox" ${s.enabled!==false?"checked":""}> 使う</label></div><label class="label">規格（「、」で区切る・並び順のとおり表示）</label><input id="v1310GG_${i}" class="input" value="${esc((s.grades||[]).join("、"))}"><div class="v1310GsBtns"><button class="btn blue" ${seikaEventAttrs('click','v1310SaveGradeSetting',[i])}>保存</button><button class="btn danger" ${seikaEventAttrs('click','v1310DeleteGradeSetting',[i])}>削除</button></div></div>`
+    :`<div class="card"><b>${esc(s.item_name)}</b>${s.enabled===false?'<span class="small">（使わない）</span>':""}<div class="small" style="margin-top:4px">規格：${esc((s.grades||[]).join("、"))}</div></div>`).join("");
+  const add=edit?`<div class="card"><b>品目を追加</b><input id="v1310GN_new" class="input" placeholder="品目名（QR管理品目と同じ名前）" style="margin-top:6px"><label class="label">規格（「、」で区切る）</label><input id="v1310GG_new" class="input" placeholder="例：L、M、S"><button class="btn green" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1310AddGradeSetting',[])}>追加</button></div>`:"";
+  const info=`<div class="card"><b>規格別ロットとは</b><div class="small" style="margin-top:4px">1パレットに規格がまざって入荷する品目（胡瓜など）を、1つのロットで管理します。入庫のときに規格ごとのケース数を入れ、出庫・廃棄・実数調整も規格ごとに行います。貼り紙・在庫表・月末棚卸し・棚卸表Excelにも規格ごとの数が出ます。</div>${v1310GradeSource==="db"?"":`<div class="err" style="margin-top:8px">規格別ロットの保存先がまだ準備されていません（SQL 013 の実行が必要です）。</div>`}${v1310CanEditGrades()?"":`<div class="small" style="margin-top:8px">変更できるのは管理者・青果社員です。</div>`}<div class="small" style="margin-top:8px">設定を変えても、登録済みのロットの規格は変わりません。</div></div>`;
+  pageShell("規格別ロットの設定",`${v1310GradeSettings.length}品目`,`${msg?`<div class="ok">${esc(msg)}</div>`:""}${info}${rows}${add}`);
+}
+function v1310SplitGrades(id){return String(document.getElementById(id)?.value||"").split(/[、,，\s]+/).map(s=>s.trim()).filter(Boolean)}
+async function v1310SaveGradeSetting(i){
+  const s=v1310GradeSettings[i];if(!s)return qrGradeSettingsPage();
+  try{
+    const name=String(document.getElementById(`v1310GN_${i}`)?.value||"").trim(),enabled=!!document.getElementById(`v1310GE_${i}`)?.checked,grades=v1310SplitGrades(`v1310GG_${i}`);
+    const ans=await callRpc("save_qr_item_grade_setting_v1300",{p_item_name:name,p_enabled:enabled,p_grades:grades,p_old_name:s.item_name});
+    if(!ans?.ok)throw new Error(ans?.message||"保存できませんでした");
+    return qrGradeSettingsPage(`${name}を保存しました`);
+  }catch(e){alert(e.message||e)}
+}
+async function v1310AddGradeSetting(){
+  try{
+    const name=String(document.getElementById("v1310GN_new")?.value||"").trim(),grades=v1310SplitGrades("v1310GG_new");
+    if(!name)throw new Error("品目名を入力してください");
+    if(!qrIsManagedItemName(name))throw new Error("QR管理品目の名前を入力してください");
+    const ans=await callRpc("save_qr_item_grade_setting_v1300",{p_item_name:name,p_enabled:true,p_grades:grades,p_old_name:null});
+    if(!ans?.ok)throw new Error(ans?.message||"保存できませんでした");
+    return qrGradeSettingsPage(`${name}を追加しました`);
+  }catch(e){alert(e.message||e)}
+}
+async function v1310DeleteGradeSetting(i){
+  const s=v1310GradeSettings[i];if(!s)return;
+  if(!confirm(`${s.item_name}を規格別ロットの設定から削除しますか？\n登録済みのロットの規格は消えません。`))return;
+  try{await callRpc("delete_qr_item_grade_setting_v1300",{p_item_name:s.item_name});return qrGradeSettingsPage(`${s.item_name}を削除しました`)}catch(e){alert(e.message||e)}
+}
+Object.assign(window,{qrGradeSettingsPage,v1310SaveGradeSetting,v1310AddGradeSetting,v1310DeleteGradeSetting});
+function v1310InjectHome(tries=0){
+  if(currentScreen!=="qrHome")return;
+  const anchor=document.getElementById("v1250LimitsBtn");
+  if(!anchor){if(tries<40)setTimeout(()=>v1310InjectHome(tries+1),100);return}
+  if(document.getElementById("v1310GradeBtn"))return;
+  const b=v1250HomeButton("v1310GradeBtn","homeBtnGrade","qrGradeSettingsPage",'規格別ロットの設定<br><span style="font-size:15px;font-weight:800">胡瓜など規格をまとめて1ロット</span>');
+  anchor.parentNode.insertBefore(b,anchor.nextSibling);
+}
+const v1310HomeBase=qrHome;
+qrHome=async function(...a){const r=await v1310HomeBase.apply(this,a);v1310InjectHome();v1310LoadGradeSettings();return r};
+window.qrHome=qrHome;
+
+/* 入庫画面を開いたときに規格設定を読み込む */
+setTimeout(()=>{v1310LoadGradeSettings().then(()=>v1310InjectInboundGrades()).catch(()=>{})},1500);
+
+/* QRロットを読み込んだら、規格の数も読み込む（30秒ごと） */
+const v1310QrSelectBase=qrSelect;
+qrSelect=async function(table,query){
+  const rows=await v1310QrSelectBase.apply(this,arguments);
+  if(table==="qr_lots"&&Array.isArray(rows)&&rows.length)await v1310LoadGrades().catch(()=>{});
+  return rows;
+};
+window.qrSelect=qrSelect;
+(function(){
+  const st=document.createElement("style");
+  st.textContent=`.v1310GradeBox{margin-top:10px;padding:12px;border:2px solid #ca8a04;border-radius:14px;background:#fefce8}
+.v1310GradeGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:8px}
+.v1310GradeCell{display:grid;gap:4px;font-weight:900}
+.v1310GradeCell span{display:flex;justify-content:space-between;gap:4px}
+.v1310GradeCell small{font-weight:700;color:#6b7280}
+.v1310GradeSum{margin-top:8px;font-weight:900;font-size:17px}
+.v1310Bad{color:#b91c1c}
+.v1310Locked{background:#f3f4f6 !important;color:#111 !important}
+.v1310LotGrades{margin-top:6px;padding:6px 10px;border-radius:10px;background:#fef9c3;color:#713f12;font-weight:800}
+.v1310GsRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+.v1310GsOn{display:flex;gap:6px;align-items:center;font-weight:800}
+.v1310GsOn input{width:22px;height:22px}
+.v1310GsBtns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.v1310GsBtns .btn{margin:0}
+.homeBtnGrade{background:linear-gradient(90deg,#713f12 0%,#ca8a04 52%,#fde68a 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.3) !important;border-color:transparent !important;}`;
+  document.head.appendChild(st);
+  try{
+    if(typeof V198_GUIDE_SECTIONS!=="undefined"){
+      V198_GUIDE_SECTIONS.v1310Grades={title:"規格別ロット（胡瓜など）",where:"ホーム → QR在庫管理 → QR入庫 ／ 規格別ロットの設定",
+        steps:["胡瓜は、1パレットに入っている規格（AL・BL・丸・B・Aなど）をまとめて1つのロットで入庫します。品名で胡瓜を選ぶと「規格ごとのケース数」の欄が出るので、入っている規格の数を入れます（数量は合計が自動で入ります）。産地・仕入先が違うものは別のロットにします。",
+               "貼り紙には、右側のQRコードの下に規格ごとのケース数と合計が入ります。",
+               "出庫・廃棄・実数調整では、規格ごとに数を入れます。複数の規格をまとめて1回で処理できます（例：BL 5、丸 2）。実数調整は、数え直した数を規格ごとに入れます。",
+               "QRロット一覧・ロット詳細には、規格ごとの残りが出ます。入庫直後に規格の数を打ち間違えたときは、ロット詳細の「規格の内訳を直す」で直せます（出庫などをしたあとは実数調整を使います）。",
+               "在庫表では胡瓜のセルに合計kgと規格ごとのケース数が出ます。月末棚卸しと棚卸表Excelは「胡瓜（BL）」のように規格ごとに1行で出ます。",
+               "製造日報で胡瓜のロットを使用原料に追加したときは、規格も選びます。",
+               "品質評価はロット単位です。規格を伝えたいときはメモに書きます。",
+               "規格を使う品目と規格の候補は「規格別ロットの設定」で変更・追加できます（管理者・青果社員）。"],
+        check:"入庫のとき、規格ごとの数の合計がパレットのケース数と合っているか確認します。",
+        caution:"規格別ロットは「QR連続出庫」では出庫できません。通常の出庫で規格ごとに数を入れてください。古い画面のまま操作すると保存されません（再読み込みしてください）。"};
+      if(typeof V198_ROLE_ADD!=="undefined")for(const k of Object.keys(V198_ROLE_ADD))if(Array.isArray(V198_ROLE_ADD[k])&&V198_ROLE_ADD[k].includes("v1250StorageLimits")&&!V198_ROLE_ADD[k].includes("v1310Grades"))V198_ROLE_ADD[k].push("v1310Grades");
     }
   }catch(e){}
 })();
