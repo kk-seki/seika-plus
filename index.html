@@ -14685,6 +14685,289 @@ try{
   }
 }catch(e){}
 
+
+
+/* ===== v1.199-c36 ①保管期限超過の強い確認・時期による特別期間 ②品目一覧の全件表示・1000件上限の点検 ===== */
+
+/* --- ② サーバーは1回に1000件までしか返さないため、1000件を超える読み込みは分けて全部読む --- */
+const V1300_PAGE=1000;
+const v1300SelectBase=qrSelect;
+qrSelect=async function(table,query="select=*"){
+  const q=String(query||"");
+  const m=q.match(/(?:^|&)limit=(\d+)(?:&|$)/);
+  const want=m?Number(m[1]):0;
+  let rows;
+  if(want>V1300_PAGE&&!/(?:^|&)offset=/.test(q)){
+    let base=q.replace(/(^|&)limit=\d+(?=&|$)/,"$1").replace(/&&+/g,"&").replace(/^&|&$/g,"");
+    if(!/(?:^|&)order=/.test(base)&&/^(qr_lots|qr_lot_movements)$/.test(table))base+=(base?"&":"")+"order=id.asc";
+    rows=[];
+    for(let off=0;off<want;off+=V1300_PAGE){
+      const n=Math.min(V1300_PAGE,want-off);
+      const page=await v1300SelectBase(table,`${base}&limit=${n}&offset=${off}`);
+      if(!Array.isArray(page))break;
+      rows.push(...page);
+      if(page.length<n)break;
+    }
+  }else rows=await v1300SelectBase(table,query);
+  return rows;
+};
+window.qrSelect=qrSelect;
+
+/* QR在庫処理の品目一覧：在庫のあるロットだけをサーバーに頼み、全部の品目を出す */
+v1156LoadQrSearchItems=async function(selectedItem='',autoSearch=false){
+  const select=document.getElementById('qrManualItem');
+  if(!select)return;
+  try{
+    const lots=await qrSelect('qr_lots','select=item_name,current_qty&active=eq.true&current_qty=gt.0&order=item_name.asc&limit=20000');
+    const names=[...new Set(lots.filter(l=>Number(l.current_qty||0)>0).map(v1156QrItemName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
+    select.innerHTML=`<option value="">品目を選択してください</option>${names.map(name=>`<option value="${esc(name)}" ${name===selectedItem?'selected':''}>${esc(name)}</option>`).join('')}`;
+    select.disabled=false;
+    if(selectedItem&&!names.includes(selectedItem))select.insertAdjacentHTML('beforeend',`<option value="${esc(selectedItem)}" selected>${esc(selectedItem)}</option>`);
+    if(autoSearch&&selectedItem)await qrRunManualSearch(v1156QrSearchState.kind);
+  }catch(e){
+    select.innerHTML='<option value="">品目を取得できませんでした</option>';
+    const box=document.getElementById('qrManualResults');if(box)box.innerHTML=`<div class="err">品目一覧を取得できませんでした。${esc(e.message||e)}</div>`;
+  }
+};
+window.v1156LoadQrSearchItems=v1156LoadQrSearchItems;
+
+/* --- ① 保管期限を過ぎたものを使うときの、画面いっぱいの確認 --- */
+let v1300GuardBypass=false;
+function v1300StrongConfirm(lot,info,what,opt={}){
+  return new Promise(resolve=>{
+    document.getElementById("v1300Guard")?.remove();
+    const can=v1250CanConfirm(),over=Math.max(0,info.elapsed-info.limit);
+    const d=String(lot.received_date||"").replaceAll("-","/");
+    const box=document.createElement("div");
+    box.id="v1300Guard";box.className="v1300Guard";box.setAttribute("role","alertdialog");box.setAttribute("aria-modal","true");
+    box.innerHTML=`<div class="v1300GuardIn"><div class="v1300GuardHead">${esc(opt.head||"保管期限を過ぎています")}</div>
+<div class="v1300GuardItem">${esc(lot.item_name||"")}</div>
+<div class="v1300GuardNum">入荷から <b>${esc(info.elapsed)}日</b>（目安 ${esc(info.limit)}日）<br><span>${over>0?`目安より ${esc(over)}日 超過`:"今日が保管目安の日数です"}</span></div>
+<div class="v1300GuardSub">ロット ${esc(lot.lot_no||lot.qr_key||"")}${d?` ／ 入荷日 ${esc(d)}`:""}</div>
+${can?`<div class="v1300GuardAsk">${esc(opt.ask||"実物を見て、使える品質か確認してください。")}<br>確認した人の名前が記録されます。</div>
+<label class="v1300GuardChk"><input type="checkbox" id="v1300GuardChk"> 実物を確認し、使える品質であることを確認しました</label>
+<div class="v1300GuardBtns"><button type="button" class="btn v1300GuardNo" id="v1300GuardNo">やめる</button><button type="button" class="btn v1300GuardYes" id="v1300GuardYes" disabled>${esc(opt.yes||`確認して${what}する`)}</button></div>`
+:`<div class="v1300GuardAsk">${esc(what)}できません。青果社員に相談してください。</div><div class="v1300GuardBtns"><button type="button" class="btn v1300GuardNo" id="v1300GuardNo" style="grid-column:1/-1">閉じる</button></div>`}</div>`;
+    document.body.appendChild(box);
+    const done=v=>{box.remove();resolve(v)};
+    box.querySelector("#v1300GuardNo").addEventListener("click",()=>done(false));
+    const chk=box.querySelector("#v1300GuardChk"),yes=box.querySelector("#v1300GuardYes");
+    if(chk&&yes){chk.addEventListener("change",()=>{yes.disabled=!chk.checked});yes.addEventListener("click",()=>{if(chk.checked)done(true)})}
+    setTimeout(()=>box.querySelector("#v1300GuardNo")?.focus(),50);
+  });
+}
+async function v1300GuardUseAsync(lot,what){
+  const info=v1250Info(lot);
+  if(!info||info.effective<5)return true;
+  const ok=await v1300StrongConfirm(lot,info,what);
+  if(!ok)return false;
+  callRpc("confirm_qr_lot_storage_check_v1250",{p_lot_id:String(lot.id),p_note:`使用不可/保留を確認して${what}`}).catch(e=>console.warn("[保管期間アラート] 確認記録を保存できません",e));
+  return true;
+}
+const v1300GuardSyncBase=v1250GuardUse;
+v1250GuardUse=function(lot,what){if(v1300GuardBypass)return true;return v1300GuardSyncBase(lot,what)};
+window.v1250GuardUse=v1250GuardUse;
+const v1300AddTrimBase=v195AddTrimLotObject;
+v195AddTrimLotObject=function(lot){
+  if(v1300GuardBypass||!lot)return v1300AddTrimBase.apply(this,arguments);
+  const info=v1250Info(lot);
+  if(!info||info.effective<5)return v1300AddTrimBase.apply(this,arguments);
+  if(v1115Trimming.lots.some(x=>x.qrKey===lot.qr_key))throw new Error('このQRロットは追加済みです');
+  v1300GuardUseAsync(lot,"使用原料に追加").then(ok=>{
+    if(!ok)return;
+    v1300GuardBypass=true;
+    try{v1300AddTrimBase(lot);v1115RenderTrimming()}catch(e){alert(e.message||'ロットを追加できませんでした')}
+    finally{v1300GuardBypass=false}
+  });
+};
+window.v195AddTrimLotObject=v195AddTrimLotObject;
+
+/* --- ① 時期による特別期間（毎年くり返す・入荷日で判定） --- */
+let v1300Seasons=[],v1300SeasonsAt=0,v1300SeasonSource="none";
+async function v1300LoadSeasons(force=false){
+  if(!force&&Date.now()-v1300SeasonsAt<300000)return v1300Seasons;
+  try{
+    const rows=await qrSelect("qr_storage_limit_seasons_v1300","select=id,item_name,start_md,end_md,limit_days,note,updated_by_name,updated_at&order=item_name.asc,start_md.asc");
+    v1300Seasons=Array.isArray(rows)?rows:[];v1300SeasonSource="db";
+  }catch(e){v1300Seasons=[];v1300SeasonSource="none"}
+  v1300SeasonsAt=Date.now();
+  return v1300Seasons;
+}
+function v1300CanonKey(name){
+  const raw=String(name||"").trim();if(!raw)return"";
+  const n=qrNormalizeName(raw),plain=qrNormalizeName(raw.replace(/[（(][^）)]*[）)]/g,""));
+  const alias={};
+  for(const[canon,list]of Object.entries(V1250_ALIASES))for(const a of list)alias[qrNormalizeName(a)]=qrNormalizeName(canon);
+  if(typeof v1200QrIsPotatoName==="function"&&v1200QrIsPotatoName(raw))return qrNormalizeName(v1250PotatoName);
+  for(const k of[n,plain]){if(alias[k])return alias[k];if(V1250_LIMIT_MAP.has(k))return k}
+  const hit=V1250_LIMIT_KEYS.find(k=>plain.includes(k)||n.includes(k));
+  return hit?(alias[hit]||hit):plain;
+}
+function v1300InSeason(md,s){
+  if(!md)return false;
+  return s.start_md<=s.end_md?(md>=s.start_md&&md<=s.end_md):(md>=s.start_md||md<=s.end_md);
+}
+function v1300SeasonFor(lot){
+  if(!v1300Seasons.length||!lot)return null;
+  const md=String(lot.received_date||"").slice(5,10);if(!/^\d\d-\d\d$/.test(md))return null;
+  const key=v1300CanonKey(lot.item_name);
+  return v1300Seasons.find(s=>v1300CanonKey(s.item_name)===key&&v1300InSeason(md,s))||null;
+}
+const v1300InfoBase=v1250Info;
+v1250Info=function(lot){
+  const season=v1300SeasonFor(lot);
+  if(!season)return v1300InfoBase(lot);
+  if(!lot||Number(lot.current_qty??0)<=0)return null;
+  const limit=Number(season.limit_days),elapsed=qrLotAgeDays(lot),level=v1250LevelOf(elapsed,limit);
+  const check=level===4&&v1250ChecksDate===todayKey()?v1250Checks.get(String(lot.id))||null:null;
+  return{level,effective:check?3:level,elapsed,limit,check,season};
+};
+window.v1250Info=v1250Info;
+const v1300LoadLimitsBase=v1250LoadLimits;
+v1250LoadLimits=async function(force=false){const r=await v1300LoadLimitsBase(force);await v1300LoadSeasons(force);return r};
+window.v1250LoadLimits=v1250LoadLimits;
+v1250CanEditLimits=function(){return["admin","worker","buyer"].includes(db?.role)};
+window.v1250CanEditLimits=v1250CanEditLimits;
+function v1300MdText(md){const[m,d]=String(md||"").split("-");return m&&d?`${Number(m)}月${Number(d)}日`:"-"}
+function v1300MdSelects(prefix,md){
+  const[m,d]=String(md||"").split("-").map(Number);
+  const ms=Array.from({length:12},(_,i)=>i+1).map(i=>`<option value="${i}" ${i===m?"selected":""}>${i}月</option>`).join("");
+  const ds=Array.from({length:31},(_,i)=>i+1).map(i=>`<option value="${i}" ${i===d?"selected":""}>${i}日</option>`).join("");
+  return`<select id="${prefix}M" class="input" aria-label="月">${ms}</select><select id="${prefix}D" class="input" aria-label="日">${ds}</select>`;
+}
+function v1300ReadMd(prefix){
+  const m=Number(document.getElementById(prefix+"M")?.value),d=Number(document.getElementById(prefix+"D")?.value);
+  const max=[31,29,31,30,31,30,31,31,30,31,30,31][m-1];
+  if(!m||!d||d>max)throw new Error("期間の日付を確認してください");
+  return`${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+}
+function v1300SeasonCardHtml(){
+  const edit=v1250CanEditLimits()&&v1300SeasonSource==="db";
+  const names=[...new Set(v1250LimitRows.map(r=>r.item_name))];
+  const opts=sel=>names.map(n=>`<option value="${esc(n)}" ${n===sel?"selected":""}>${esc(n)}</option>`).join("");
+  const rows=v1300Seasons.map((s,i)=>edit
+    ?`<div class="v1300SeasonRow"><select id="v1300SN_${i}" class="input" aria-label="品目">${opts(s.item_name)}</select><div class="v1300Md">${v1300MdSelects(`v1300SS_${i}`,s.start_md)}<span>〜</span>${v1300MdSelects(`v1300SE_${i}`,s.end_md)}</div><div class="v1300SeasonDays"><input id="v1300SD_${i}" class="input" type="number" inputmode="numeric" min="1" max="365" value="${esc(s.limit_days)}" aria-label="日数"><span>日</span></div><input id="v1300SM_${i}" class="input" value="${esc(s.note||"")}" placeholder="メモ（例：端境期）" aria-label="メモ"><div class="v1300SeasonBtns"><button class="btn blue" ${seikaEventAttrs('click','v1300SaveSeason',[i])}>保存</button><button class="btn danger" ${seikaEventAttrs('click','v1300DeleteSeason',[i])}>削除</button></div></div>`
+    :`<div class="v1250LimitRow v1250LimitView"><b>${esc(s.item_name)}</b><span>${esc(v1300MdText(s.start_md))}〜${esc(v1300MdText(s.end_md))}は ${esc(s.limit_days)}日${s.note?`（${esc(s.note)}）`:""}</span></div>`).join("");
+  const add=edit?`<div class="v1300SeasonRow v1300SeasonNew"><b>特別期間を追加</b><select id="v1300SN_new" class="input" aria-label="品目"><option value="">品目を選ぶ</option>${opts("")}</select><div class="v1300Md">${v1300MdSelects("v1300SS_new","")}<span>〜</span>${v1300MdSelects("v1300SE_new","")}</div><div class="v1300SeasonDays"><input id="v1300SD_new" class="input" type="number" inputmode="numeric" min="1" max="365" placeholder="日数" aria-label="日数"><span>日</span></div><input id="v1300SM_new" class="input" placeholder="メモ（例：端境期・相場高）" aria-label="メモ"><button class="btn green" ${seikaEventAttrs('click','v1300AddSeason',[])}>追加</button></div>`:"";
+  const note=v1300SeasonSource==="db"?"":`<div class="err" style="margin-top:8px">特別期間の保存先がまだ準備されていません（SQL 012 の実行が必要です）。</div>`;
+  return`<div class="card" id="v1300SeasonCard"><b>時期による特別期間</b><div class="small" style="margin:4px 0 8px">端境期や相場が高い時期など、決まった期間だけ保管目安を変えられます。毎年くり返し使えます。ロットの<b>入荷日</b>が期間に入っていれば、その日数で判定します（年をまたぐ期間も登録できます。例：12月1日〜2月28日）。</div>${note}${rows||'<div class="small">登録されている特別期間はありません。</div>'}${add}</div>`;
+}
+const v1300LimitsPageBase=qrStorageLimitsPage;
+qrStorageLimitsPage=async function(...args){
+  await v1300LoadSeasons(true);
+  const r=await v1300LimitsPageBase.apply(this,args);
+  if(currentScreen==="qrStorageLimitsPage"){
+    const wrap=document.querySelector(".wrap")||document.body;
+    const cards=[...wrap.querySelectorAll(".card")];
+    const anchor=cards[1]||cards[0];
+    if(anchor&&!document.getElementById("v1300SeasonCard"))anchor.insertAdjacentHTML("afterend",v1300SeasonCardHtml());
+    wrap.querySelectorAll(".small").forEach(el=>{if(el.textContent.trim()==="変更できるのは管理者・青果社員です。")el.textContent="変更できるのは管理者・青果社員・仕入れ担当者です。"});
+  }
+  return r;
+};
+window.qrStorageLimitsPage=qrStorageLimitsPage;
+function v1300ReadSeason(k){
+  const name=String(document.getElementById(`v1300SN_${k}`)?.value||"").trim();
+  if(!name)throw new Error("品目を選んでください");
+  const start=v1300ReadMd(`v1300SS_${k}`),end=v1300ReadMd(`v1300SE_${k}`);
+  const days=v1250ReadDays(`v1300SD_${k}`);
+  return{p_item_name:name,p_start_md:start,p_end_md:end,p_limit_days:days,p_note:String(document.getElementById(`v1300SM_${k}`)?.value||"").trim()};
+}
+async function v1300SaveSeason(i){
+  const s=v1300Seasons[i];if(!s)return qrStorageLimitsPage();
+  try{const a=v1300ReadSeason(i);await v1250LimitRpc("save_qr_storage_season_v1300",{p_id:s.id,...a});return qrStorageLimitsPage(`${a.p_item_name}の特別期間を保存しました`)}
+  catch(e){alert(e.message||e)}
+}
+async function v1300AddSeason(){
+  try{const a=v1300ReadSeason("new");await v1250LimitRpc("save_qr_storage_season_v1300",{p_id:null,...a});return qrStorageLimitsPage(`${a.p_item_name}の特別期間（${v1300MdText(a.p_start_md)}〜${v1300MdText(a.p_end_md)}：${a.p_limit_days}日）を追加しました`)}
+  catch(e){alert(e.message||e)}
+}
+async function v1300DeleteSeason(i){
+  const s=v1300Seasons[i];if(!s)return;
+  if(!confirm(`${s.item_name}の特別期間（${v1300MdText(s.start_md)}〜${v1300MdText(s.end_md)}）を削除しますか？`))return;
+  try{await v1250LimitRpc("delete_qr_storage_season_v1300",{p_id:s.id});return qrStorageLimitsPage("特別期間を削除しました")}
+  catch(e){alert(e.message||e)}
+}
+Object.assign(window,{v1300SaveSeason,v1300AddSeason,v1300DeleteSeason});
+const v1300AgeInfoBase=qrLotAgeInfo;
+qrLotAgeInfo=function(l){
+  const r=v1300AgeInfoBase(l);
+  const info=v1250Info(l);
+  if(info&&info.season&&r&&r.text)r.text=r.text.replace(/（目安(\d+)日）/,"（目安$1日・特別期間）");
+  return r;
+};
+window.qrLotAgeInfo=qrLotAgeInfo;
+
+/* 出庫：使用不可/保留のロットは画面いっぱいの確認 */
+const v1300SaveMoveBase=qrSaveLotMovement;
+qrSaveLotMovement=async function(kind,q){
+  if(kind==="out"){
+    let lot=null;try{lot=await qrFindLot(q)}catch(e){}
+    if(lot&&!(await v1300GuardUseAsync(lot,"出庫")))return;
+  }
+  v1300GuardBypass=true;
+  try{return await v1300SaveMoveBase.apply(this,arguments)}
+  finally{v1300GuardBypass=false}
+};
+window.qrSaveLotMovement=qrSaveLotMovement;
+
+/* 要品質確認の「品質確認済みにする」も同じ強い確認にする */
+v1250ConfirmQuality=async function(lotId,qrKey){
+  if(!v1250CanConfirm())return alert("品質確認は管理者・青果社員が行います。");
+  let lot=null;try{lot=qrKey?await qrFindLot(qrKey):null}catch(e){}
+  const info=lot?v1250Info(lot):null;
+  if(lot&&info){
+    const ok=await v1300StrongConfirm(lot,info,"品質確認",{head:"要品質確認のロットです",ask:"実物を見て、品質に問題がないか確認してください。確認済みにすると、本日中は「優先使用」として扱います。",yes:"品質確認済みにする"});
+    if(!ok)return;
+  }else if(!confirm("実物を確認し、品質に問題がないことを確認しましたか？\n確認済みにすると、本日中は「優先使用」として扱います。"))return;
+  try{
+    const ans=await callRpc("confirm_qr_lot_storage_check_v1250",{p_lot_id:lotId,p_note:""});
+    if(!ans?.ok)throw new Error(ans?.message||"品質確認を保存できませんでした");
+    await v1250LoadChecks(true);
+    if(currentScreen==="qrLotListPage")return qrReturnToLotList();
+    if(currentScreen==="qrOperationLotPage"&&qrKey)return qrOperationLotPage("out",qrKey);
+    alert("品質確認済みにしました。");
+  }catch(e){alert(/PGRST202|Could not find the function|qr_lot_storage_checks_v1250/.test(String(e.message||e))?"品質確認の保存先がまだ準備されていません（SQL 007 の実行が必要です）。":(e.message||e))}
+};
+window.v1250ConfirmQuality=v1250ConfirmQuality;
+
+(function(){
+  const st=document.createElement("style");
+  st.textContent=`.v1300Guard{position:fixed;inset:0;z-index:99999;background:rgba(127,29,29,.92);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}
+.v1300GuardIn{background:#fff;border:6px solid #b91c1c;border-radius:20px;max-width:560px;width:100%;padding:20px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.v1300GuardHead{background:#b91c1c;color:#fff;font-size:26px;font-weight:900;border-radius:12px;padding:12px 8px;letter-spacing:.05em}
+.v1300GuardItem{font-size:30px;font-weight:900;margin-top:14px;color:#111}
+.v1300GuardNum{font-size:22px;font-weight:800;margin-top:8px;color:#111;line-height:1.5}
+.v1300GuardNum b{font-size:30px;color:#b91c1c}
+.v1300GuardNum span{display:inline-block;margin-top:6px;background:#fee2e2;color:#991b1b;border-radius:999px;padding:4px 14px;font-size:20px;font-weight:900}
+.v1300GuardSub{font-size:14px;color:#374151;margin-top:8px}
+.v1300GuardAsk{font-size:18px;font-weight:800;color:#7f1d1d;margin-top:14px;line-height:1.5}
+.v1300GuardChk{display:flex;gap:12px;align-items:center;text-align:left;margin-top:14px;padding:14px;border:3px solid #b91c1c;border-radius:14px;background:#fef2f2;font-size:18px;font-weight:900;color:#7f1d1d}
+.v1300GuardChk input{width:32px;height:32px;flex:0 0 auto}
+.v1300GuardBtns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.v1300GuardBtns .btn{font-size:18px;font-weight:900;padding:16px 8px;margin:0}
+.v1300GuardNo{background:#e5e7eb !important;color:#111 !important}
+.v1300GuardYes{background:#b91c1c !important;color:#fff !important}
+.v1300GuardYes:disabled{background:#fca5a5 !important;color:#fff !important;opacity:1}
+.v1300SeasonRow{display:grid;gap:6px;padding:10px 0;border-bottom:1px solid #e5e7eb}
+.v1300SeasonNew{border-bottom:0}
+.v1300Md{display:grid;grid-template-columns:1fr 1fr auto 1fr 1fr;gap:4px;align-items:center}
+.v1300Md .input{padding-left:6px;padding-right:6px}
+.v1300SeasonDays{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center}
+.v1300SeasonBtns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.v1300SeasonBtns .btn{margin:0}`;
+  document.head.appendChild(st);
+  try{
+    if(typeof V198_GUIDE_SECTIONS!=="undefined"){
+      const s=V198_GUIDE_SECTIONS.v1250StorageLimits;
+      if(s){
+        s.steps=s.steps.map(t=>t.startsWith("要品質確認のロットは")?"要品質確認のロットは、「品質確認済みにする」を押すと赤い確認画面が出ます。実物を確認し「実物を確認しました」にチェックを入れて押すと、その日のあいだは優先使用として扱います。":t.startsWith("使用不可/保留のロットは")?"使用不可/保留のロットを出庫・使用しようとすると、赤い画面いっぱいの確認が出ます。管理者・青果社員が実物を確認し、「実物を確認しました」にチェックを入れたときだけ「確認して出庫する」を押せます（確認した人を記録します）。":t.startsWith("保管目安の日数は")?"保管目安の日数は「保管期限マスタ」で変更・追加・削除できます（管理者・青果社員・仕入れ担当者）。":t);
+        s.steps.push("端境期や相場が高い時期など、決まった期間だけ日数を変えたいときは、保管期限マスタの「時期による特別期間」で品目・期間（◯月◯日〜◯月◯日）・日数を登録します。毎年くり返し使え、ロットの入荷日が期間に入っていればその日数で判定します（バッジに「特別期間」と出ます）。");
+      }
+    }
+  }catch(e){}
+})();
+
 </script>
 </body>
 </html>
