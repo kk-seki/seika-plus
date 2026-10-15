@@ -15508,6 +15508,129 @@ window.qrSelect=qrSelect;
   }catch(e){}
 })();
 
+
+/* ===== v1.199-c40 通信量を減らす（第1段階）：履歴は変わった分だけ受け取り、変わった分だけ送る =====
+   SQL 014（synced_at列）があれば「ID＋更新時刻の一覧」だけを受け取り、変わった行・新しい行だけ中身を取りに行く。
+   014が無いときは今までどおり全件を受け取る。送るときは、クラウドと同じ内容の行を送らない。 */
+(function(){
+ const V1240_KEY="hist_cache_v1240";
+ const V1240_TABLES=new Set(Object.values(HISTORY_TABLES));
+ let v1240Cache=null,v1240Loading=null,v1240Ready=null,v1240Dirty=false;
+ window.v1240Stats={listRows:0,dataRows:0,fullRows:0,skipped:0,sent:0};
+ function canon(v){
+  if(v===null||typeof v!=="object")return JSON.stringify(v===undefined?null:v);
+  if(Array.isArray(v))return"["+v.map(canon).join(",")+"]";
+  return"{"+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+":"+canon(v[k])).join(",")+"}";
+ }
+ function hash(v){const s=canon(v);let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return(h>>>0).toString(36)+"."+s.length}
+ async function load(){
+  if(v1240Cache)return v1240Cache;
+  if(!v1240Loading)v1240Loading=(async()=>{let c=null;try{c=await v188IdbGet(V1240_KEY)}catch(e){}
+   v1240Cache=c&&typeof c==="object"&&c.v===1?c:{v:1,owner:"",tables:{}};return v1240Cache})();
+  return v1240Loading;
+ }
+ function tableCache(c,table){
+  const owner=String(db?.userId||db?.user||"");
+  if(c.owner!==owner){c.owner=owner;c.tables={}}
+  return c.tables[table]||(c.tables[table]={rows:{},sent:{}});
+ }
+ let saveTimer=null;
+ function persist(){v1240Dirty=true;clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{if(!v1240Dirty||!v1240Cache)return;v1240Dirty=false;try{await v188IdbPut(V1240_KEY,v1240Cache)}catch(e){console.warn("history cache save",e)}},800)}
+ async function getJson(url){
+  const res=await fetch(url,{headers:historyApiHeaders()});
+  if(!res.ok){const t=await res.text();const err=new Error(t);err.status=res.status;throw err}
+  return res.json();
+ }
+ async function listSignatures(table){
+  const out=[];const page=1000;
+  for(let off=0;off<200000;off+=page){
+   const rows=await getJson(`${SUPABASE_URL}/rest/v1/${table}?select=id,synced_at&order=id.asc&limit=${page}&offset=${off}`);
+   out.push(...rows);if(rows.length<page)break;
+  }
+  return out;
+ }
+ async function fetchFull(table){
+  const out=[];const page=1000;
+  for(let off=0;off<200000;off+=page){
+   const rows=await getJson(`${SUPABASE_URL}/rest/v1/${table}?select=id,data&order=id.asc&limit=${page}&offset=${off}`);
+   out.push(...rows);if(rows.length<page)break;
+  }
+  return out;
+ }
+ const v1240FetchBase=fetchHistoryTable;
+ fetchHistoryTable=async function(table){
+  if(!V1240_TABLES.has(table)||v1240Ready===false)return v1240FetchBase(table);
+  const c=await load(),tc=tableCache(c,table);
+  let sigs;
+  try{sigs=await listSignatures(table);v1240Ready=true}
+  catch(e){
+   if(/synced_at/.test(String(e.message||""))||e.status===400){v1240Ready=false;return v1240FetchBase(table)}
+   throw e;
+  }
+  window.v1240Stats.listRows+=sigs.length;
+  const alive=new Set(),need=[];
+  for(const s of sigs){const id=String(s.id);alive.add(id);const old=tc.rows[id];if(!old||old.s!==s.synced_at)need.push(id)}
+  for(const id of Object.keys(tc.rows))if(!alive.has(id))delete tc.rows[id];
+  const sigMap=new Map(sigs.map(s=>[String(s.id),s.synced_at]));
+  for(let i=0;i<need.length;i+=80){
+   const ids=need.slice(i,i+80);
+   const rows=await getJson(`${SUPABASE_URL}/rest/v1/${table}?select=id,data,synced_at&id=in.(${ids.map(x=>'"'+String(x).replace(/"/g,'\\"')+'"').map(encodeURIComponent).join(",")})`);
+   window.v1240Stats.dataRows+=rows.length;
+   for(const r of rows){if(!r||!r.data)continue;tc.rows[String(r.id)]={s:r.synced_at||sigMap.get(String(r.id))||"",d:r.data,h:hash(r.data)};if(tc.sent&&r.data.id!=null)delete tc.sent[String(r.data.id)]}
+  }
+  if(need.length||sigs.length!==Object.keys(tc.rows).length)persist();
+  return Object.values(tc.rows).map(x=>x.d).filter(Boolean);
+ };
+ window.fetchHistoryTable=fetchHistoryTable;
+
+ function knownHashes(table){
+  const tc=v1240Cache?tableCache(v1240Cache,table):null;if(!tc)return null;
+  const m=new Map();
+  for(const x of Object.values(tc.rows))if(x&&x.d&&x.d.id!=null)m.set(String(x.d.id),x.h);
+  for(const [id,h] of Object.entries(tc.sent||{}))m.set(id,h);
+  return m;
+ }
+ function changedOnly(table,rows){
+  if(!Array.isArray(rows)||!rows.length||!v1240Cache)return{rows:rows||[],marks:[]};
+  const known=knownHashes(table),keep=[],marks=[];
+  for(const r of rows){if(!r||r.id==null){keep.push(r);continue}const h=hash(r);if(known&&known.get(String(r.id))===h){window.v1240Stats.skipped++;continue}keep.push(r);marks.push([String(r.id),h])}
+  return{rows:keep,marks};
+ }
+ function markSent(table,marks){
+  if(!marks.length||!v1240Cache)return;const tc=tableCache(v1240Cache,table);tc.sent=tc.sent||{};
+  for(const [id,h] of marks)tc.sent[id]=h;window.v1240Stats.sent+=marks.length;persist();
+ }
+ const v1240RpcBase=callRpc;
+ callRpc=async function(name,args,...rest){
+  if((name==="save_history_records_v188"||name==="save_clerk_waste_history_v188")&&args&&typeof args==="object"){
+   await load();
+   const a={...args},marks=[];
+   if(Array.isArray(a.p_records)){const r=changedOnly(HISTORY_TABLES.records,a.p_records);a.p_records=r.rows;marks.push([HISTORY_TABLES.records,r.marks])}
+   if(Array.isArray(a.p_movements)){const r=changedOnly(HISTORY_TABLES.movements,a.p_movements);a.p_movements=r.rows;marks.push([HISTORY_TABLES.movements,r.marks])}
+   if(Array.isArray(a.p_waste_records)){const r=changedOnly(HISTORY_TABLES.wasteRecords,a.p_waste_records);a.p_waste_records=r.rows;marks.push([HISTORY_TABLES.wasteRecords,r.marks])}
+   const delCount=["p_delete_record_ids","p_delete_waste_ids","p_delete_movement_ids"].reduce((n,k)=>n+(Array.isArray(a[k])?a[k].length:0),0);
+   const sendCount=(a.p_records||[]).length+(a.p_movements||[]).length+(a.p_waste_records||[]).length;
+   if(!sendCount&&!delCount&&name==="save_history_records_v188")return{ok:true,skipped:true};
+   if(!sendCount&&name==="save_clerk_waste_history_v188")return{ok:true,skipped:true};
+   const ans=await v1240RpcBase.call(this,name,a,...rest);
+   if(ans&&ans.ok!==false)for(const [t,m] of marks)markSent(t,m);
+   return ans;
+  }
+  return v1240RpcBase.call(this,name,args,...rest);
+ };
+ window.callRpc=callRpc;
+ const v1240UpsertBase=upsertHistoryTable;
+ upsertHistoryTable=async function(table,rows,mapper){
+  await load();
+  const r=changedOnly(table,rows||[]);
+  if(!r.rows.length)return;
+  await v1240UpsertBase(table,r.rows,mapper);
+  markSent(table,r.marks);
+ };
+ window.upsertHistoryTable=upsertHistoryTable;
+ window.v1240ClearHistoryCache=async function(){v1240Cache={v:1,owner:"",tables:{}};try{await v188IdbPut(V1240_KEY,v1240Cache)}catch(e){}};
+})();
+
 </script>
 </body>
 </html>
