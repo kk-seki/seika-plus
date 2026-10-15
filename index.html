@@ -15631,6 +15631,187 @@ window.qrSelect=qrSelect;
  window.v1240ClearHistoryCache=async function(){v1240Cache={v:1,owner:"",tables:{}};try{await v188IdbPut(V1240_KEY,v1240Cache)}catch(e){}};
 })();
 
+
+/* ===== v1.199-c41 通信量を減らす（第2段階）：QRロット・QR移動履歴・月末QR記録は、変わった分だけ受け取る =====
+   SQL 015（synced_at列）があれば、端末に一覧を保存しておき、前回から変わった行だけを受け取る。
+   1件だけを探す問い合わせ（QRコード・ロット番号など）は今までどおりサーバーに聞く。
+   015が無いときは今までどおり全件を受け取る。 */
+(function(){
+ const KEY="qr_cache_v1410";
+ const TABLES={
+  qr_lots:{key:r=>String(r.id),keyCols:"id"},
+  qr_lot_movements:{key:r=>String(r.id),keyCols:"id"},
+  qr_lot_monthly_snapshots:{key:r=>String(r.target_month)+"|"+String(r.lot_id),keyCols:"target_month,lot_id"}
+ };
+ const LOOKUP_COLS=new Set(["id","qr_key","lot_no","operation_id","lot_id","reversed_operation_id"]);
+ const FRESH_MS=4000,PARTY_MS=300000,OVERLAP_MS=2*60*1000;
+ let cache=null,loading=null,ready=null,lastWriteAt=0,saveTimer=null;
+ const syncing={};
+ window.v1410Stats={network:0,served:0,deltaRows:0,fullRows:0,syncs:0};
+
+ const baseFetch=window.fetch.bind(window);
+ window.fetch=function(input,init){
+  try{
+   const url=typeof input==="string"?input:(input&&input.url)||"";
+   const method=String((init&&init.method)||(input&&input.method)||"GET").toUpperCase();
+   if(url.indexOf(SUPABASE_URL)===0&&method!=="GET"&&method!=="HEAD")lastWriteAt=Date.now();
+  }catch(e){}
+  return baseFetch(input,init);
+ };
+
+ async function load(){
+  if(cache)return cache;
+  if(!loading)loading=(async()=>{let c=null;try{c=await v188IdbGet(KEY)}catch(e){}
+   cache=c&&typeof c==="object"&&c.v===1?c:{v:1,owner:"",tables:{}};
+   for(const t of Object.values(cache.tables||{}))t.at=0;
+   return cache})();
+  return loading;
+ }
+ function owner(){return String(db?.userId||db?.user||"")}
+ function tc(table){
+  if(cache.owner!==owner()){cache.owner=owner();cache.tables={}}
+  return cache.tables[table]||(cache.tables[table]={rows:{},max:"",at:0,n:0});
+ }
+ function persist(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{try{await v188IdbPut(KEY,cache)}catch(e){console.warn("qr cache save",e)}},1500)}
+ async function getJson(path,extraHeaders){
+  const res=await baseFetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:qrApiHeaders({"Content-Type":"application/json",...(extraHeaders||{})})});
+  if(!res.ok){const t=await res.text();const err=new Error(t);err.status=res.status;throw err}
+  return{rows:await res.json(),range:res.headers.get("content-range")||""};
+ }
+ async function pages(table,query){
+  const out=[];
+  for(let off=0;off<500000;off+=1000){
+   const {rows}=await getJson(`${table}?${query}&limit=1000&offset=${off}`);
+   out.push(...rows);if(rows.length<1000)break;
+  }
+  return out;
+ }
+ function bumpMax(t,rows){for(const r of rows){const s=r&&r.synced_at;if(s&&(!t.max||Date.parse(s)>Date.parse(t.max)))t.max=s}}
+ async function fullLoad(table,t){
+  const rows=await pages(table,`select=*&order=${TABLES[table].keyCols.split(",").map(c=>c+".asc").join(",")}`);
+  t.rows={};t.max="";
+  for(const r of rows)t.rows[TABLES[table].key(r)]=r;
+  bumpMax(t,rows);window.v1410Stats.fullRows+=rows.length;
+ }
+ async function serverCount(table){
+  const {range}=await getJson(`${table}?select=synced_at&limit=1`,{Prefer:"count=exact"});
+  const n=Number(String(range).split("/")[1]);
+  return Number.isFinite(n)?n:null;
+ }
+ async function doSync(table){
+  const t=tc(table);
+  if(!t.max&&!Object.keys(t.rows).length){await fullLoad(table,t)}
+  else{
+   const since=new Date(Date.parse(t.max||"1970-01-01T00:00:00Z")-OVERLAP_MS).toISOString();
+   const rows=await pages(table,`select=*&synced_at=gte.${encodeURIComponent(since)}&order=synced_at.asc`);
+   for(const r of rows)t.rows[TABLES[table].key(r)]=r;
+   bumpMax(t,rows);window.v1410Stats.deltaRows+=rows.length;
+   const n=await serverCount(table);
+   if(n!==null&&n!==Object.keys(t.rows).length){
+    const keys=await pages(table,`select=${TABLES[table].keyCols}`);
+    const alive=new Set(keys.map(TABLES[table].key));
+    for(const k of Object.keys(t.rows))if(!alive.has(k))delete t.rows[k];
+    if(Object.keys(t.rows).length!==alive.size)await fullLoad(table,t);
+   }
+  }
+  t.at=Date.now();window.v1410Stats.syncs++;persist();
+ }
+ async function sync(table,maxAge){
+  await load();const t=tc(table);
+  if(t.at&&Date.now()-t.at<maxAge&&lastWriteAt<t.at)return t;
+  if(!syncing[table])syncing[table]=doSync(table).finally(()=>{delete syncing[table]});
+  await syncing[table];
+  return tc(table);
+ }
+ async function checkReady(){
+  if(ready!==null)return ready;
+  try{await getJson("qr_lots?select=synced_at&limit=1");ready=true}
+  catch(e){ready=(e.status===400||/synced_at/.test(String(e.message||"")))?false:null;}
+  return ready;
+ }
+
+ function splitList(s){const out=[];let cur="",q=false;for(let i=0;i<s.length;i++){const ch=s[i];if(ch==='"'){q=!q;continue}if(ch==="\\"&&q){cur+=s[++i];continue}if(ch===","&&!q){out.push(cur);cur="";continue}cur+=ch}out.push(cur);return out}
+ function parse(query){
+  const p={select:null,filters:[],order:[],limit:null,offset:0};
+  for(const part of String(query||"").split("&")){
+   if(!part)continue;
+   const i=part.indexOf("=");if(i<0)return null;
+   const k=decodeURIComponent(part.slice(0,i)),v=decodeURIComponent(part.slice(i+1));
+   if(k==="select"){if(/[():!]/.test(v))return null;p.select=v==="*"?null:v.split(",").map(s=>s.trim());continue}
+   if(k==="limit"){p.limit=Number(v);if(!Number.isFinite(p.limit))return null;continue}
+   if(k==="offset"){p.offset=Number(v)||0;continue}
+   if(k==="order"){for(const o of v.split(",")){const a=o.split(".");const col=a[0],dir=a.includes("desc")?"desc":"asc";const nulls=a.includes("nullsfirst")?"first":a.includes("nullslast")?"last":(dir==="asc"?"last":"first");p.order.push({col,dir,nulls})}continue}
+   if(k==="or"||k==="and"||/[.()]/.test(k))return null;
+   let neg=false,rest=v;if(rest.startsWith("not.")){neg=true;rest=rest.slice(4)}
+   const d=rest.indexOf(".");if(d<0)return null;
+   const op=rest.slice(0,d),val=rest.slice(d+1);
+   if(!["eq","neq","gt","gte","lt","lte","is","in"].includes(op))return null;
+   if(op==="eq"&&LOOKUP_COLS.has(k)&&!neg)return null;
+   if(op==="in"&&!(val.startsWith("(")&&val.endsWith(")")))return null;
+   p.filters.push({col:k,op,val:op==="in"?splitList(val.slice(1,-1)):val,neg});
+  }
+  return p;
+ }
+ const DATE_RE=/^\d{4}-\d{2}-\d{2}/;
+ function cmp(a,b){
+  if(typeof a==="number"||typeof b==="number"){const x=Number(a),y=Number(b);if(Number.isFinite(x)&&Number.isFinite(y))return x<y?-1:x>y?1:0}
+  if(typeof a==="boolean"||typeof b==="boolean"){const x=String(a),y=String(b);return x<y?-1:x>y?1:0}
+  const sa=String(a),sb=String(b);
+  if(DATE_RE.test(sa)&&DATE_RE.test(sb)){const x=Date.parse(sa.length>10?sa.replace(" ","T"):sa+"T00:00:00Z"),y=Date.parse(sb.length>10?sb.replace(" ","T"):sb+"T00:00:00Z");if(Number.isFinite(x)&&Number.isFinite(y))return x<y?-1:x>y?1:0}
+  return sa<sb?-1:sa>sb?1:0;
+ }
+ function test(row,f){
+  const v=row[f.col];let ok;
+  if(f.op==="is"){const w=f.val.toLowerCase();ok=w==="null"?v===null||v===undefined:w==="true"?v===true:w==="false"?v===false:false}
+  else if(v===null||v===undefined)return false;
+  else if(f.op==="in")ok=f.val.some(x=>cmp(v,x)===0);
+  else{const c=cmp(v,f.val);ok=f.op==="eq"?c===0:f.op==="neq"?c!==0:f.op==="gt"?c>0:f.op==="gte"?c>=0:f.op==="lt"?c<0:c<=0}
+  return f.neg?!ok:ok;
+ }
+ function evaluate(t,p){
+  let rows=Object.values(t.rows).filter(r=>p.filters.every(f=>test(r,f)));
+  const order=p.order.length?p.order:[{col:"created_at",dir:"asc",nulls:"last"}];
+  rows.sort((a,b)=>{for(const o of order){const x=a[o.col],y=b[o.col];const xn=x===null||x===undefined,yn=y===null||y===undefined;
+   if(xn||yn){if(xn&&yn)continue;return(xn?1:-1)*(o.nulls==="last"?1:-1)}
+   const c=cmp(x,y);if(c)return o.dir==="desc"?-c:c}return 0});
+  if(p.offset)rows=rows.slice(p.offset);
+  if(p.limit!==null)rows=rows.slice(0,p.limit);
+  return rows.map(r=>{if(p.select){const o={};for(const c of p.select)o[c]=r[c]===undefined?null:r[c];return o}const o={...r};delete o.synced_at;return o});
+ }
+ function maxAgeFor(table,p){
+  if(table==="qr_lots"&&p.select&&p.select.every(c=>c==="supplier"||c==="cooperative_name"||c==="active"))return PARTY_MS;
+  return FRESH_MS;
+ }
+ async function tryCache(table,query,wholeTable){
+  if(!TABLES[table])return null;
+  const p=parse(query);if(!p)return null;
+  if(wholeTable){p.limit=null;p.offset=0}
+  if(await checkReady()!==true)return null;
+  let t;try{t=await sync(table,maxAgeFor(table,p))}catch(e){console.warn("qr cache sync",e);return null}
+  window.v1410Stats.served++;
+  return evaluate(t,p);
+ }
+ function stripSynced(table,rows){if(TABLES[table]&&Array.isArray(rows))for(const r of rows)if(r&&typeof r==="object")delete r.synced_at;return rows}
+
+ const qrSelectBase=qrSelect;
+ qrSelect=async function(table,query="select=*"){
+  const hit=await tryCache(table,query,false);
+  if(hit)return hit;
+  window.v1410Stats.network++;
+  return stripSynced(table,await qrSelectBase(table,query));
+ };
+ window.qrSelect=qrSelect;
+ const selectAllBase=v163SelectAll;
+ v163SelectAll=async function(table,baseQuery,pageSize=1000){
+  const hit=await tryCache(table,baseQuery,true);
+  if(hit)return hit;
+  return selectAllBase(table,baseQuery,pageSize);
+ };
+ window.v163SelectAll=v163SelectAll;
+ window.v1410ClearQrCache=async function(){cache={v:1,owner:"",tables:{}};try{await v188IdbPut(KEY,cache)}catch(e){}};
+ window.v1410Debug={parse,evaluate:(table,q)=>evaluate(tc(table),parse(q)),sync};
+})();
+
 </script>
 </body>
 </html>
