@@ -5917,8 +5917,8 @@ return v1101ArchivePage(msg)};accountMenu=function(){v1101AccountMenuCore();cons
 ;return`<details style="margin-top:12px"><summary class="btn btn2" style="display:block;cursor:pointer">その他の操作</summary><div class="qrMoreActions"><button class="btn btn2" ${seikaEventAttrs('click','qrPrintLot',[lot.qr_key])}>QR貼り紙PDF</button><button class="btn btn2" ${seikaEventAttrs('click','qrEditLotPage',[lot.qr_key])}>ロット編集</button></div></details>`
 };qrDeleteLot=function(){alert("QRロット本体の完全削除は停止しました。古い操作履歴は「月次Excel・履歴管理」から整理してください。")};deleteQrCleanupCandidates=function(){
 alert("QRロット本体の一括完全削除は停止しました。古い操作履歴は「月次Excel・履歴管理」から整理してください。")};qrCleanupCandidates=async function(){return{inactive:[],oldZero:[]}}
-;const v1101QrHomeUnifiedCore=qrHome;qrHome=function(){v1101QrHomeUnifiedCore();document.querySelectorAll("button").forEach(b=>{
-if((b.getAttribute("onclick")||"").includes("v199QrExcelPage"))b.remove()})};
+;const v1101QrHomeUnifiedCore=qrHome;qrHome=async function(...a){const r=await v1101QrHomeUnifiedCore(...a);document.querySelectorAll("button").forEach(b=>{
+if((b.getAttribute("onclick")||"").includes("v199QrExcelPage"))b.remove()});return r};
 /* ===== v1.102 QRロット品質評価 ===== */const V1102_QUALITY_ISSUES=["傷み","変色","腐敗","カビ","打撲・傷","しおれ","異臭","規格外","温度異常","その他"];const V1102_QUALITY_GRADES={
 good:{label:"良好",cls:"normal"},review:{label:"要確認",cls:"excess"},bad:{label:"不良",cls:"unset"}}
 ;let v1102QualityPhotos=[],v1102QualitySaving=false,v1102PendingQualityQrKey="";function v1102CanEvaluate(){return["admin","worker"].includes(db.role)
@@ -15810,6 +15810,63 @@ window.qrSelect=qrSelect;
  window.v163SelectAll=v163SelectAll;
  window.v1410ClearQrCache=async function(){cache={v:1,owner:"",tables:{}};try{await v188IdbPut(KEY,cache)}catch(e){}};
  window.v1410Debug={parse,evaluate:(table,q)=>evaluate(tc(table),parse(q)),sync};
+})();
+
+
+/* ===== v1.199-c42 画面の切り替えを安定させる =====
+   ① QR在庫管理を開くとき、ホーム画面に別の部品が一瞬差し込まれていた（途中の qrHome が描画完了を待たずに終わっていたため）。
+      待つように直したので、今まで実際には表示されていなかった部品が出ないよう、従来どおりの見た目にそろえる。
+   ② ホームの「未確認の低評価」が後から差し込まれてボタンがずれるため、前回の表示を先に出しておく。 */
+(function(){
+ const V1420_HIDE=["v1104QrQualityArea","v135QrBatchActions","v1280PartyBtn"];
+ const v1420QrHomeBase=qrHome;
+ qrHome=async function(...a){
+  const r=await v1420QrHomeBase.apply(this,a);
+  if(currentScreen==="qrHome")for(const id of V1420_HIDE)document.getElementById(id)?.remove();
+  return r;
+ };
+ window.qrHome=qrHome;
+ function key(){return"v1420QualityTask:"+String(db?.userId||"")+":"+String(db?.role||"")}
+ const v1420LoadBase=v1143LoadQualityTask;
+ v1143LoadQualityTask=async function(...a){
+  const r=await v1420LoadBase.apply(this,a);
+  try{
+   if(currentScreen==="home"){
+    const box=document.getElementById("v1143QualityTask");
+    if(box&&!box.querySelector(".err"))sessionStorage.setItem(key(),JSON.stringify({html:box.innerHTML,empty:!!document.getElementById("v1143TodayTaskEmpty")}));
+   }
+  }catch(e){}
+  return r;
+ };
+ window.v1143LoadQualityTask=v1143LoadQualityTask;
+ const v1420TaskHtmlBase=v1143TodayTaskHtml;
+ v1143TodayTaskHtml=function(...a){
+  const html=v1420TaskHtmlBase.apply(this,a);
+  try{
+   const c=JSON.parse(sessionStorage.getItem(key())||"null");
+   if(!c||!html||html.indexOf("v1143QualityTask")<0)return html;
+   const t=document.createElement("template");t.innerHTML=html;
+   const box=t.content.getElementById("v1143QualityTask");
+   if(!box||box.querySelector("[data-v1143-task-action]"))return html;
+   box.innerHTML=c.html;
+   if(c.html)t.content.getElementById("v1143TodayTaskEmpty")?.remove();
+   const d=document.createElement("div");d.appendChild(t.content.cloneNode(true));return d.innerHTML;
+  }catch(e){return html}
+ };
+ window.v1143TodayTaskHtml=v1143TodayTaskHtml;
+ const v1420HomeBase=home;
+ home=function(...a){
+  const r=v1420HomeBase.apply(this,a);
+  try{
+   const c=JSON.parse(sessionStorage.getItem(key())||"null"),box=document.getElementById("v1143QualityTask");
+   if(c&&box&&!box.querySelector("[data-v1143-task-action]")){
+    box.innerHTML=c.html;
+    if(c.html)document.getElementById("v1143TodayTaskEmpty")?.remove();
+   }
+  }catch(e){}
+  return r;
+ };
+ window.home=home;
 })();
 
 </script>
