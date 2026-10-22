@@ -15882,6 +15882,8 @@ window.qrSelect=qrSelect;
 .hqBtnDirect{background:linear-gradient(135deg,#8b5cf6,#5b21b6)!important;color:#fff!important}
 .hqBtnHistory{background:linear-gradient(135deg,#64748b,#334155)!important;color:#fff!important}
 .hqBtnItems{background:linear-gradient(135deg,#a16207,#713f12)!important;color:#fff!important}
+.hqBtnStockHub{background:linear-gradient(135deg,#6366f1,#312e81)!important;color:#fff!important}
+.hqBtnEntryHub{background:linear-gradient(135deg,#84cc16,#3f6212)!important;color:#fff!important}
 .hqBtnGuide{background:linear-gradient(135deg,#ec4899,#9d174d)!important;color:#fff!important}
 .hqBtnPrint{background:linear-gradient(135deg,#0f766e,#134e4a)!important;color:#fff!important}
 .hqBtnConfirm{background:linear-gradient(135deg,#16a34a,#14532d)!important;color:#fff!important;font-size:19px}
@@ -15893,7 +15895,7 @@ window.qrSelect=qrSelect;
 .hqIssues{display:flex;flex-wrap:wrap;gap:8px 14px}.badge.danger{background:#fee2e2;color:#991b1b}.badge.warn{background:#fef3c7;color:#92400e}
 </style>
 <script>
-/* ===== v1.199-c43 本社 第1段階（移動中・本社移動用の貼り紙・受け入れ・品質評価・確定・使用出庫・取消） ===== */
+/* ===== v1.199-c44 本社 第1段階（移動中・本社移動用の貼り紙・受け入れ・品質評価・確定・使用出庫・取消） ===== */
 (function(){
 const HQ_ROLES=["hq_worker","hq_clerk","hq_receiver","hq_prep"];
 const HQ_LABEL={hq_worker:"本社社員",hq_clerk:"本社事務",hq_receiver:"本社 荷受け担当者",hq_prep:"本社 下処理班"};
@@ -15943,22 +15945,32 @@ function hqSwitchHtml(){if(hqOnlyHq())return"";const s=hqSite();return `<div cla
 function hqHome(msg=""){
  setScreen("hqHome",[msg]);
  const b=(cls,act,label,sub="")=>`<button class="btn ${cls}" ${seikaEventAttrs("click",act,[])}>${label}${sub?`<br><span style="font-size:14px;font-weight:700">${sub}</span>`:""}</button>`;
+ const stockKids=hqStockHubItems(),entryKids=hqEntryHubItems();
  const btns=[
   b("hqBtnPending","hqPendingPage","入荷待ち原料",'<span id="hqPendingCount">…</span>'),
-  b("hqBtnScan","hqScanPage","QRを読み取る"),
-  hqCanOut()?b("hqBtnOut","hqOutPage","使用出庫"):"",
-  b("hqBtnStock","hqStockPage","本社在庫",'<span id="hqStockCount">…</span>'),
-  hqCanReceive()?b("hqBtnDirect","hqDirectPage","本社直接入荷"):"",
-  b("hqBtnHistory","hqHistoryPage","入出庫の履歴"),
-  hqCanItems()?b("hqBtnItems","hqItemsPage","本社品目"):"",
+  b("hqBtnScan","hqScanPage","QR読み取り（受け入れ・出庫）"),
+  stockKids.length?b("hqBtnStockHub","hqStockHub","在庫管理",'<span id="hqStockCount">…</span>'):"",
+  entryKids.length?b("hqBtnEntryHub","hqEntryHub","入荷登録・品目"):"",
   b("hqBtnGuide","v195RoleGuidePage","操作ガイド")
  ].join("");
  pageShell("SEIKA＋",`本社 / ${esc(db.user||"")}（${esc(ROLE[role()]||role())}）`,`${okHtml(msg)}${hqSwitchHtml()}${hqViewOnly()?'<div class="card notice">本社の画面は見るだけです（入力・出庫は本社のアカウントと管理者が行います）。</div>':""}<div class="homePrimary hqHomeGrid">${btns}</div>`,{noBack:true});
  Promise.all([hqLots("select=id,source_kind&status=eq.入荷待ち"),hqLots("select=id&status=eq.在庫あり")]).then(([p,s])=>{
   const a=document.getElementById("hqPendingCount"),c=document.getElementById("hqStockCount");
   const mv=p.filter(x=>x.source_kind==="石岡から").length,dr=p.length-mv;
-  if(a)a.textContent=`移動中 ${mv}件${dr?`・直接入荷 ${dr}件`:""}`;if(c)c.textContent=`${s.length}ロット`;
+  if(a)a.textContent=`移動中 ${mv}件${dr?`・直接入荷 ${dr}件`:""}`;if(c)c.textContent=`本社在庫 ${s.length}ロット`;
  }).catch(()=>{});
+}
+function hqHubBtn(cls,act,label,sub=""){return `<button class="btn ${cls}" ${seikaEventAttrs("click",act,[])}>${label}${sub?`<br><span style="font-size:14px;font-weight:700">${sub}</span>`:""}</button>`}
+function hqStockHubItems(){return[["hqBtnStock","hqStockPage","本社在庫",'<span id="hqHubStockCount"></span>'],hqCanOut()?["hqBtnOut","hqOutPage","使用出庫"]:null,["hqBtnHistory","hqHistoryPage","入出庫履歴"]].filter(Boolean)}
+function hqEntryHubItems(){return[hqCanReceive()?["hqBtnDirect","hqDirectPage","本社直接入荷"]:null,hqCanItems()?["hqBtnItems","hqItemsPage","品目の追加・変更"]:null].filter(Boolean)}
+function hqStockHub(){
+ setScreen("hqStockHub",[]);
+ pageShell("在庫管理","本社の在庫・使用出庫・入出庫履歴",`${hqViewOnly()?'<div class="card notice">本社の画面は見るだけです。</div>':""}<div class="homePrimary hqHomeGrid">${hqStockHubItems().map(x=>hqHubBtn(...x)).join("")}</div>`);
+ hqLots("select=id&status=eq.在庫あり").then(s=>{const c=document.getElementById("hqHubStockCount");if(c)c.textContent=`${s.length}ロット`}).catch(()=>{});
+}
+function hqEntryHub(){
+ setScreen("hqEntryHub",[]);const it=hqEntryHubItems();if(!it.length)return home();
+ pageShell("入荷登録・品目","本社直接入荷・品目の追加・変更",`<div class="homePrimary hqHomeGrid">${it.map(x=>hqHubBtn(...x)).join("")}</div>`);
 }
 function hqIshiokaView(msg=""){
  setScreen("hqIshiokaView",[msg]);
@@ -16148,7 +16160,7 @@ async function hqOpenKey(raw){
 }
 async function hqScanPage(){
  setScreen("hqScanPage",[]);
- pageShell("QRを読み取る","本社移動用・本社入荷の貼り紙のQR",`<div id="hqReader" style="width:100%;min-height:300px;background:#0f172a;border-radius:14px"></div><div class="card"><label class="label">QRが読めないときはロット番号を入力</label><input id="hqKeyInput" class="input" placeholder="例：H20261022-0001"><button class="btn green" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","hqOpenTyped",[])}>開く</button></div>`);
+ pageShell("QR読み取り（受け入れ・出庫）","本社移動用・本社入荷の貼り紙のQR",`<div id="hqReader" style="width:100%;min-height:300px;background:#0f172a;border-radius:14px"></div><div class="card"><label class="label">QRが読めないときはロット番号を入力</label><input id="hqKeyInput" class="input" placeholder="例：H20261022-0001"><button class="btn green" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","hqOpenTyped",[])}>開く</button></div>`);
  if(typeof Html5Qrcode!=="function")return;
  try{const r=new Html5Qrcode("hqReader");hqReader=r;await r.start({facingMode:"environment"},{fps:8,qrbox:{width:240,height:240}},raw=>{if(hqReader===r)hqOpenKey(raw)})}catch(e){const el=document.getElementById("hqReader");if(el)el.innerHTML=`<div class="err">カメラを開けませんでした：${esc(hqErr(e))}</div>`}
 }
@@ -16160,7 +16172,7 @@ async function hqDirectPage(){
  let items=[];try{items=await qrSelect("hq_items_v1400","select=*&active=eq.true&order=sort_order.asc")}catch(e){}
  window.__hqItems=items;
  pageShell("本社直接入荷","入庫入力 → 品質評価 → 貼り紙の印刷 の順に進みます",`<div class="card">
- <label class="label">品目</label><select id="hqDItem" class="input" ${seikaEventAttrs("change","hqDirectItemChanged",[])}><option value="">選んでください</option>${items.map(i=>`<option>${esc(i.name)}</option>`).join("")}</select><div class="small">品目がないときは、本社社員が「本社品目」で追加します。</div>
+ <label class="label">品目</label><select id="hqDItem" class="input" ${seikaEventAttrs("change","hqDirectItemChanged",[])}><option value="">選んでください</option>${items.map(i=>`<option>${esc(i.name)}</option>`).join("")}</select><div class="small">品目がないときは、本社社員が「入荷登録・品目」→「品目の追加・変更」で追加します。</div>
  <label class="label" style="margin-top:10px">荷姿</label><select id="hqDCont" class="input">${HQ_CONTAINERS.map(c=>`<option>${c}</option>`).join("")}</select><div class="small">網コンテナ・鉄コンテナ・パレテーナはkg、それ以外はケースで数えます。</div>
  <label class="label" style="margin-top:10px">数量</label><input id="hqDQty" class="input" inputmode="decimal">
  <label class="label" style="margin-top:10px">量目（例：10kg）</label><input id="hqDPack" class="input">
@@ -16180,8 +16192,8 @@ async function hqDoDirect(){
 }
 async function hqItemsPage(msg=""){
  setScreen("hqItemsPage",[msg]);if(!hqCanItems())return hqHome();
- let items=[];try{items=await qrSelect("hq_items_v1400","select=*&order=sort_order.asc")}catch(e){return pageShell("本社品目","エラー",`<div class="err">${esc(hqErr(e))}</div>`)}
- pageShell("本社品目","本社直接入荷で選べる品目",`${okHtml(msg)}<div class="card"><b>品目を追加</b><label class="label" style="margin-top:8px">品目名</label><input id="hqINm" class="input" placeholder="例：加工用玉葱"><label class="label" style="margin-top:8px">ふだんの単位</label><select id="hqIUnit" class="input"><option>ケース</option><option>kg</option></select><label class="label" style="margin-top:8px">量目（任意）</label><input id="hqIPack" class="input" placeholder="例：10kg"><button class="btn hqBtnItems" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","hqSaveItem",["",true])}>追加する</button></div>
+ let items=[];try{items=await qrSelect("hq_items_v1400","select=*&order=sort_order.asc")}catch(e){return pageShell("品目の追加・変更","エラー",`<div class="err">${esc(hqErr(e))}</div>`)}
+ pageShell("品目の追加・変更","本社直接入荷で選べる品目",`${okHtml(msg)}<div class="card"><b>品目を追加</b><label class="label" style="margin-top:8px">品目名</label><input id="hqINm" class="input" placeholder="例：加工用玉葱"><label class="label" style="margin-top:8px">ふだんの単位</label><select id="hqIUnit" class="input"><option>ケース</option><option>kg</option></select><label class="label" style="margin-top:8px">量目（任意）</label><input id="hqIPack" class="input" placeholder="例：10kg"><button class="btn hqBtnItems" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","hqSaveItem",["",true])}>追加する</button></div>
  ${items.map(i=>`<div class="card"><div class="itemHead"><div><b>${esc(i.name)}</b><div class="small">${esc(i.default_unit)}${i.pack_weight?` / ${esc(i.pack_weight)}`:""}</div></div><button class="btn ${i.active?"btn2":"green"}" ${seikaEventAttrs("click","hqSaveItem",[i.name,!i.active])}>${i.active?"表示しない":"表示する"}</button></div></div>`).join("")}`);
 }
 async function hqSaveItem(name,active){
@@ -16194,7 +16206,7 @@ async function hqSaveItem(name,active){
 /* ---- 履歴・Excel ---- */
 async function hqHistoryPage(month=""){
  month=month||monthInputValue(new Date);setScreen("hqHistoryPage",[month]);
- pageShell("入出庫の履歴","本社の受け入れ確定・出庫・実数調整・取消",`<div class="card"><label class="label">月</label><input id="hqMonth" type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqHistoryPage",[{__seikaValue:true}])}><button class="btn hqBtnExcel" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","hqExcel",[month])}>この月のExcelを作る</button></div><div id="hqList"><div class="notice">読み込んでいます…</div></div>`);
+ pageShell("入出庫履歴","本社の受け入れ確定・出庫・実数調整・取消",`<div class="card"><label class="label">月</label><input id="hqMonth" type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqHistoryPage",[{__seikaValue:true}])}><button class="btn hqBtnExcel" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","hqExcel",[month])}>この月のExcelを作る</button></div><div id="hqList"><div class="notice">読み込んでいます…</div></div>`);
  try{
   const rows=await hqMonthMoves(month);
   document.getElementById("hqList").innerHTML=rows.map(m=>`<div class="card" style="padding:10px 14px"><b>${esc(m.movement_type)}</b> ${esc(m.item_name||"")} ${hqQty(m.qty)}${esc(m.unit||"")}${m.destination?` → ${esc(m.destination)}`:""}${m.cancelled_at?' <span class="badge unset">取消済み</span>':""}<div class="small">${esc(m.lot_no||"")} / ${esc(m.user_name||"")} / ${esc(new Date(m.occurred_at).toLocaleString("ja-JP"))}${m.reason?` / ${esc(m.reason)}`:""}</div></div>`).join("")||'<div class="notice">この月の履歴はありません。</div>';
@@ -16267,14 +16279,16 @@ home=function(...a){
  if(hqSite()==="honsha")return hqHome();
  if(hqIsHqRole())return hqIshiokaView();
  const r=hqHomeBase.apply(this,a);
- try{const main=document.querySelector("#app main")||document.querySelector("#app .appShell");if(main&&!document.getElementById("hqIshiokaFoot"))main.insertAdjacentHTML("beforeend",`<div id="hqIshiokaFoot">${hqSwitchHtml()}<button class="btn btn2" style="width:100%" ${seikaEventAttrs("click","hqIshiokaPendingPage",[])}>本社へ移動中の原料・本社移動用の紙</button></div>`)}catch(e){}
+ try{const main=document.querySelector("#app main")||document.querySelector("#app .appShell");if(main&&!document.getElementById("hqIshiokaFoot"))main.insertAdjacentHTML("afterbegin",`<div id="hqIshiokaFoot">${hqSwitchHtml()}<button class="btn btn2" style="width:100%;margin-bottom:12px" ${seikaEventAttrs("click","hqIshiokaPendingPage",[])}>本社へ移動中の原料・本社移動用の紙</button></div>`)}catch(e){}
  return r;
 };
 window.home=home;
 const hqGoBackBase=goBack;
 goBack=function(...a){
  if(currentScreen==="hqScanPage")return hqStopReader().finally(()=>home());
- if(currentScreen==="hqLotPage"||currentScreen==="hqPendingPage"||currentScreen==="hqStockPage"||currentScreen==="hqOutPage"||currentScreen==="hqDirectPage"||currentScreen==="hqHistoryPage"||currentScreen==="hqItemsPage"||currentScreen==="hqIshiokaPendingPage")return home();
+ if(currentScreen==="hqStockPage"||currentScreen==="hqOutPage"||currentScreen==="hqHistoryPage")return hqStockHub();
+ if(currentScreen==="hqDirectPage"||currentScreen==="hqItemsPage")return hqEntryHub();
+ if(currentScreen==="hqLotPage"||currentScreen==="hqPendingPage"||currentScreen==="hqStockHub"||currentScreen==="hqEntryHub"||currentScreen==="hqIshiokaPendingPage")return home();
  if(currentScreen==="hqSheetPage"){const k=hqSheetBackKey;hqSheetBackKey="";return k?hqLotPage(k):home()}
  if(hqIsHqRole()&&hqSite()==="ishioka"&&!String(currentScreen||"").startsWith("hq"))return home();
  return hqGoBackBase.apply(this,a);
@@ -16350,18 +16364,18 @@ window.userAdminPage=userAdminPage;
 
 /* ---- 操作ガイド ---- */
 const HQ_GUIDE={
- switch:{title:"石岡と本社の画面を切り替える",where:"ホーム → いちばん上（本社）／いちばん下（石岡）",steps:["ホームの「本社の画面へ」「石岡の画面へ」を押します。","本社社員・本社事務で石岡の画面を開いたときは、在庫を見るだけです。","石岡のアカウントで本社の画面を開いたときも、見るだけです（管理者を除く）。"],check:"ホームの上に「いまの画面」が出ます。",caution:"荷受け担当者・下処理班のアカウントは本社の画面だけで、切り替えはありません。切り替えはこの端末とこのアカウントだけに残ります。"},
- hqReceive:{title:"本社で受け入れる（品質評価と確定）",where:"本社ホーム → 入荷待ち原料 または QRを読み取る",steps:["届いた原料の「本社移動用」の貼り紙のQRを読み取ります。読めないときはロット番号を入力します。","届いた数量を確認します。予定と違うときは実際の数量に直します。","品質評価（良好・要確認・不良）を選びます。要確認・不良は気になった点を選び、写真を1枚以上付けます。","「確定して本社の在庫にする」を押します。"],check:"確定すると「本社在庫」に入ります。確定するまでは本社の在庫に入りません。数量が予定と違うと「差異あり」と表示されます。",caution:"要確認・不良は社員に伝えてください。石岡から出庫を取り消した原料は、入荷待ちから自動で消えます。確定を間違えたときは、本社社員がロットの画面の「受け入れ確定を取り消す」で入荷待ちに戻せます（出庫がある場合は先に出庫を取り消します）。"},
- hqOut:{title:"使うときに出庫する",where:"本社ホーム → 使用出庫",steps:["QRを読み取るか、一覧から原料を選びます（古い順に並んでいます）。","出庫先（下処理・原料出し）を選びます。","出庫する数量を入れます（小数も入れられます）。全部使うときは「全部」を押します。","「出庫する」を押すと、本社の在庫から数量が引かれます。"],check:"ロットの画面の「このロットの履歴」に出庫が残ります。",caution:"網コンテナ・鉄コンテナ・パレテーナはkg、それ以外はケースで数えます。出庫を間違えたときは、履歴の「この出庫を取り消す」を押すと在庫が元に戻ります。出庫した本人はその日のうち、本社社員はいつでも取り消せます。"},
- hqDirect:{title:"本社に直接届いた原料を登録する",where:"本社ホーム → 本社直接入荷",steps:["品目・荷姿・数量・量目・仕入先・産地・単協名・入荷日を入れます。","「登録して品質評価へ進む」を押します。","品質評価をして「確定して本社の在庫にする」を押します。","続けて出る画面で、パレットのケース数（大型容器は基数）と印刷枚数を入れて、貼り紙を印刷します。"],check:"確定すると本社在庫に入ります。",caution:"品目がないときは、本社社員が「本社品目」で追加します。"},
- hqStock:{title:"本社の在庫と履歴を見る・Excelを作る",where:"本社ホーム → 本社在庫／入出庫の履歴",steps:["「本社在庫」で品目ごとの合計とロットを見ます。","「入出庫の履歴」で月を選ぶと、受け入れ確定・出庫・実数調整が並びます。","「この月のExcelを作る」で、現在の本社在庫と月の入出庫履歴をExcelにします。"],check:"数量が合わないときは、本社社員がロットの画面の「実数調整」で直します。",caution:"実数調整には理由が必要です。"},
- hqItems:{title:"本社の品目を追加する",where:"本社ホーム → 本社品目",steps:["品目名・ふだんの単位・量目を入れて「追加する」を押します。","使わなくなった品目は「表示しない」にします。"],check:"本社直接入荷の品目に出てきます。",caution:"加工用玉葱・皮むき人参(国産)・皮むき人参(中国)・皮むきじゃが芋は最初から入っています（保管目安は入荷日＋3日）。"},
- hqPrint:{title:"本社移動用の貼り紙を印刷する（石岡）",where:"QR出庫で出庫先「本社」 → 画面下の「本社移動用の貼り紙を印刷」",steps:["いつもどおりQR出庫で、出庫先に「本社」を選んで出庫します。","画面の下に出る「本社移動用の貼り紙を印刷」を押します。","ケースのものは「1パレットのケース数」を入れます。パレット枚数とパレットごとのケース数が自動で出ます（直せます）。","網コンテナ・鉄コンテナ・パレテーナは、基数と1基あたりkgを確認します。1基に1枚ずつ貼ります。","1パレット（1基）あたりの印刷枚数を入れて「印刷する」を押します。","印刷し直すときは、ホームのいちばん下「本社へ移動中の原料・本社移動用の紙」から印刷します。"],check:"出庫した時点で、本社の「入荷待ち原料」に「移動中」として出ます。本社でこの紙のQRを読むと、その原料が開きます。",caution:"パレットごとのケース数の合計が出庫数と合わないと印刷できません。1基あたりkgは、入荷時の総重量を入荷基数で割った重さです。出庫を取り消すと、本社の移動中も取消になります。"},
+ switch:{title:"石岡と本社の画面を切り替える",where:"ホーム → いちばん上",steps:["ホームの「本社の画面へ」「石岡の画面へ」を押します。","本社社員・本社事務で石岡の画面を開いたときは、在庫を見るだけです。","石岡のアカウントで本社の画面を開いたときも、見るだけです（管理者を除く）。"],check:"ホームの上に「いまの画面」が出ます。",caution:"荷受け担当者・下処理班のアカウントは本社の画面だけで、切り替えはありません。切り替えはこの端末とこのアカウントだけに残ります。"},
+ hqReceive:{title:"本社で受け入れる（品質評価と確定）",where:"本社ホーム → 入荷待ち原料 または QR読み取り（受け入れ・出庫）",steps:["届いた原料の「本社移動用」の貼り紙のQRを読み取ります。読めないときはロット番号を入力します。","届いた数量を確認します。予定と違うときは実際の数量に直します。","品質評価（良好・要確認・不良）を選びます。要確認・不良は気になった点を選び、写真を1枚以上付けます。","「確定して本社の在庫にする」を押します。"],check:"確定すると「本社在庫」に入ります。確定するまでは本社の在庫に入りません。数量が予定と違うと「差異あり」と表示されます。",caution:"要確認・不良は社員に伝えてください。石岡から出庫を取り消した原料は、入荷待ちから自動で消えます。確定を間違えたときは、本社社員がロットの画面の「受け入れ確定を取り消す」で入荷待ちに戻せます（出庫がある場合は先に出庫を取り消します）。"},
+ hqOut:{title:"使うときに出庫する",where:"本社ホーム → 在庫管理 → 使用出庫（QR読み取りからも出庫できます）",steps:["QRを読み取るか、一覧から原料を選びます（古い順に並んでいます）。","出庫先（下処理・原料出し）を選びます。","出庫する数量を入れます（小数も入れられます）。全部使うときは「全部」を押します。","「出庫する」を押すと、本社の在庫から数量が引かれます。"],check:"ロットの画面の「このロットの履歴」に出庫が残ります。",caution:"網コンテナ・鉄コンテナ・パレテーナはkg、それ以外はケースで数えます。出庫を間違えたときは、履歴の「この出庫を取り消す」を押すと在庫が元に戻ります。出庫した本人はその日のうち、本社社員はいつでも取り消せます。"},
+ hqDirect:{title:"本社に直接届いた原料を登録する",where:"本社ホーム → 入荷登録・品目 → 本社直接入荷",steps:["品目・荷姿・数量・量目・仕入先・産地・単協名・入荷日を入れます。","「登録して品質評価へ進む」を押します。","品質評価をして「確定して本社の在庫にする」を押します。","続けて出る画面で、パレットのケース数（大型容器は基数）と印刷枚数を入れて、貼り紙を印刷します。"],check:"確定すると本社在庫に入ります。",caution:"品目がないときは、本社社員が「入荷登録・品目」→「品目の追加・変更」で追加します。"},
+ hqStock:{title:"本社の在庫と履歴を見る・Excelを作る",where:"本社ホーム → 在庫管理 → 本社在庫／入出庫履歴",steps:["「本社在庫」で品目ごとの合計とロットを見ます。","「入出庫履歴」で月を選ぶと、受け入れ確定・出庫・実数調整が並びます。","「この月のExcelを作る」で、現在の本社在庫と月の入出庫履歴をExcelにします。"],check:"数量が合わないときは、本社社員がロットの画面の「実数調整」で直します。",caution:"実数調整には理由が必要です。"},
+ hqItems:{title:"本社の品目を追加する",where:"本社ホーム → 入荷登録・品目 → 品目の追加・変更",steps:["品目名・ふだんの単位・量目を入れて「追加する」を押します。","使わなくなった品目は「表示しない」にします。"],check:"本社直接入荷の品目に出てきます。",caution:"加工用玉葱・皮むき人参(国産)・皮むき人参(中国)・皮むきじゃが芋は最初から入っています（保管目安は入荷日＋3日）。"},
+ hqPrint:{title:"本社移動用の貼り紙を印刷する（石岡）",where:"QR出庫で出庫先「本社」 → 画面下の「本社移動用の貼り紙を印刷」",steps:["いつもどおりQR出庫で、出庫先に「本社」を選んで出庫します。","画面の下に出る「本社移動用の貼り紙を印刷」を押します。","ケースのものは「1パレットのケース数」を入れます。パレット枚数とパレットごとのケース数が自動で出ます（直せます）。","網コンテナ・鉄コンテナ・パレテーナは、基数と1基あたりkgを確認します。1基に1枚ずつ貼ります。","1パレット（1基）あたりの印刷枚数を入れて「印刷する」を押します。","印刷し直すときは、ホームのいちばん上「本社へ移動中の原料・本社移動用の紙」から印刷します。"],check:"出庫した時点で、本社の「入荷待ち原料」に「移動中」として出ます。本社でこの紙のQRを読むと、その原料が開きます。",caution:"パレットごとのケース数の合計が出庫数と合わないと印刷できません。1基あたりkgは、入荷時の総重量を入荷基数で割った重さです。出庫を取り消すと、本社の移動中も取消になります。"},
  hqUsers:{title:"本社のアカウントを登録する（管理者）",where:"メニュー → ユーザー登録・管理",steps:["「本社の初期アカウントをまとめて登録」を押します。","ユーザーIDを確認し、初期パスワードを入れて「まとめて登録する」を押します。","1人ずつ登録・変更するときは、権限で本社社員・本社事務・本社 荷受け担当者・本社 下処理班を選びます。","みんなで使うアカウントは「初回ログイン時にパスワード変更を求める」を外します。"],check:"一覧に本社の権限で表示されます。",caution:"パスワードはアプリに保存されません。本人へ直接伝えてください。"}
 };
 const HQ_ROLE_GUIDE={
- hq_worker:{name:"本社社員",intro:"本社の受け入れ・確定、使用出庫、実数調整、本社品目の管理ができます。",keys:["switch","hqReceive","hqOut","hqDirect","hqStock","hqItems"]},
- hq_clerk:{name:"本社事務",intro:"本社の在庫と入出庫の履歴を見て、Excelを作れます。",keys:["switch","hqStock"]},
+ hq_worker:{name:"本社社員",intro:"本社の受け入れ・確定、使用出庫、実数調整、品目の追加・変更ができます。",keys:["switch","hqReceive","hqOut","hqDirect","hqStock","hqItems"]},
+ hq_clerk:{name:"本社事務",intro:"本社の在庫と入出庫履歴を見て、Excelを作れます。",keys:["switch","hqStock"]},
  hq_receiver:{name:"本社 荷受け担当者",intro:"届いた原料の品質評価と確定、貼り紙の印刷、在庫の確認ができます。本社の画面だけを使います。",keys:["hqReceive","hqDirect","hqStock"]},
  hq_prep:{name:"本社 下処理班",intro:"本社の在庫を見て、使うときに出庫できます。本社の画面だけを使います。",keys:["hqOut","hqStock"]}
 };
@@ -16454,7 +16468,7 @@ async function hqCancelReceive(lotId,key){
  hqBusy=false;
 }
 
-Object.assign(window,{hqToast,hqSheetPage,hqSheetFromToast,hqSheetRows,hqSheetCheck,hqSheetPrint,hqCancelOut,hqCancelReceive,hqHome,hqIshiokaView,hqSetSite,hqPendingPage,hqStockPage,hqOutPage,hqLotPage,hqToggleGrade,hqAddPhotos,hqRemovePhoto,hqDoReceive,hqFillAll,hqDoOut,hqDoAdjust,hqCancelPending,hqShowPhotos,hqPrintLot,hqPrintFromPage,hqScanPage,hqOpenTyped,hqDirectPage,hqDirectItemChanged,hqDoDirect,hqItemsPage,hqSaveItem,hqHistoryPage,hqExcel,hqCloseToast,hqIshiokaPendingPage,hqBulkPage,hqBulkRun});
+Object.assign(window,{hqStockHub,hqEntryHub,hqToast,hqSheetPage,hqSheetFromToast,hqSheetRows,hqSheetCheck,hqSheetPrint,hqCancelOut,hqCancelReceive,hqHome,hqIshiokaView,hqSetSite,hqPendingPage,hqStockPage,hqOutPage,hqLotPage,hqToggleGrade,hqAddPhotos,hqRemovePhoto,hqDoReceive,hqFillAll,hqDoOut,hqDoAdjust,hqCancelPending,hqShowPhotos,hqPrintLot,hqPrintFromPage,hqScanPage,hqOpenTyped,hqDirectPage,hqDirectItemChanged,hqDoDirect,hqItemsPage,hqSaveItem,hqHistoryPage,hqExcel,hqCloseToast,hqIshiokaPendingPage,hqBulkPage,hqBulkRun});
 })();
 
 </script>
