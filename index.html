@@ -15897,7 +15897,7 @@ window.qrSelect=qrSelect;
 .hqIssues{display:flex;flex-wrap:wrap;gap:8px 14px}.badge.danger{background:#fee2e2;color:#991b1b}.badge.warn{background:#fef3c7;color:#92400e}
 </style>
 <script>
-/* ===== v1.199-c47 本社 第1段階（移動中・本社移動用の貼り紙・受け入れ・品質評価・確定・使用出庫・取消） ===== */
+/* ===== v1.199-c48 本社 第1段階（移動中・本社移動用の貼り紙・受け入れ・品質評価・確定・使用出庫・取消） ===== */
 (function(){
 const HQ_ROLES=["hq_worker","hq_clerk","hq_receiver","hq_prep"];
 const HQ_LABEL={hq_worker:"本社社員",hq_clerk:"本社事務",hq_receiver:"本社 荷受け担当者",hq_prep:"本社 下処理班"};
@@ -16145,12 +16145,53 @@ async function hqPrintLot(key){
  try{const l=(await hqLots(`select=*&qr_key=eq.${encodeURIComponent(key)}`))[0];if(!l)throw new Error("原料が見つかりません");hqOpenSheet(w,l)}catch(e){w?.close();alert(hqErr(e))}
 }
 async function hqPrintFromPage(key){
- const d=document.getElementById("hqPlanned")?.value||"";const w=window.open("","_blank");
+ const d=document.getElementById("hqPlanned")?.value||"";
  try{
   let l=(await hqLots(`select=*&qr_key=eq.${encodeURIComponent(key)}`))[0];if(!l)throw new Error("原料が見つかりません");
   if(d&&d!==l.planned_date){await hqRpc("hq_set_planned_date_v1400",{p_lot_id:l.id,p_date:d});l={...l,planned_date:d}}
-  hqOpenSheet(w,l);
- }catch(e){w?.close();alert(hqErr(e))}
+  await hqMakePdf(l);
+ }catch(e){alert(hqErr(e))}
+}
+let hqLastPdfUrl="";
+function hqPdfStatus(msg,type="notice",url="",name=""){
+ let host=document.getElementById("hqPdfStatus");
+ if(!host){const t=document.querySelector(".wrap")||document.querySelector(".appShell")||document.body;host=document.createElement("div");host.id="hqPdfStatus";t.prepend(host)}
+ const open=url?`<a class="btn blue" style="display:block;width:100%;margin-top:10px;text-decoration:none;text-align:center" href="${esc(url)}" target="_blank" rel="noopener" aria-label="${esc(name||"PDF")}を開いて印刷">PDFを開く・印刷</a>`:"";
+ host.innerHTML=`<div class="${type}">${msg}${open}</div>`;try{host.scrollIntoView({block:"start"})}catch(_){}
+}
+function hqScopeCss(css){
+ css=css.replace(/@page\{[^}]*\}/g,"").replace(/@media print\{[^{}]*\{[^}]*\}\}/g,"");
+ return css.split("}").map(r=>{const i=r.indexOf("{");if(i<0)return"";const sel=r.slice(0,i).trim(),body=r.slice(i+1);
+  if(!sel||sel==="*"||sel==="body"||sel.startsWith(".bar"))return"";
+  return sel.split(",").map(s=>".hqPdfRoot "+s.trim()).join(",")+"{"+body+"}"}).join("");
+}
+async function hqMakePdf(l,pages){
+ if(hqLastPdfUrl){try{URL.revokeObjectURL(hqLastPdfUrl)}catch(_){}hqLastPdfUrl=""}
+ hqPdfStatus("A4横のPDFを作成中です。しばらくお待ちください…","notice");let root=null;
+ try{
+  if(typeof window.html2canvas!=="function")throw new Error("PDF作成用のhtml2canvasが読み込まれていません。通信状況を確認してから、もう一度お試しください。");
+  if(!window.jspdf||typeof window.jspdf.jsPDF!=="function")throw new Error("PDF作成用のjsPDFが読み込まれていません。通信状況を確認してから、もう一度お試しください。");
+  const d=new DOMParser().parseFromString(hqSheetHtml(l,pages),"text/html");
+  const css=hqScopeCss(d.querySelector("style")?.textContent||"");
+  const sheets=[...d.querySelectorAll(".sheet")];if(!sheets.length)throw new Error("貼り紙の準備に失敗しました。");
+  root=document.createElement("div");root.className="hqPdfRoot";root.setAttribute("aria-hidden","true");
+  root.style.cssText="position:fixed;left:-20000px;top:0;width:1122px;background:#fff;pointer-events:none;font-family:'Hiragino Sans','Noto Sans JP',sans-serif;color:#000";
+  root.innerHTML=`<style>.hqPdfRoot *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}${css}.hqPdfRoot .hqPdfPage{width:1122px;height:794px;padding:38px;background:#fff;overflow:hidden}.hqPdfRoot .hqPdfPage .sheet{height:100%;margin:0}.hqPdfRoot .sheet>.head{background:#0f766e!important;background-image:none!important;color:#fff!important;border-radius:0!important;box-shadow:none!important}.hqPdfRoot .sheet>.head h1,.hqPdfRoot .sheet>.head span{color:#fff!important}</style>`+sheets.map(s=>`<div class="hqPdfPage">${s.outerHTML}</div>`).join("");
+  document.body.appendChild(root);
+  if(document.fonts&&document.fonts.ready)await document.fonts.ready;
+  if(typeof qrWaitForPosterImages==="function")await qrWaitForPosterImages(root);
+  const{jsPDF}=window.jspdf,doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4",compress:true});
+  const pg=[...root.querySelectorAll(".hqPdfPage")];
+  for(let i=0;i<pg.length;i++){
+   const c=await window.html2canvas(pg[i],{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false,width:1122,height:794,windowWidth:1122,windowHeight:794});
+   if(i)doc.addPage("a4","landscape");doc.addImage(c.toDataURL("image/png"),"PNG",0,0,297,210,undefined,"FAST");
+  }
+  const blob=doc.output("blob");if(!blob||!blob.size)throw new Error("PDFの作成に失敗しました。");
+  const name=`本社移動用_${String(l.lot_no||"lot").replace(/[\/:*?"<>|\s]+/g,"_")}.pdf`;
+  hqLastPdfUrl=URL.createObjectURL(blob);
+  hqPdfStatus(`PDFを作成しました（${pg.length}枚）。下のボタンで開いて、共有からEpson iPrintなどで印刷してください。`,"ok",hqLastPdfUrl,name);
+ }catch(e){hqPdfStatus(`PDFを作成できませんでした。${esc(hqErr(e))}`,"err")}
+ finally{if(root)root.remove()}
 }
 
 /* ---- QR読み取り ---- */
@@ -16455,7 +16496,7 @@ const HQ_GUIDE={
  hqItems:{title:"本社の品目を追加する",where:"本社ホーム → 入荷登録・品目 → 品目の追加・変更",steps:["上のタブで「QR品目」か「通常在庫の品目」を選びます。","QR品目：品目名・ふだんの単位・量目を入れて「追加する」を押します。","通常在庫の品目：品目名と1ケースのkgを入れて「追加する」を押します。通常在庫入力の画面の下の「通常在庫の品目を追加」からも追加できます。","使わなくなった品目は「表示しない」にします。"],check:"QR品目は本社直接入荷に、通常在庫の品目は通常在庫入力に出てきます。同じ名前をQR品目と通常在庫の品目の両方には登録できません。",caution:"加工用玉葱・皮むき人参(国産)・皮むき人参(中国)・皮むきじゃが芋は最初から入っています（保管目安は入荷日＋3日）。"},
  hqNormal:{title:"通常在庫を入力する（QRで管理しない品目）",where:"本社ホーム → 在庫管理 → 通常在庫入力",steps:["日付を確かめます（ふだんは今日）。","品目ごとにケース数とバラ（kg）を入れます。合計kgが自動で出ます。","「保存する」を押します。同じ日にもう一度保存すると上書きします。","品目がないときは、画面の下の「通常在庫の品目を追加」で追加します（本社社員・管理者）。"],check:"在庫表に、その日の数が出ます。",caution:"ケースもバラも空にして保存すると、その日の入力を消します。入力できるのは本社社員と荷受け担当者です。"},
  hqTable:{title:"在庫表を見る（QR品目＋通常在庫）",where:"本社ホーム → 在庫管理 → 在庫表",steps:["最後の日と日数（7・14・31日）を選びます。「◀ 前」「次 ▶」で期間を動かせます。","QR品目と通常在庫の品目が1つの表に並び、日ごとのkgといちばん下に合計kgが出ます。"],check:"QR品目はその日の終わりの在庫、通常在庫はその日に入力した数です（入力がない日は「—」）。",caution:"量目が分からないQRのロットは「kg不明」として別に出ます。月ごとのExcelにも「通常在庫」「在庫表」のシートが入ります。"},
- hqPrint:{title:"本社移動用の貼り紙を印刷する（石岡）",where:"QR出庫で出庫先「本社」 → 画面下の「本社移動用の貼り紙を印刷」",steps:["いつもどおりQR出庫で、出庫先に「本社」を選んで出庫します。","画面の下に出る「本社移動用の貼り紙を印刷」を押します。","ケースのものは「1パレットのケース数」を入れます。パレット枚数とパレットごとのケース数が自動で出ます（直せます）。","網コンテナ・鉄コンテナ・パレテーナは、基数と1基あたりkgを確認します。1基に1枚ずつ貼ります。","1パレット（1基）あたりの印刷枚数を入れて「印刷する」を押します。","印刷し直すときは、ホームのいちばん上「本社へ移動中の原料・本社移動用の紙」から印刷します。"],check:"出庫した時点で、本社の「入荷待ち原料」に「移動中」として出ます。本社でこの紙のQRを読むと、その原料が開きます。",caution:"パレットごとのケース数の合計が出庫数と合わないと印刷できません。1基あたりkgは、入荷時の総重量を入荷基数で割った重さです。出庫を取り消すと、本社の移動中も取消になります。"},
+ hqPrint:{title:"本社移動用の貼り紙を印刷する（石岡）",where:"QR出庫で出庫先「本社」 → 画面下の「本社移動用の貼り紙を印刷」",steps:["いつもどおりQR出庫で、出庫先に「本社」を選んで出庫します。","画面の下に出る「本社移動用の貼り紙を印刷」を押します。","ケースのものは「1パレットのケース数」を入れます。パレット枚数とパレットごとのケース数が自動で出ます（直せます）。","網コンテナ・鉄コンテナ・パレテーナは、基数と1基あたりkgを確認します。1基に1枚ずつ貼ります。","1パレット（1基）あたりの印刷枚数を入れて「印刷する」を押します。A4横のPDFができます。","画面の上に出る「PDFを開く・印刷」を押し、共有からEpson iPrintなどを選んで印刷します（いつものQR貼り紙と同じ）。","印刷し直すときは、ホームのいちばん上「本社へ移動中の原料・本社移動用の紙」から印刷します。"],check:"出庫した時点で、本社の「入荷待ち原料」に「移動中」として出ます。本社でこの紙のQRを読むと、その原料が開きます。",caution:"パレットごとのケース数の合計が出庫数と合わないと印刷できません。1基あたりkgは、入荷時の総重量を入荷基数で割った重さです。出庫を取り消すと、本社の移動中も取消になります。"},
  hqUsers:{title:"本社のアカウントを登録する（管理者）",where:"メニュー → ユーザー登録・管理",steps:["「本社の初期アカウントをまとめて登録」を押します。","ユーザーIDを確認し、初期パスワードを入れて「まとめて登録する」を押します。","1人ずつ登録・変更するときは、権限で本社社員・本社事務・本社 荷受け担当者・本社 下処理班を選びます。","みんなで使うアカウントは「初回ログイン時にパスワード変更を求める」を外します。"],check:"一覧に本社の権限で表示されます。",caution:"パスワードはアプリに保存されません。本人へ直接伝えてください。"}
 };
 const HQ_ROLE_GUIDE={
@@ -16532,13 +16573,12 @@ function hqSheetPlan(){
 function hqSheetCheck(){const r=hqSheetPlan(),w=document.getElementById("hqSWarn"),b=document.getElementById("hqSBtn");if(w)w.innerHTML=r.msg||"";if(b)b.disabled=!r.ok}
 async function hqSheetPrint(key){
  const l=hqSheetLot,plan=hqSheetPlan();if(!l||!plan.ok)return alert(String(plan.msg||"入力を確認してください").replace(/<[^>]+>/g,""));
- const w=window.open("","_blank");if(!w)return alert("印刷画面を開けませんでした。ポップアップを許可してください。");
  try{
   let lot={...l};const d=document.getElementById("hqPlanned")?.value||"";
   if(d&&d!==l.planned_date&&l.status==="入荷待ち"){await hqRpc("hq_set_planned_date_v1400",{p_lot_id:l.id,p_date:d});lot.planned_date=d}
   await hqRpc("hq_save_sheet_v1400",{p_lot_id:l.id,p_meta:plan.meta});lot.sheet_meta=plan.meta;hqSheetLot=lot;
-  w.document.open();w.document.write(hqSheetHtml(lot,plan.pages));w.document.close();
- }catch(e){w.close();alert(hqErr(e))}
+  await hqMakePdf(lot,plan.pages);
+ }catch(e){alert(hqErr(e))}
 }
 async function hqCancelOut(movementId,key){
  const reason=prompt("この出庫を取り消します。理由を入れてください（例：数量の入れ間違い）");if(reason===null)return;
@@ -16553,7 +16593,7 @@ async function hqCancelReceive(lotId,key){
  hqBusy=false;
 }
 
-Object.assign(window,{hqNormalItemsPage,hqAddNormalItem,hqEditNormalItem,hqSaveNormalItem,hqNormalPage,hqSaveNormal,hqTablePage,hqStockHub,hqEntryHub,hqToast,hqSheetPage,hqSheetFromToast,hqSheetRows,hqSheetCheck,hqSheetPrint,hqCancelOut,hqCancelReceive,hqHome,hqIshiokaView,hqSetSite,hqPendingPage,hqStockPage,hqOutPage,hqLotPage,hqToggleGrade,hqAddPhotos,hqRemovePhoto,hqDoReceive,hqFillAll,hqDoOut,hqDoAdjust,hqCancelPending,hqShowPhotos,hqPrintLot,hqPrintFromPage,hqScanPage,hqOpenTyped,hqDirectPage,hqDirectItemChanged,hqDoDirect,hqItemsPage,hqSaveItem,hqHistoryPage,hqExcel,hqCloseToast,hqIshiokaPendingPage,hqBulkPage,hqBulkRun});
+Object.assign(window,{hqMakePdf,hqNormalItemsPage,hqAddNormalItem,hqEditNormalItem,hqSaveNormalItem,hqNormalPage,hqSaveNormal,hqTablePage,hqStockHub,hqEntryHub,hqToast,hqSheetPage,hqSheetFromToast,hqSheetRows,hqSheetCheck,hqSheetPrint,hqCancelOut,hqCancelReceive,hqHome,hqIshiokaView,hqSetSite,hqPendingPage,hqStockPage,hqOutPage,hqLotPage,hqToggleGrade,hqAddPhotos,hqRemovePhoto,hqDoReceive,hqFillAll,hqDoOut,hqDoAdjust,hqCancelPending,hqShowPhotos,hqPrintLot,hqPrintFromPage,hqScanPage,hqOpenTyped,hqDirectPage,hqDirectItemChanged,hqDoDirect,hqItemsPage,hqSaveItem,hqHistoryPage,hqExcel,hqCloseToast,hqIshiokaPendingPage,hqBulkPage,hqBulkRun});
 })();
 
 </script>
