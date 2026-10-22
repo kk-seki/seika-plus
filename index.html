@@ -15895,7 +15895,7 @@ window.qrSelect=qrSelect;
 .hqIssues{display:flex;flex-wrap:wrap;gap:8px 14px}.badge.danger{background:#fee2e2;color:#991b1b}.badge.warn{background:#fef3c7;color:#92400e}
 </style>
 <script>
-/* ===== v1.199-c44 本社 第1段階（移動中・本社移動用の貼り紙・受け入れ・品質評価・確定・使用出庫・取消） ===== */
+/* ===== v1.199-c45 本社 第1段階（移動中・本社移動用の貼り紙・受け入れ・品質評価・確定・使用出庫・取消） ===== */
 (function(){
 const HQ_ROLES=["hq_worker","hq_clerk","hq_receiver","hq_prep"];
 const HQ_LABEL={hq_worker:"本社社員",hq_clerk:"本社事務",hq_receiver:"本社 荷受け担当者",hq_prep:"本社 下処理班"};
@@ -16273,13 +16273,21 @@ setScreen=function(name,args){
 window.setScreen=setScreen;
 
 /* ---- ホームの切り替え ---- */
+function hqEnsureIshiokaTop(){
+ try{
+  if(currentScreen!=="home"||!db?.user||hqSite()==="honsha"||hqIsHqRole()||document.getElementById("hqIshiokaFoot"))return;
+  const main=document.querySelector("#app main")||document.querySelector("#app .appShell");if(!main)return;
+  main.insertAdjacentHTML("afterbegin",`<div id="hqIshiokaFoot">${hqSwitchHtml()}<button class="btn btn2" style="width:100%;margin-bottom:12px" ${seikaEventAttrs("click","hqIshiokaPendingPage",[])}>本社へ移動中の原料・本社移動用の紙</button></div>`);
+ }catch(e){}
+}
+(()=>{const app=document.getElementById("app");if(!app||window.hqTopObserver)return;window.hqTopObserver=new MutationObserver(()=>{if(currentScreen==="home"&&!document.getElementById("hqIshiokaFoot"))hqEnsureIshiokaTop()});window.hqTopObserver.observe(app,{childList:true,subtree:true})})();
 const hqHomeBase=home;
 home=function(...a){
  if(!db?.user)return hqHomeBase.apply(this,a);
  if(hqSite()==="honsha")return hqHome();
  if(hqIsHqRole())return hqIshiokaView();
  const r=hqHomeBase.apply(this,a);
- try{const main=document.querySelector("#app main")||document.querySelector("#app .appShell");if(main&&!document.getElementById("hqIshiokaFoot"))main.insertAdjacentHTML("afterbegin",`<div id="hqIshiokaFoot">${hqSwitchHtml()}<button class="btn btn2" style="width:100%;margin-bottom:12px" ${seikaEventAttrs("click","hqIshiokaPendingPage",[])}>本社へ移動中の原料・本社移動用の紙</button></div>`)}catch(e){}
+ hqEnsureIshiokaTop();
  return r;
 };
 window.home=home;
