@@ -2478,6 +2478,15 @@ function seikaLoginOnEnter(event){if(event?.key==="Enter")doLogin()}
 function seikaCloseLoginFeature(){document.getElementById("loginFeatureModal")?.remove();document.getElementById("loginUser")?.focus()}
 function seikaStopLotCameraAndReturn(kind){return qrStopActiveCamera("lot").finally(()=>qrOperationSelectPage(kind))}
 function seikaStopCountCameraAndReturn(id){return qrStopActiveCamera("count").finally(()=>inventoryCountPage(id))}
+function qrFitPosterText(root){
+  root.querySelectorAll(".posterValue").forEach(el=>{
+    const wrap=el.classList.contains("item")||el.classList.contains("supplier");
+    if(!wrap){el.style.whiteSpace="nowrap";el.style.overflowWrap="normal";el.style.lineHeight="1.12"}
+    let size=parseFloat(getComputedStyle(el).fontSize)||50;
+    const over=()=>wrap?el.scrollHeight>el.clientHeight+size*0.35:el.scrollWidth>el.clientWidth+1;
+    for(let i=0;i<60&&size>16&&over();i++){size-=2;el.style.fontSize=size+"px"}
+  });
+}
 function seikaQrSelectLot(kind,key){return kind==="detail"?qrScannedLotActionPage(key):qrOperationLotPage(kind,key)}
 function seikaQrLotFilter(){return qrLotListPage(document.getElementById("qrLotItemFilter")?.value||"",document.getElementById("qrLotSortOrder")?.value||"newest",document.getElementById("qrLotStockFilter")?.value||"inStock",100,!!qrLotListState.alertOnly)}
 function seikaQrLotSort(limit){return qrLotListPage(document.getElementById("qrLotItemFilter")?.value||"",document.getElementById("qrLotSortOrder")?.value||"newest",document.getElementById("qrLotStockFilter")?.value||"inStock",limit,!!qrLotListState.alertOnly)}
@@ -3438,7 +3447,7 @@ return`<main class="pdfSheet ${large?"largePoster":"normalPoster"}"><section cla
 const posterCss=`*{box-sizing:border-box}.pdfRenderRoot{position:fixed;left:-20000px;top:0;width:1122px;background:#fff;z-index:0;pointer-events:none}.pdfSheet{width:1122px;height:794px;background:#fff;padding:34px;overflow:hidden}.pdfPoster{width:100%;height:100%;border:18px solid #000;padding:22px 30px;display:grid;grid-template-columns:minmax(0,1fr) 158px;column-gap:16px;overflow:hidden;color:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.posterLeft{min-width:0;height:100%;display:flex;flex-direction:column}.posterBrand{font-size:40px;font-weight:900;margin-bottom:7px;line-height:1.05}.posterRows{min-height:0;flex:1;display:grid;gap:3px}.largePoster .posterRows{grid-template-rows:repeat(7,minmax(0,1fr))}.normalPoster .posterRows{grid-template-rows:repeat(6,minmax(0,1fr))}.posterRow{display:grid;grid-template-columns:166px minmax(0,1fr);align-items:center;border-bottom:5px solid #000;padding:3px 0;min-height:0;overflow:hidden}.posterLabel{font-size:39px;font-weight:900}.posterValue{min-width:0;font-size:50px;font-weight:900;line-height:.98;overflow-wrap:anywhere;max-height:2em;overflow:hidden}.posterValue.item{font-size:67px}.posterValue.date{font-size:80px}.posterValue.strong{font-size:68px}.posterValue.qty,.posterValue.pack{font-size:74px}.posterRight{width:158px;display:flex;flex-direction:column;align-items:center;background:#fff}.posterQr{width:142px;height:142px;image-rendering:pixelated}.posterScan{margin-top:6px;font-size:16px;font-weight:900;text-align:center;line-height:1.2}.posterLot{margin-top:6px;font-size:13px;font-weight:900;text-align:center;overflow-wrap:anywhere;line-height:1.18}.normalPoster .posterBrand{font-size:43px;margin-bottom:6px}.normalPoster .posterRow{grid-template-columns:166px minmax(0,1fr);padding:4px 0}.normalPoster .posterLabel{font-size:43px}.normalPoster .posterValue{font-size:56px}.normalPoster .posterValue.item{font-size:74px}.normalPoster .posterValue.date{font-size:86px}.normalPoster .posterValue.strong{font-size:75px}.normalPoster .posterValue.qty,.normalPoster .posterValue.pack{font-size:82px}.pdfPoster.gradedPoster{grid-template-columns:fit-content(560px) minmax(300px,1fr);column-gap:26px}.gradedPoster .posterRows{justify-items:stretch}.gradedPoster .posterRow{width:auto;grid-template-columns:166px max-content;padding-right:22px}.gradedPoster .posterValue{max-width:370px}.gradedPoster .posterRight{width:auto;min-width:0;height:100%;display:grid;grid-template-columns:142px minmax(0,1fr);grid-template-rows:auto auto 1fr;column-gap:10px;align-items:start;justify-items:start}.gradedPoster .posterQr{grid-row:1/3;grid-column:1}.gradedPoster .posterScan{grid-column:2;text-align:left;margin-top:8px;font-size:18px}.gradedPoster .posterLot{grid-column:2;text-align:left;font-size:15px}.gradedPoster .posterGrades{grid-column:1/3}`
 ;renderRoot=document.createElement("div");renderRoot.className="pdfRenderRoot";renderRoot.setAttribute("aria-hidden","true")
 ;renderRoot.innerHTML=`<style>${posterCss}</style>${sheetDefs.map(sheet).join("")}`;document.body.appendChild(renderRoot)
-;if(document.fonts&&document.fonts.ready)await document.fonts.ready;await qrWaitForPosterImages(renderRoot)
+;if(document.fonts&&document.fonts.ready)await document.fonts.ready;await qrWaitForPosterImages(renderRoot);qrFitPosterText(renderRoot)
 ;const sheets=[...renderRoot.querySelectorAll(".pdfSheet")];if(!sheets.length)throw new Error("貼り紙の描画準備に失敗しました。")
 ;const{jsPDF}=window.jspdf,doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4",compress:true});for(let i=0;i<sheets.length;i++){
 const canvas=await window.html2canvas(sheets[i],{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false,width:1122,height:794,windowWidth:1122,
@@ -5643,7 +5652,7 @@ steps:["冷蔵庫を選びます。","各品目のケース数、必要な品目
 caution:"誤入力は「在庫修正」から直します。QR管理品目の入出庫はQR在庫管理を使います。"},{title:"QRを入庫する",where:"QR在庫管理 → QR入庫",
 steps:["入庫日と品名を選びます。","仕入れ担当者、荷姿、数量を入力します。非大型容器は量目も入力します。","仕入先、産地、規格、保管場所を入力します。","確認画面で内容を見直して登録します。","表示されたQR貼り紙PDFを開いて印刷し、対象商品へ貼ります。"],
 check:"QRロット一覧で品名・数量・保管場所を確認します。",caution:"「男爵 L」のように規格を品名へ入れず、品名は「男爵」、Lは「規格など」へ入力します。"},{title:"QRを出庫する",where:"QR在庫管理 → QRを読む／検索 → 出庫",
-steps:["対象ロットの品名・入荷日・現在残数を確認します。","出庫数量を入力します。","出庫先と当日分／翌日分を選びます。","処理後残数を確認し、登録します。","同じロットを別の出庫先へ続ける場合は、完了画面の「同じQRを続けて出庫」を押します。"],
+steps:["対象ロットの品名・入荷日・現在残数を確認します。","出庫数量を入力します。残りを全部出すときは「ロット全てを出庫」を押すと、残りの数が自動で入ります。","出庫先と当日分／翌日分を選びます。","処理後残数を確認し、登録します。","同じロットを別の出庫先へ続ける場合は、完了画面の「同じQRを続けて出庫」を押します。"],
 check:"ロット履歴に出庫先・数量・担当者が表示されることを確認します。",caution:"出庫先は毎回選び直します。現在残数を超える出庫はできません。"},{title:"QR廃棄・実数調整・ロット訂正",where:"対象QRロット → 廃棄／実数調整／その他の操作",
 steps:["廃棄は数量と必須理由を入力し、処理後残数を確認して登録します。","直前の出庫・廃棄・調整を間違えた場合は「直前操作を取り消す」を使います。","数量が実物と違う場合は「実数調整」で実際に残っている数量を入力し、差分と理由を確認して登録します。","品名・入庫日・仕入先・産地・規格・保管場所などの訂正は「ロット編集」を使います。"],
 check:"取消・調整・訂正の履歴が残り、上部が保存済みになることを確認します。",caution:"QRキー・ロット番号は変更できません。QRロット本体の完全削除は停止しています。"},{title:"廃棄・QRの月次Excelを作る",where:"メニュー → 月次Excel・履歴管理",
@@ -15495,7 +15504,7 @@ window.qrSelect=qrSelect;
       V198_GUIDE_SECTIONS.v1310Grades={title:"規格別ロット（胡瓜など）",where:"ホーム → QR在庫管理 → QR入庫 ／ 規格別ロットの設定",
         steps:["胡瓜は、1パレットに入っている規格（AL・BL・丸・B・Aなど）をまとめて1つのロットで入庫します。品名で胡瓜を選ぶと「規格ごとのケース数」の欄が出るので、入荷した規格を1行に1つずつ入れます。規格名は候補から選ぶか、そのまま入力できます（過去に使った規格も候補に出ます）。行は「＋規格を追加」で増やせます（数量は合計が自動で入ります）。産地・仕入先が違うものは別のロットにします。",
                "貼り紙には、右側のQRコードの下に規格ごとのケース数と合計が大きく入ります。",
-               "出庫・廃棄・実数調整では、規格ごとに数を入れます。複数の規格をまとめて1回で処理できます（例：BL 5、丸 2）。実数調整は、数え直した数を規格ごとに入れます。",
+               "出庫・廃棄・実数調整では、規格ごとに数を入れます。複数の規格をまとめて1回で処理できます（例：BL 5、丸 2）。全部出庫するときは「ロット全てを出庫」を押すと、規格ごとの残りがすべて入ります。実数調整は、数え直した数を規格ごとに入れます。",
                "QRロット一覧・ロット詳細には、規格ごとの残りが出ます。入庫直後に規格の数を打ち間違えたときや、規格を追加・変更したいときは、ロット詳細の「規格の内訳を直す」で直せます（出庫などをしたあとは実数調整を使います）。",
                "在庫表では胡瓜のセルに合計kgと規格ごとのケース数が出ます。月末棚卸しと棚卸表Excelは「胡瓜（BL）」のように規格ごとに1行で出ます。",
                "製造日報で胡瓜のロットを使用原料に追加したときは、規格も選びます。",
@@ -16126,15 +16135,15 @@ function hqSheetHtml(l,pages){
  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${fromIshioka?"本社移動用":"本社入荷"} ${esc(l.item_name)}</title><style>
  @page{size:A4 landscape;margin:10mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}body{margin:0;font-family:"Hiragino Sans","Noto Sans JP",sans-serif}
  .bar{position:sticky;top:0;display:flex;gap:10px;padding:10px;background:#f1f5f9}.bar button{font-size:18px;padding:10px 18px}@media print{.bar{display:none}}
- .sheet{border:3px solid #0f766e;height:186mm;display:flex;flex-direction:column}.head{background:#0f766e;color:#fff;display:flex;justify-content:space-between;align-items:center;padding:4mm 7mm}.head h1{margin:0;font-size:30pt}.head span{font-size:12pt}
- .main{display:flex;flex:1;padding:3mm 6mm}.left{flex:1}.right{width:78mm;border-left:1px solid #cbd5e1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:11pt}
- table{width:100%;border-collapse:collapse}th{width:34mm;text-align:left;color:#0f766e;font-weight:500;font-size:12pt;border-bottom:1px solid #cbd5e1}td{font-size:26pt;padding:2.5mm 0;border-bottom:1px solid #cbd5e1}
- .sheet{page-break-after:always;break-after:page;margin-bottom:6mm}.sheet:last-child{page-break-after:auto;break-after:auto}td.this{font-size:34pt;font-weight:800}td.this small{font-size:16pt;color:#0f766e;margin-left:4mm}
- td.name{font-size:46pt}td.date{color:#b91c1c;font-size:34pt}td.small{font-size:14pt;color:#334155}.right img{width:58mm;height:58mm;image-rendering:pixelated}
+ .sheet{border:4px solid #000;height:186mm;display:flex;flex-direction:column;color:#000}.head{background:#fff;color:#000;display:flex;justify-content:space-between;align-items:center;padding:3mm 7mm;border-bottom:3px solid #000}.head h1{margin:0;font-size:30pt;font-weight:900;color:#000}.head span{font-size:12pt;font-weight:700;color:#000}
+ .main{display:flex;flex:1;padding:3mm 6mm}.left{flex:1}.right{width:78mm;border-left:2px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:11pt;font-weight:700;color:#000}
+ table{width:100%;border-collapse:collapse}th{width:34mm;text-align:left;color:#000;font-weight:800;font-size:12pt;border-bottom:1.5px solid #000}td{font-size:26pt;font-weight:700;color:#000;padding:2.5mm 0;border-bottom:1.5px solid #000}
+ .sheet{page-break-after:always;break-after:page;margin-bottom:6mm}.sheet:last-child{page-break-after:auto;break-after:auto}td.this{font-size:34pt;font-weight:900}td.this small{font-size:16pt;font-weight:800;color:#000;margin-left:4mm}
+ td.name{font-size:46pt;font-weight:900}td.date{color:#000;font-size:34pt;font-weight:900}td.small{font-size:14pt;font-weight:800;color:#000!important}.right img{width:58mm;height:58mm;image-rendering:pixelated}.right .sub{color:#000!important}
  </style></head><body><div class="bar"><button onclick="window.close()">閉じる</button><button onclick="window.print()">印刷</button></div>
- ${pages.map(pg=>`<div class="sheet"><div class="head"><h1>${fromIshioka?"本社移動用":"本社入荷"}</h1><span>SEIKA＋　${fromIshioka?"石岡青果センター → 本社":"本社"}</span></div><div class="main"><div class="left"><table>
- ${row("品名",l.item_name,"name")}${row("本社入荷日",hqDateLabel(l.hq_received_date||l.planned_date),"date")}${pg.qty?`<tr><th>この貼り紙</th><td class="this">${esc(pg.qty)}<small>${esc(pg.label)}</small></td></tr>`:""}${row("ロット合計",qtyLabel,"small")}${row("量目",l.unit==="kg"&&Number(l.sheet_meta?.per||l.unit_weight_kg)>0?`1基 ${hqQty(l.sheet_meta?.per||l.unit_weight_kg)}kg`:(l.pack_weight?`${l.pack_weight}`:"-"))}${row("仕入先",l.supplier)}${row("産地",l.origin)}${fromIshioka?row("石岡入荷日",hqDateLabel(l.ishioka_received_date),"small"):row("単協名",l.cooperative_name,"small")}
- </table></div><div class="right"><img src="${qr}" alt="QR"><div style="margin-top:4mm">本社で読み取ると<br>${fromIshioka?"入荷待ち原料":"この原料"}が開きます</div><div style="margin-top:3mm;color:#475569;font-size:10pt">${fromIshioka?`元ロット No. ${esc(l.source_lot_no||"-")}<br>`:""}本社ロット No. ${esc(l.lot_no)}</div></div></div></div>`).join("")}</body></html>`;
+ ${pages.map(pg=>`<div class="sheet"><div class="head"><h1>${fromIshioka?"石岡 → 本社":"本社入荷"}</h1><span>SEIKA＋　${fromIshioka?"石岡青果センター発":"本社"}</span></div><div class="main"><div class="left"><table>
+ ${row("品名",l.item_name,"name")}${row("本社入荷日",hqDateLabel(l.hq_received_date||l.planned_date),"date")}${pg.qty?`<tr><th>${l.unit==="kg"?"この容器":"このパレット"}</th><td class="this">${esc(pg.qty)}<small>${esc(pg.label)}</small></td></tr>`:""}${row("ロット合計",qtyLabel,"small")}${row("量目",l.unit==="kg"&&Number(l.sheet_meta?.per||l.unit_weight_kg)>0?`1基 ${hqQty(l.sheet_meta?.per||l.unit_weight_kg)}kg`:(l.pack_weight?`${l.pack_weight}`:"-"))}${row("仕入先",l.supplier)}${row("産地",l.origin)}${fromIshioka?row("石岡入荷日",hqDateLabel(l.ishioka_received_date),"small"):row("単協名",l.cooperative_name,"small")}
+ </table></div><div class="right"><img src="${qr}" alt="QR"><div style="margin-top:4mm">本社で読み取ると<br>${fromIshioka?"入荷待ち原料":"この原料"}が開きます</div><div class="sub" style="margin-top:3mm;font-size:10pt">${fromIshioka?`元ロット No. ${esc(l.source_lot_no||"-")}<br>`:""}本社ロット No. ${esc(l.lot_no)}</div></div></div></div>`).join("")}</body></html>`;
 }
 function qrDataUrlForPosterHq(payload){if(typeof qrcode!=="function")throw new Error("QRを作れませんでした");const q=qrcode(0,"M");q.addData(String(payload));q.make();return q.createDataURL(10,2)}
 function hqOpenSheet(w,l){if(!w)return alert("印刷画面を開けませんでした。ポップアップを許可してください。");w.document.open();w.document.write(hqSheetHtml(l));w.document.close()}
@@ -16176,7 +16185,7 @@ async function hqMakePdf(l,pages){
   const sheets=[...d.querySelectorAll(".sheet")];if(!sheets.length)throw new Error("貼り紙の準備に失敗しました。");
   root=document.createElement("div");root.className="hqPdfRoot";root.setAttribute("aria-hidden","true");
   root.style.cssText="position:fixed;left:-20000px;top:0;width:1122px;background:#fff;pointer-events:none;font-family:'Hiragino Sans','Noto Sans JP',sans-serif;color:#000";
-  root.innerHTML=`<style>.hqPdfRoot *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}${css}.hqPdfRoot .hqPdfPage{width:1122px;height:794px;padding:38px;background:#fff;overflow:hidden}.hqPdfRoot .hqPdfPage .sheet{height:100%;margin:0}.hqPdfRoot .sheet>.head{background:#0f766e!important;background-image:none!important;color:#fff!important;border-radius:0!important;box-shadow:none!important}.hqPdfRoot .sheet>.head h1,.hqPdfRoot .sheet>.head span{color:#fff!important}</style>`+sheets.map(s=>`<div class="hqPdfPage">${s.outerHTML}</div>`).join("");
+  root.innerHTML=`<style>.hqPdfRoot *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}${css}.hqPdfRoot .hqPdfPage{width:1122px;height:794px;padding:38px;background:#fff;overflow:hidden}.hqPdfRoot .hqPdfPage .sheet{height:100%;margin:0}.hqPdfRoot .sheet>.head{background:#fff!important;background-image:none!important;color:#000!important;border-radius:0!important;box-shadow:none!important;border-bottom:3px solid #000!important}.hqPdfRoot .sheet>.head h1,.hqPdfRoot .sheet>.head span{color:#000!important}</style>`+sheets.map(s=>`<div class="hqPdfPage">${s.outerHTML}</div>`).join("");
   document.body.appendChild(root);
   if(document.fonts&&document.fonts.ready)await document.fonts.ready;
   if(typeof qrWaitForPosterImages==="function")await qrWaitForPosterImages(root);
@@ -16596,6 +16605,34 @@ async function hqCancelReceive(lotId,key){
 Object.assign(window,{hqMakePdf,hqNormalItemsPage,hqAddNormalItem,hqEditNormalItem,hqSaveNormalItem,hqNormalPage,hqSaveNormal,hqTablePage,hqStockHub,hqEntryHub,hqToast,hqSheetPage,hqSheetFromToast,hqSheetRows,hqSheetCheck,hqSheetPrint,hqCancelOut,hqCancelReceive,hqHome,hqIshiokaView,hqSetSite,hqPendingPage,hqStockPage,hqOutPage,hqLotPage,hqToggleGrade,hqAddPhotos,hqRemovePhoto,hqDoReceive,hqFillAll,hqDoOut,hqDoAdjust,hqCancelPending,hqShowPhotos,hqPrintLot,hqPrintFromPage,hqScanPage,hqOpenTyped,hqDirectPage,hqDirectItemChanged,hqDoDirect,hqItemsPage,hqSaveItem,hqHistoryPage,hqExcel,hqCloseToast,hqIshiokaPendingPage,hqBulkPage,hqBulkRun});
 })();
 
+
+/* ===== v1.199-c49 QR出庫：ロット全てを出庫 ===== */
+(function(){
+const c49OpPageBase=qrOperationLotPage;
+qrOperationLotPage=async function(kind,q){
+ const r=await c49OpPageBase.apply(this,arguments);
+ if(kind!=="out")return r;
+ try{
+  const qty=document.getElementById("qrMoveQty");
+  if(!qty||document.getElementById("c49AllOutBtn"))return r;
+  const lot=await qrFindLot(q);if(!lot)return r;
+  const cur=Number((lot.current_qty??lot.current_quantity)||0);if(!(cur>0))return r;
+  qty.insertAdjacentHTML("afterend",`<button id="c49AllOutBtn" type="button" class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c49FillAllOut",[lot.qr_key])}>ロット全てを出庫（残り ${fmt(cur)} ${esc(qrLotUnit(lot))}）</button>`);
+ }catch(e){console.warn("[ロット全てを出庫]",e)}
+ return r;
+};
+window.qrOperationLotPage=qrOperationLotPage;
+async function c49FillAllOut(key){
+ const grades=[...document.querySelectorAll(".v1310OpGrade")];
+ try{const lot=await qrFindLot(key);
+  if(grades.length){grades.forEach(el=>{el.value=String(Number(el.dataset.cur||0)||"");el.dispatchEvent(new Event("input",{bubbles:true}))})}
+  else{const qty=document.getElementById("qrMoveQty");if(qty&&lot)qty.value=String(Number((lot.current_qty??lot.current_quantity)||0))}
+  if(typeof qrCalcOperation==="function")qrCalcOperation("out",key);
+  document.getElementById("qrMoveDestination")?.focus();
+ }catch(e){alert(e.message||e)}
+}
+window.c49FillAllOut=c49FillAllOut;
+})();
 </script>
 </body>
 </html>
