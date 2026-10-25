@@ -16651,6 +16651,1179 @@ async function hqCancelReceive(lotId,key){
 }
 
 Object.assign(window,{hqMakePdf,hqNormalItemsPage,hqAddNormalItem,hqEditNormalItem,hqSaveNormalItem,hqNormalPage,hqSaveNormal,hqTablePage,hqStockHub,hqEntryHub,hqToast,hqSheetPage,hqSheetFromToast,hqGroupedHtmlG,hqSheetRows,hqSheetCheck,hqSheetPrint,hqCancelOut,hqCancelReceive,hqHome,hqIshiokaView,hqSetSite,hqPendingPage,hqStockPage,hqOutPage,hqLotPage,hqToggleGrade,hqAddPhotos,hqRemovePhoto,hqDoReceive,hqFillAll,hqDoOut,hqDoAdjust,hqCancelPending,hqShowPhotos,hqPrintLot,hqPrintFromPage,hqScanPage,hqOpenTyped,hqDirectPage,hqDirectItemChanged,hqDoDirect,hqItemsPage,hqSaveItem,hqHistoryPage,hqExcel,hqCloseToast,hqIshiokaPendingPage,hqBulkPage,hqBulkRun});
+/* ===== v1.199-c58 本社 第2段階 =====
+   下処理（入力・確認・確定）・スタッフQRと作業時間・在庫入力（原料／仕掛品）・廃棄一覧・仕入れ価格表・
+   歩留まり・使用数量・品質評価一覧・棚卸し・Excel出力・石岡ホームの数量の差のお知らせ。
+   データベースは db/019_本社_第2段階.sql（スタッフの初期登録は db/020）。 */
+(function(){
+"use strict";
+
+/* ---------- 共通 ---------- */
+const H2={s2:null,s2At:0,timer:null,reader:null,readerScreen:"",busy:false};
+const r2=(name,args)=>hqRpc(name,args);
+const sel2=(t,q)=>qrSelect(t,q);
+const enc2=v=>encodeURIComponent(v);
+const num2=v=>{if(v==null)return NaN;const s=String(v).replace(/[０-９．]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0)).replace(/[,，\s]/g,"");return s===""?NaN:Number(s)};
+const kg2=v=>v==null||v===""||!Number.isFinite(Number(v))?"—":hqKg(Math.round(Number(v)*10)/10);
+const yen2=v=>v==null||!Number.isFinite(Number(v))?"未計算":`${Math.round(Number(v)).toLocaleString("ja-JP")}円`;
+const pct2=v=>v==null||!Number.isFinite(v)?"—":`${(Math.round(v*1000)/10).toFixed(1)}%`;
+const time2=t=>t?new Date(t).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Tokyo"}):"";
+const dt2=t=>t?new Date(t).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Tokyo"}):"";
+const md2=d=>d?String(d).slice(5).replace("-","/"):"";
+const mins2=(a,b)=>{if(!a)return 0;const e=b?new Date(b):new Date();return Math.max(0,Math.round((e-new Date(a))/60000))};
+const hm2=m=>{m=Math.round(m||0);return `${Math.floor(m/60)}時間${String(m%60).padStart(2,"0")}分`};
+const btnAttr=(act,args=[])=>seikaEventAttrs("click",act,args);
+const roleIs=list=>list.includes(db?.role||"");
+const H2_ALL_VIEW=["admin","worker","buyer","sales","clerk","office_viewer","viewer","hq_worker","hq_clerk","hq_receiver"];
+function h2CanPrep(){return roleIs(["admin","hq_worker","hq_prep"])}
+function h2CanBoss(){return roleIs(["admin","hq_worker"])}
+function h2CanRaw(){return roleIs(["admin","hq_worker","hq_receiver"])}
+function h2CanMoney(){return roleIs(H2_ALL_VIEW)&&!roleIs(["hq_prep"])}
+function h2CanCount(){return roleIs(["admin","hq_worker","hq_receiver"])}
+function h2CanReport(){return roleIs(["admin","hq_worker","hq_clerk","sales","buyer"])}
+function h2Month(m){return /^\d{4}-\d{2}$/.test(String(m||""))?m:monthInputValue(new Date)}
+function h2MonthRange(m){const[y,mo]=h2Month(m).split("-").map(Number);const from=`${h2Month(m)}-01`;let to=ymdKey(new Date(y,mo,0));return{from,to,y,mo,toCap:to>hqToday()?hqToday():to}}
+function h2MonthLabel(m){const[y,mo]=h2Month(m).split("-").map(Number);return `${y}年${mo}月`}
+function h2Monday(d){const x=new Date(String(d).slice(0,10)+"T00:00:00");const w=(x.getDay()+6)%7;x.setDate(x.getDate()-w);return ymdKey(x)}
+function h2FiscalStart(m){const[y,mo]=h2Month(m).split("-").map(Number);return mo>=9?y:y-1}
+function h2Err(e){return hqErr(e)}
+function h2Notice(t){return `<div class="card notice">${t}</div>`}
+function h2Loading(){return '<div class="notice">読み込んでいます…</div>'}
+function h2Set(id,html){const el=document.getElementById(id);if(el)el.innerHTML=html}
+function h2Val(id){return document.getElementById(id)?.value??""}
+async function h2Stage2(force=false){
+ if(!force&&H2.s2!==null&&Date.now()-H2.s2At<60000)return H2.s2;
+ try{const r=await sel2("hq_settings_v1500","select=key,value&key=eq.stage2_stock");H2.s2=!!(r[0]&&r[0].value===true)}catch(e){if(H2.s2===null)H2.s2=false}
+ H2.s2At=Date.now();return H2.s2;
+}
+window.h2Stage2=h2Stage2;
+
+/* ---------- 画面の切り替えで止めるもの（カメラ・自動更新） ---------- */
+function h2StopAll(){if(H2.timer){clearInterval(H2.timer);H2.timer=null}h2StopReader()}
+async function h2StopReader(){const r=H2.reader;H2.reader=null;H2.readerScreen="";if(r){try{await r.stop()}catch(e){}try{r.clear()}catch(e){}}}
+const h2SetScreenBase=setScreen;
+setScreen=function(name,args){
+ if(H2.readerScreen&&H2.readerScreen!==name)h2StopReader();
+ if(H2.timer&&H2.timerScreen!==name){clearInterval(H2.timer);H2.timer=null}
+ return h2SetScreenBase.apply(this,arguments);
+};
+window.setScreen=setScreen;
+function h2Every(ms,fn){if(H2.timer)clearInterval(H2.timer);H2.timerScreen=currentScreen;H2.timer=setInterval(()=>{if(currentScreen!==H2.timerScreen){clearInterval(H2.timer);H2.timer=null;return}fn()},ms)}
+async function h2StartReader(elId,onCode){
+ await h2StopReader();
+ const el=document.getElementById(elId);if(!el)return;
+ if(typeof Html5Qrcode!=="function"){el.innerHTML='<div class="err">カメラを使えません。下の一覧から選んでください。</div>';return}
+ const screen=currentScreen;let last="",lastAt=0,busy=false;
+ try{
+  const r=new Html5Qrcode(elId);H2.reader=r;H2.readerScreen=screen;
+  await r.start({facingMode:"environment"},{fps:8,qrbox:{width:220,height:220}},async raw=>{
+   if(H2.reader!==r||busy)return;const k=hqKeyOf(raw);const now=Date.now();if(!k||(k===last&&now-lastAt<2500))return;last=k;lastAt=now;busy=true;
+   try{await onCode(k)}catch(e){alert(h2Err(e))}finally{busy=false}
+  },()=>{});
+ }catch(e){el.innerHTML=`<div class="err">カメラを開けませんでした：${esc(h2Err(e))}<br>下の一覧から選べます。</div>`}
+}
+function h2Beep(){try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.frequency.value=880;o.connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close()},120)}catch(e){}try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}}
+
+/* ---------- A4縦のPDF ---------- */
+let h2PdfUrl="";
+function h2PdfStatus(msg,type="notice",url="",name=""){
+ let host=document.getElementById("h2PdfStatus");
+ if(!host){const t=document.querySelector(".wrap")||document.body;host=document.createElement("div");host.id="h2PdfStatus";t.prepend(host)}
+ const open=url?`<a class="btn blue" style="display:block;width:100%;margin-top:10px;text-decoration:none;text-align:center" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(name)}">PDFを開く・印刷</a>`:"";
+ host.innerHTML=`<div class="${type}">${msg}${open}</div>`;try{host.scrollIntoView({block:"start"})}catch(_){}
+}
+async function h2MakePdf(pagesHtml,css,name){
+ if(h2PdfUrl){try{URL.revokeObjectURL(h2PdfUrl)}catch(_){}h2PdfUrl=""}
+ h2PdfStatus("A4縦のPDFを作成中です。しばらくお待ちください…");let root=null;
+ try{
+  if(typeof window.html2canvas!=="function"||!window.jspdf||typeof window.jspdf.jsPDF!=="function")throw new Error("PDF作成の部品が読み込まれていません。通信を確認して、もう一度お試しください。");
+  root=document.createElement("div");root.className="h2PdfRoot";root.setAttribute("aria-hidden","true");
+  root.style.cssText="position:fixed;left:-20000px;top:0;width:794px;background:#fff;pointer-events:none;font-family:'Hiragino Sans','Noto Sans JP',sans-serif;color:#000";
+  root.innerHTML=`<style>.h2PdfRoot *{box-sizing:border-box}.h2PdfRoot .h2Page{width:794px;height:1123px;padding:34px 36px;background:#fff;overflow:hidden;position:relative}${css||""}</style>`+pagesHtml.map(p=>`<div class="h2Page">${p}</div>`).join("");
+  document.body.appendChild(root);
+  if(document.fonts&&document.fonts.ready)await document.fonts.ready;
+  await Promise.all([...root.querySelectorAll("img")].map(i=>i.complete?0:new Promise(r=>{i.onload=i.onerror=r})));
+  const{jsPDF}=window.jspdf,doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4",compress:true});
+  const pg=[...root.querySelectorAll(".h2Page")];
+  for(let i=0;i<pg.length;i++){
+   const c=await window.html2canvas(pg[i],{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false,width:794,height:1123,windowWidth:794,windowHeight:1123});
+   if(i)doc.addPage("a4","portrait");doc.addImage(c.toDataURL("image/png"),"PNG",0,0,210,297,undefined,"FAST");
+  }
+  const blob=doc.output("blob");if(!blob||!blob.size)throw new Error("PDFの作成に失敗しました。");
+  h2PdfUrl=URL.createObjectURL(blob);
+  h2PdfStatus(`PDFを作成しました（${pg.length}枚・A4縦）。下のボタンで開いて印刷してください。`,"ok",h2PdfUrl,name);
+  return true;
+ }catch(e){h2PdfStatus(`PDFを作成できませんでした。${esc(h2Err(e))}`,"err");return false}
+ finally{if(root)root.remove()}
+}
+function h2Qr(payload,cell=8){if(typeof qrcode!=="function")throw new Error("QRを作れませんでした");const q=qrcode(0,"M");q.addData(String(payload));q.make();return q.createDataURL(cell,2)}
+
+/* ---------- 画面の色（ホームのボタンはほかと重ならない色） ---------- */
+(()=>{if(document.getElementById("h2Css"))return;const st=document.createElement("style");st.id="h2Css";st.textContent=`
+.hqBtnPrep{background:linear-gradient(135deg,#a855f7,#581c87)!important;color:#fff!important}
+.hqBtnPrepCheck{background:linear-gradient(135deg,#d946ef,#86198f)!important;color:#fff!important}
+.hqBtnQuality{background:linear-gradient(135deg,#dc2626,#7f1d1d)!important;color:#fff!important}
+.hqBtnYield{background:linear-gradient(135deg,#22c55e,#14532d)!important;color:#fff!important}
+.hqBtnWaste{background:linear-gradient(135deg,#a16207,#422006)!important;color:#fff!important}
+.hqBtnPrice{background:linear-gradient(135deg,#fde047,#ca8a04)!important;color:#1c1917!important}
+.hqBtnMaster{background:linear-gradient(135deg,#2dd4bf,#115e59)!important;color:#fff!important}
+.hqBtnStaff{background:linear-gradient(135deg,#374151,#030712)!important;color:#fff!important}
+.hqBtnExcelOut{background:linear-gradient(135deg,#ffffff,#e2e8f0)!important;color:#14532d!important;border:3px solid #15803d!important}.homePrimary .btn.hqBtnExcelOut,.hqHomeGrid .btn.hqBtnExcelOut,.btn.hqBtnExcelOut span{color:#14532d!important;text-shadow:none!important}
+.hqBtnUsage{background:linear-gradient(135deg,#60a5fa,#1e3a8a)!important;color:#fff!important}
+.hqBtnTake{background:linear-gradient(135deg,#fb923c,#7c2d12)!important;color:#fff!important}
+.hqBtnTime{background:linear-gradient(135deg,#94a3b8,#1e293b)!important;color:#fff!important}
+.h2Big{width:100%;min-height:72px!important;font-size:22px!important;font-weight:900!important}
+.h2Steps{display:flex;gap:4px;margin:0 0 10px;flex-wrap:wrap}
+.h2Steps span{flex:1;min-width:58px;text-align:center;padding:6px 2px;border-radius:10px;background:#e2e8f0;color:#475569;font-weight:800;font-size:13px}
+.h2Steps span.on{background:#7c3aed;color:#fff}.h2Steps span.done{background:#dcfce7;color:#166534}
+.h2Chip{display:inline-flex;align-items:center;gap:6px;margin:3px 4px 3px 0;padding:6px 10px;border-radius:999px;background:#ede9fe;color:#4c1d95;font-weight:800}
+.h2Chip button{border:0;background:#c4b5fd;color:#2e1065;border-radius:999px;width:26px;height:26px;font-weight:900}
+.h2Work{border-left:8px solid #16a34a}.h2Work.s入力待ち{border-left-color:#d97706}.h2Work.s清掃中{border-left-color:#0284c7}.h2Work.s完了{border-left-color:#94a3b8}.h2Work.s取消{border-left-color:#cbd5e1;opacity:.7}
+.h2Badge{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:900;font-size:13px;color:#fff}
+.h2B作業中{background:#16a34a}.h2B入力待ち{background:#d97706}.h2B清掃中{background:#0284c7}.h2B完了{background:#64748b}.h2B取消{background:#94a3b8}
+.h2Sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.h2Sum div{background:#f1f5f9;border-radius:12px;padding:8px;text-align:center}.h2Sum b{display:block;font-size:24px}
+.h2Tbl{border-collapse:collapse;font-size:14px;min-width:100%}.h2Tbl th,.h2Tbl td{padding:6px 8px;border-bottom:1px solid #e2e8f0;white-space:nowrap;text-align:right}.h2Tbl th{background:#f8fafc;border-bottom:2px solid #cbd5e1}.h2Tbl td:first-child,.h2Tbl th:first-child{text-align:left;position:sticky;left:0;background:#fff}.h2Tbl th:first-child{background:#f8fafc}
+.h2Red{color:#dc2626!important;font-weight:900}
+.h2Tabs{display:flex;gap:6px;flex-wrap:wrap}.h2Tabs .btn{flex:1;min-width:90px}
+.h2Line{display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;align-items:end;margin-top:6px}
+.h2Line .x{min-height:44px;padding:0 10px}
+`;document.head.appendChild(st)})();
+
+/* ---------- 共通データ ---------- */
+async function h2Staff(all=false){return sel2("hq_staff_v1500",`select=*${all?"":"&deleted_at=is.null"}&order=print_group.asc,sort_order.asc,created_at.asc&limit=2000`)}
+async function h2Teams(){return sel2("hq_teams_v1500","select=*&active=eq.true&order=sort_order.asc")}
+async function h2Places(all=false){return sel2("hq_places_v1500",`select=*${all?"":"&active=eq.true"}&order=sort_order.asc`)}
+async function h2Tasks(all=false){return sel2("hq_tasks_v1500",`select=*${all?"":"&active=eq.true"}&order=sort_order.asc`)}
+async function h2Masters(all=false){return sel2("hq_prep_masters_v1500",`select=*${all?"":"&active=eq.true"}&order=item_name.asc,sort_order.asc`)}
+async function h2QrItems(){return sel2("hq_items_v1400","select=*&active=eq.true&order=sort_order.asc")}
+async function h2Works(q){return sel2("hq_works_v1500",q)}
+async function h2Members(ids){if(!ids.length)return[];const out=[];for(let i=0;i<ids.length;i+=60)out.push(...await sel2("hq_work_members_v1500",`select=*&work_id=in.(${ids.slice(i,i+60).join(",")})&order=start_at.asc&limit=5000`));return out}
+async function h2Materials(ids){if(!ids.length)return[];const out=[];for(let i=0;i<ids.length;i+=60)out.push(...await sel2("hq_work_materials_v1500",`select=*&work_id=in.(${ids.slice(i,i+60).join(",")})&order=created_at.asc&limit=5000`));return out}
+function h2MatKg(m){const q=Number(m.qty);if(!Number.isFinite(q))return null;if(m.unit==="kg")return q;return Number(m.pack_kg)>0?q*Number(m.pack_kg):null}
+function h2UsedKg(mats){let s=0,unknown=false;for(const m of mats){const k=h2MatKg(m);if(k==null)unknown=true;else s+=k}return{kg:s,unknown}}
+function h2Diff(w,mats){const u=h2UsedKg(mats);if(w.yield_kg==null||w.waste_kg==null||!u.kg)return null;const d=u.kg-(Number(w.yield_kg)+Number(w.waste_kg));return{kg:d,rate:d/u.kg,used:u.kg,unknown:u.unknown}}
+function h2Yield(w){const y=Number(w.yield_kg),ws=Number(w.waste_kg);if(!(y+ws>0))return null;return y/(y+ws)}
+let h2PriceCache={};
+async function h2Prices(from,to,items){
+ if(!h2CanMoney())return{};
+ const key=`${from}|${to}|${(items||[]).join(",")}`;if(h2PriceCache[key])return h2PriceCache[key];
+ const rows=await r2("hq_price_table_v1500",{p_from:from,p_to:to,p_items:items&&items.length?items:null});
+ const map={};(Array.isArray(rows)?rows:[]).forEach(r=>{map[`${r.item_name}|${r.week}`]=r});h2PriceCache[key]=map;return map;
+}
+function h2PriceOf(map,item,date){const r=map[`${item}|${h2Monday(date)}`];return r&&r.price!=null?Number(r.price):null}
+
+Object.assign(window,{h2StopReader});
+window.__h2=Object.assign(window.__h2||{},{H2,r2,sel2,enc2,num2,kg2,yen2,pct2,time2,dt2,md2,mins2,hm2,btnAttr,roleIs,h2CanPrep,h2CanBoss,h2CanRaw,h2CanMoney,h2CanCount,h2CanReport,h2Month,h2MonthRange,h2MonthLabel,h2Monday,h2FiscalStart,h2Err,h2Notice,h2Loading,h2Set,h2Val,h2Stage2,h2Every,h2StartReader,h2StopReader,h2Beep,h2MakePdf,h2PdfStatus,h2Qr,h2Staff,h2Teams,h2Places,h2Tasks,h2Masters,h2QrItems,h2Works,h2Members,h2Materials,h2MatKg,h2UsedKg,h2Diff,h2Yield,h2Prices,h2PriceOf});
+})();
+
+/* ===== 下処理・作業（パートさん＝下処理班の共用アカウント／本社社員） ===== */
+(function(){
+"use strict";
+const X=window.__h2;const{H2,r2,sel2,num2,kg2,time2,dt2,md2,mins2,hm2,btnAttr,h2CanPrep,h2CanBoss,h2Err,h2Notice,h2Loading,h2Set,h2Val,h2Stage2,h2Every,h2StartReader,h2StopReader,h2Beep,h2MakePdf,h2Qr,h2Staff,h2Places,h2Tasks,h2Masters,h2Works,h2Members,h2Materials,h2Diff}=X;
+const OP={"HQOP-START":"start","HQOP-END":"end","HQOP-CLEAN":"clean","HQOP-CLEANEND":"cleanend"};
+const OP_LABEL={start:"作業開始",end:"作業終了",clean:"清掃",cleanend:"清掃終了"};
+function opOf(k){return OP[String(k||"").toUpperCase()]||""}
+
+/* --- いま動いている作業（全端末で同じ一覧。自動で更新） --- */
+function workCard(w,mem,mats){
+ const people=mem.filter(m=>m.work_id===w.id&&!m.end_at);
+ const lots=mats.filter(m=>m.work_id===w.id);
+ const label=w.status==="入力待ち"?"作業終了・数量未入力":w.status;
+ const title=w.kind==="下処理"?`${esc(w.raw_item_name||"")} → ${esc(w.product_name||"")}`:esc(w.task_name);
+ return `<div class="card h2Work s${esc(w.status)}"><div class="itemHead"><div><b style="font-size:20px">${esc(w.place||"場所なし")}</b></div><span class="h2Badge h2B${esc(w.status)}">${esc(label)}</span></div>
+ <div style="font-size:18px;font-weight:900;margin-top:4px">${title}</div>
+ ${lots.length?`<div class="small">原料：${esc(lots.map(l=>l.lot_no).slice(0,2).join("、"))}${lots.length>2?` ほか${lots.length-2}ロット`:""}</div>`:""}
+ <div class="small">開始 ${time2(w.started_at)}　${w.status==="入力待ち"?"作業者：入力を待っています":`作業者 ${people.length}名：${esc(people.map(p=>p.staff_name).join("、"))}`}</div>
+ <button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("hqWorkPage",[w.id])}>開く</button></div>`;
+}
+async function liveData(){
+ const works=await h2Works("select=*&status=in.(作業中,入力待ち,清掃中)&order=started_at.asc&limit=200");
+ const ids=works.map(w=>w.id);const[mem,mats]=await Promise.all([h2Members(ids),h2Materials(ids)]);
+ return{works,mem,mats};
+}
+async function renderLive(){
+ try{
+  const{works,mem,mats}=await liveData();
+  const people=mem.filter(m=>!m.end_at).length,waiting=works.filter(w=>w.status==="入力待ち").length;
+  h2Set("h2LiveSum",`<div class="h2Sum"><div><b>${works.length}</b>作業</div><div><b>${people}</b>人</div><div><b class="${waiting?"h2Red":""}">${waiting}</b>未入力</div></div>`);
+  h2Set("h2LiveList",works.length?works.map(w=>workCard(w,mem,mats)).join(""):'<div class="notice">いま動いている作業はありません。</div>');
+  const t=document.getElementById("h2LiveTime");if(t)t.textContent=`${time2(new Date())} 更新`;
+ }catch(e){h2Set("h2LiveList",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+async function hqPrepHome(msg=""){
+ setScreen("hqPrepHome",[msg]);
+ if(!h2CanPrep()&&!h2CanBoss())return hqHome();
+ const on=await h2Stage2();
+ pageShell(db.role==="hq_prep"?"SEIKA＋":"いま動いている作業",db.role==="hq_prep"?`本社 下処理 / ${esc(db.user||"")}`:"下処理・作業・清掃（どの端末からも同じ一覧）",`${okHtml(msg)}
+ <div class="card" id="h2LiveSum">${h2Loading()}</div>
+ ${h2CanPrep()?`<div class="card"><button class="btn hqBtnPrep h2Big" ${btnAttr("hqPrepNew",["下処理"])}>＋ 新しい下処理を始める</button>
+ <div class="small" style="margin-top:6px">原料QR → 仕掛品 → 作業場所 → 作業する人のQR → 作業開始</div>
+ <div class="row" style="margin-top:10px"><button class="btn btn2" ${btnAttr("hqPrepNew",["作業"])}>ほかの作業を始める</button><button class="btn btn2" ${btnAttr("hqPrepNew",["清掃"])}>清掃だけ始める</button></div>
+ <button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("hqOpScanPage",[])}>QRを読む（作業開始・作業終了・清掃終了）</button></div>`:""}
+ <div class="small" style="text-align:right" id="h2LiveTime"></div>
+ <div id="h2LiveList">${h2Loading()}</div>
+ ${db.role==="hq_prep"&&!on?`<button class="btn hqBtnOut" style="width:100%;margin-top:12px" ${btnAttr("hqOutPage",[])}>使用出庫（いまの使い方）</button>`:""}
+ ${db.role==="hq_prep"?`<button class="btn hqBtnGuide" style="width:100%;margin-top:12px" ${btnAttr("v195RoleGuidePage",[])}>操作ガイド</button>`:""}
+ <div class="card small">同じ人は、同時に1つの作業にしか入れません。ほかの作業に移るときは、その作業の画面で「抜ける」を押してください。</div>`,db.role==="hq_prep"?{noBack:true}:{});
+ await renderLive();h2Every(15000,renderLive);
+}
+
+/* --- 新しい作業を始める --- */
+let NW=null;
+function nwReset(kind){NW={kind,lots:[],masterId:"",place:"",task:"",staff:[],op:newId()}}
+async function hqPrepNew(kind="下処理",keep=false){
+ if(!h2CanPrep())return alert("この操作の権限がありません");
+ if(!keep||!NW||NW.kind!==kind)nwReset(kind);
+ setScreen("hqPrepNew",[kind]);
+ const title=kind==="下処理"?"新しい下処理":kind==="清掃"?"清掃だけ始める":"ほかの作業を始める";
+ pageShell(title,"QRを読み取るか、下の一覧から選んでください",`<div id="h2NwSteps"></div><div id="h2NwReader" style="width:100%;min-height:240px;background:#0f172a;border-radius:14px"></div><div class="small" style="margin:6px 0 10px">${kind==="下処理"?"原料の貼り紙のQR・作業する人のスタッフQR・「作業開始」のQRを続けて読み取れます。":"作業する人のスタッフQR・「作業開始」（清掃は「清掃」）のQRを続けて読み取れます。"}</div><div id="h2NwBody">${h2Loading()}</div>`);
+ let masters=[],places=[],staff=[],tasks=[],lots=[];
+ try{[masters,places,staff,tasks,lots]=await Promise.all([h2Masters(),h2Places(),h2Staff(),h2Tasks(),kind==="下処理"?hqLots("select=id,qr_key,lot_no,item_name,current_qty,unit,status,hq_received_date&status=eq.在庫あり&order=item_name.asc,hq_received_date.asc&limit=500"):Promise.resolve([])])}
+ catch(e){return h2Set("h2NwBody",`<div class="err">${esc(h2Err(e))}</div><div class="notice">019のSQLが未実行の可能性があります。</div>`)}
+ NW.cache={masters,places,staff,tasks,lots};
+ nwRender();
+ h2StartReader("h2NwReader",nwScan);
+}
+function nwRender(){
+ const{masters,places,staff,tasks,lots}=NW.cache,k=NW.kind;
+ const item=NW.lots[0]?.item_name||"";
+ const cands=masters.filter(m=>m.item_name===item);
+ if(NW.masterId&&!cands.some(m=>m.id===NW.masterId))NW.masterId="";
+ if(!NW.masterId&&cands.length===1)NW.masterId=cands[0].id;
+ const st=(i,label,done)=>`<span class="${done?"done":""}">${i} ${label}</span>`;
+ const steps=k==="下処理"?[st("①","原料",NW.lots.length),st("②","仕掛品",NW.masterId),st("③","場所",NW.place),st("④","人",NW.staff.length)]:k==="作業"?[st("①","作業名",NW.task),st("②","場所",NW.place),st("③","人",NW.staff.length)]:[st("①","場所",NW.place),st("②","人",NW.staff.length)];
+ const ready=k==="下処理"?NW.lots.length&&NW.masterId&&NW.place&&NW.staff.length:k==="作業"?NW.task&&NW.place&&NW.staff.length:NW.place&&NW.staff.length;
+ const lotOpts=lots.filter(l=>!NW.lots.some(x=>x.id===l.id)&&(!item||l.item_name===item)).map(l=>`<option value="${esc(l.id)}">${esc(l.item_name)} ${esc(l.lot_no)}（${hqQty(l.current_qty)}${esc(l.unit)}）</option>`).join("");
+ const staffOpts=g=>staff.filter(s=>s.print_group===g&&!NW.staff.some(x=>x.id===s.id)).map(s=>`<option value="${esc(s.id)}">${esc(s.name)}（${esc(s.team)}）</option>`).join("");
+ h2Set("h2NwSteps",`<div class="h2Steps">${steps.join("")}<span class="${ready?"on":""}">${k==="清掃"?"清掃開始":"作業開始"}</span></div>`);
+ const html=`${k==="下処理"?`<div class="card"><b>① 原料</b><div style="margin-top:6px">${NW.lots.map(l=>`<span class="h2Chip">${esc(l.item_name)} ${esc(l.lot_no)}<button ${btnAttr("h2NwDelLot",[l.id])}>×</button></span>`).join("")||'<span class="small">まだありません（QRを読み取ってください）</span>'}</div>
+  ${lotOpts?`<select class="input" style="margin-top:6px" ${seikaEventAttrs("change","h2NwAddLot",[{__seikaValue:true}])}><option value="">一覧から選ぶ（QRが読めないとき）</option>${lotOpts}</select>`:""}</div>
+ <div class="card"><b>② 仕掛品</b>${!item?'<div class="small">先に原料を選んでください。</div>':cands.length?`<div class="h2Tabs" style="margin-top:6px">${cands.map(m=>`<button class="btn ${NW.masterId===m.id?"hqBtnPrep":"btn2"}" ${btnAttr("h2NwSet",["masterId",m.id])}>${esc(m.name)}</button>`).join("")}</div>`:`<div class="err">「${esc(item)}」の仕掛品が下処理マスタにありません。本社社員に登録を頼んでください。</div>`}</div>`:""}
+ ${k==="作業"?`<div class="card"><b>① 作業名</b><div class="h2Tabs" style="margin-top:6px">${tasks.filter(t=>t.kind==="作業").map(t=>`<button class="btn ${NW.task===t.name?"hqBtnPrep":"btn2"}" ${btnAttr("h2NwSet",["task",t.name])}>${esc(t.name)}</button>`).join("")||'<span class="small">作業名がありません。本社社員が「スタッフQR → 作業名・作業場所」で追加します。</span>'}</div></div>`:""}
+ <div class="card"><b>${k==="下処理"?"③":k==="作業"?"②":"①"} 作業場所</b><div class="h2Tabs" style="margin-top:6px">${places.map(p=>`<button class="btn ${NW.place===p.name?"hqBtnPrep":"btn2"}" ${btnAttr("h2NwSet",["place",p.name])}>${esc(p.name)}</button>`).join("")}</div></div>
+ <div class="card"><b>${k==="下処理"?"④":k==="作業"?"③":"②"} 作業する人（${NW.staff.length}名）</b><div style="margin-top:6px">${NW.staff.map(s=>`<span class="h2Chip">${esc(s.name)}<button ${btnAttr("h2NwDelStaff",[s.id])}>×</button></span>`).join("")||'<span class="small">スタッフQRを読み取ってください。</span>'}</div>
+  <details style="margin-top:6px"><summary class="small">QRが読めないときは、一覧から選ぶ</summary>${[1,2,3,4,5,6].map(g=>staffOpts(g)?`<select class="input" style="margin-top:6px" ${seikaEventAttrs("change","h2NwAddStaff",[{__seikaValue:true}])}><option value="">${"①②③④⑤⑥"[g-1]} の人から選ぶ</option>${staffOpts(g)}</select>`:"").join("")}</details></div>
+ <button class="btn hqBtnPrep h2Big" ${ready?"":"disabled"} ${btnAttr("h2NwStart",[])}>${k==="清掃"?"清掃開始":"作業開始"}</button>`;
+ h2Set("h2NwBody",html);
+}
+async function nwScan(k){
+ const op=opOf(k);
+ if(op){if(op==="start"||(op==="clean"&&NW.kind==="清掃"))return h2NwStart();return alert(`「${OP_LABEL[op]}」のQRです。作業を始めてから使います。`)}
+ if(/^HQST-/i.test(k)){const s=NW.cache.staff.find(x=>x.qr_key===k);if(!s)return alert("このスタッフQRは登録されていません（削除された人かもしれません）");if(!NW.staff.some(x=>x.id===s.id)){NW.staff.push(s);h2Beep()}return nwRender()}
+ if(/^HQ-|^H\d{8}-/.test(k)){
+  if(NW.kind!=="下処理")return alert("原料のQRは、下処理のときに読み取ります");
+  const l=(await hqLots(`select=id,qr_key,lot_no,item_name,current_qty,unit,status&or=(qr_key.eq.${encodeURIComponent(k)},lot_no.eq.${encodeURIComponent(k)})&limit=1`))[0];
+  return addLot(l);
+ }
+ alert("本社の原料・スタッフ・操作用のQRではありません");
+}
+function addLot(l){
+ if(!l)return alert("この原料は見つかりません");
+ if(!["在庫あり","在庫なし"].includes(l.status))return alert(`この原料は、まだ使えません（${l.status}）。受け入れの確定をしてください`);
+ if(NW.lots.length&&NW.lots[0].item_name!==l.item_name)return alert(`ちがう品目です（${l.item_name}）。1つの下処理では、同じ品目の原料だけを使います`);
+ if(!NW.lots.some(x=>x.id===l.id)){NW.lots.push(l);h2Beep()}
+ nwRender();
+}
+function h2NwAddLot(id){if(!id)return;const l=NW.cache.lots.find(x=>x.id===id);addLot(l)}
+function h2NwDelLot(id){NW.lots=NW.lots.filter(x=>x.id!==id);nwRender()}
+function h2NwAddStaff(id){if(!id)return;const s=NW.cache.staff.find(x=>x.id===id);if(s&&!NW.staff.some(x=>x.id===id))NW.staff.push(s);nwRender()}
+function h2NwDelStaff(id){NW.staff=NW.staff.filter(x=>x.id!==id);nwRender()}
+function h2NwSet(k,v){NW[k]=v;nwRender()}
+async function h2NwStart(){
+ if(H2.busy)return;const k=NW.kind;
+ if(k==="下処理"&&(!NW.lots.length||!NW.masterId))return alert("原料と仕掛品を選んでください");
+ if(k==="作業"&&!NW.task)return alert("作業名を選んでください");
+ if(!NW.place)return alert("作業場所を選んでください");
+ if(!NW.staff.length)return alert("作業する人のスタッフQRを読み取ってください");
+ H2.busy=true;
+ try{
+  const r=await r2("hq_work_start_v1500",{p_operation_id:NW.op,p_kind:k,p_task_name:k==="作業"?NW.task:null,p_place:NW.place,p_master_id:k==="下処理"?NW.masterId:null,p_lot_ids:k==="下処理"?NW.lots.map(l=>l.id):null,p_staff_ids:NW.staff.map(s=>s.id)});
+  H2.busy=false;NW=null;await h2StopReader();return hqWorkPage(r.id,k==="清掃"?"清掃を始めました":"作業を始めました");
+ }catch(e){H2.busy=false;alert(h2Err(e))}
+}
+
+/* --- 操作用QRを読む画面（作業開始・作業終了・清掃・清掃終了） --- */
+let OPS={op:"",staff:[]};
+async function hqOpScanPage(msg=""){
+ setScreen("hqOpScanPage",[msg]);
+ pageShell("QRを読む","作業者のスタッフQR → 操作用QR（作業終了・清掃終了など）",`${okHtml(msg)}<div id="h2OpReader" style="width:100%;min-height:260px;background:#0f172a;border-radius:14px"></div><div class="card" id="h2OpInfo"></div>`);
+ OPS={op:"",staff:[]};opInfo();
+ h2StartReader("h2OpReader",opScan);
+}
+function opInfo(){h2Set("h2OpInfo",`<div><b>読み取った人：</b>${OPS.staff.map(s=>`<span class="h2Chip">${esc(s.name)}</span>`).join("")||"まだいません"}</div><div class="small" style="margin-top:6px">・作業終了／清掃終了：その人が入っている作業を終えます。<br>・作業開始：新しい作業を始める画面に進みます。<br>・清掃：読み取った人で「清掃だけ」を始めます。</div>`)}
+async function opScan(k){
+ const op=opOf(k);
+ if(/^HQST-/i.test(k)){const s=(await sel2("hq_staff_v1500",`select=*&qr_key=eq.${encodeURIComponent(k)}&deleted_at=is.null`))[0];if(!s)return alert("このスタッフQRは登録されていません");if(!OPS.staff.some(x=>x.id===s.id)){OPS.staff.push(s);h2Beep()}return opInfo()}
+ if(!op)return alert("スタッフQRか操作用のQRを読み取ってください");
+ if(op==="start"||op==="clean"){
+  const kind=op==="start"?"下処理":"清掃";nwReset(kind);NW.staff=[...OPS.staff];await h2StopReader();return hqPrepNew(kind,true);
+ }
+ if(!OPS.staff.length)return alert("先に、作業している人のスタッフQRを1人分読み取ってください");
+ const mem=await sel2("hq_work_members_v1500",`select=work_id,staff_name&staff_id=eq.${OPS.staff[0].id}&end_at=is.null&limit=1`);
+ if(!mem[0])return alert(`${OPS.staff[0].name}さんは、いま作業に入っていません`);
+ await h2StopReader();
+ if(op==="end")return h2WorkEnd(mem[0].work_id);
+ return h2CleanEnd(mem[0].work_id);
+}
+
+/* --- 作業の画面 --- */
+async function hqWorkPage(id,msg=""){
+ setScreen("hqWorkPage",[id,msg]);
+ pageShell("作業","",h2Loading());
+ let w,mem=[],mats=[],staff=[];
+ try{
+  w=(await h2Works(`select=*&id=eq.${id}`))[0];if(!w)return pageShell("作業","見つかりません",'<div class="err">この作業は見つかりません。</div>');
+  [mem,mats]=await Promise.all([h2Members([id]),h2Materials([id])]);
+ }catch(e){return pageShell("作業","エラー",`<div class="err">${esc(h2Err(e))}</div>`)}
+ const open=mem.filter(m=>!m.end_at);
+ const title=w.kind==="下処理"?`${w.raw_item_name||""} → ${w.product_name||""}`:w.task_name;
+ let body=`${okHtml(msg)}<div class="card h2Work s${esc(w.status)}"><div class="itemHead"><div><b style="font-size:21px">${esc(title)}</b><div class="small">${esc(w.place||"")} ／ ${esc(w.work_date)} 開始 ${time2(w.started_at)}${w.ended_at?` ／ 終了 ${time2(w.ended_at)}`:""}</div></div><span class="h2Badge h2B${esc(w.status)}">${esc(w.status==="入力待ち"?"作業終了・数量未入力":w.status)}</span></div>
+ ${mats.length?`<div class="small" style="margin-top:6px">原料：${mats.map(m=>`${esc(m.lot_no)}（${esc(m.unit==="kg"?"kg":"ケース")}${m.pack_kg?`・量目${hqQty(m.pack_kg)}kg`:""}）`).join("、")}</div>`:""}
+ ${w.kind==="下処理"&&w.confirm_status!=="未確定"?`<div style="margin-top:6px"><span class="badge ${w.confirm_status==="確定"?"normal":"unset"}">${esc(w.confirm_status)}</span></div>`:""}</div>`;
+ if(w.status==="作業中"||w.status==="清掃中"){
+  body+=`<div class="card"><b>いまの作業者（${open.length}名）</b>${open.map(m=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><div><b>${esc(m.staff_name)}</b><div class="small">${esc(m.team||"")} ／ ${m.phase} ${time2(m.start_at)}〜</div></div>${h2CanPrep()?`<button class="btn btn2" style="min-height:40px" ${btnAttr("h2WorkLeave",[w.id,m.staff_id,m.staff_name])}>抜ける</button>`:""}</div>`).join("")||'<div class="small">いません</div>'}
+  ${h2CanPrep()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("h2WorkJoinOpen",[w.id])}>途中から入る人を追加（スタッフQR）</button><div id="h2JoinBox"></div>`:""}</div>`;
+  if(h2CanPrep())body+=w.status==="作業中"?`<button class="btn hqBtnOut h2Big" ${btnAttr("h2WorkEnd",[w.id])}>作業終了</button><div class="small" style="text-align:center;margin-top:4px">「作業終了」のQRを読み取っても終われます（QRを読む画面）。</div>`:`<button class="btn blue h2Big" ${btnAttr("h2CleanEnd",[w.id])}>清掃終了</button>`;
+ }
+ if(w.kind==="下処理"&&w.status==="入力待ち"&&h2CanPrep()&&w.confirm_status==="未確定"){
+  body+=`<div class="card"><b style="font-size:19px">⑥ 使用原料の数</b>${mats.map(m=>`<label class="label" style="margin-top:8px">${esc(m.item_name)} ${esc(m.lot_no)}（${m.unit==="kg"?"kg":"ケース・小数も入れられます"}）</label><input class="input h2MatQty" data-id="${esc(m.id)}" inputmode="decimal" value="${m.qty==null?"":hqQty(m.qty)}" placeholder="${m.unit==="kg"?"例：120":"例：3.5"}">`).join("")}
+  <label class="label" style="margin-top:12px;font-size:19px">⑦ 廃棄（kg・無ければ0）</label><input id="h2Waste" class="input" inputmode="decimal" value="${w.waste_kg==null?"":hqQty(w.waste_kg)}" placeholder="例：0">
+  <label class="label" style="margin-top:12px;font-size:19px">⑧ 出来高（kg）</label><input id="h2Yield" class="input" inputmode="decimal" value="${w.yield_kg==null?"":hqQty(w.yield_kg)}" placeholder="例：85">
+  <button class="btn hqBtnPrep h2Big" style="margin-top:12px" ${btnAttr("h2SaveInputs",[w.id])}>保存して ⑨ ラベルへ</button></div>`;
+  if(w.inputs_saved_at)body+=labelBox(w,true);
+ }
+ if(w.kind==="下処理"&&(w.status==="清掃中"||w.status==="完了")&&w.confirm_status!=="取消"&&h2CanPrep())body+=labelBox(w,false);
+ if(w.kind==="下処理"&&w.inputs_saved_at){
+  const d=h2Diff(w,mats);
+  body+=`<div class="card"><b>入力した数</b><div class="small">使用原料：${mats.map(m=>`${esc(m.lot_no)} ${m.qty==null?"—":hqQty(m.qty)}${m.unit==="kg"?"kg":"ケース"}`).join("、")}</div><div class="small">廃棄 ${kg2(w.waste_kg)}kg ／ 出来高 ${kg2(w.yield_kg)}kg${d?` ／ 差 <span class="${Math.abs(d.rate)>=0.1?"h2Red":""}">${kg2(d.kg)}kg（${X.pct2(d.rate)}）</span>`:""}</div><div class="small">入力：${esc(w.inputs_saved_by_name||"")} ${dt2(w.inputs_saved_at)}${w.label_printed_at?` ／ ラベル印刷 ${dt2(w.label_printed_at)}（${w.label_print_count}回）`:""}</div></div>`;
+ }
+ body+=`<div class="card"><b>作業時間の記録</b>${mem.map(m=>`<div style="padding:6px 0;border-top:1px solid #e2e8f0"><b>${esc(m.staff_name)}</b> <span class="small">${m.phase}</span><div class="small">${time2(m.start_at)}〜${m.end_at?time2(m.end_at):"（作業中）"}　${hm2(mins2(m.start_at,m.end_at))}${m.end_reason?` ／ ${esc(m.end_reason)}`:""}${m.fixed_by_name?` ／ 修正：${esc(m.fixed_by_name)}`:""}</div>${h2CanBoss()?`<button class="btn btn2" style="min-height:36px;margin-top:4px" ${btnAttr("h2FixMember",[m.id,m.start_at,m.end_at||"",m.staff_name])}>時刻を直す</button>`:""}</div>`).join("")||'<div class="small">まだありません</div>'}
+ ${h2CanBoss()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("h2AddMemberPage",[w.id])}>読み忘れた人を追加する</button>`:""}</div>`;
+ if(w.status!=="取消"&&w.status!=="完了"&&(h2CanBoss()||(db.role==="hq_prep"&&w.status==="作業中")))body+=`<details class="card"><summary><b>間違えて始めた作業を取り消す</b></summary><button class="btn red" style="width:100%;margin-top:8px" ${btnAttr("h2WorkCancel",[w.id])}>この作業を取り消す</button></details>`;
+ if(h2CanBoss()&&w.kind==="下処理"&&w.status!=="作業中"&&w.status!=="取消")body+=`<button class="btn hqBtnPrepCheck" style="width:100%;margin-top:8px" ${btnAttr("hqPrepConfirmPage",[w.id])}>確認・確定の画面へ</button>`;
+ body+=`<button class="btn btn2" style="width:100%;margin-top:12px" ${btnAttr("hqPrepHome",[])}>いま動いている作業の一覧へ</button>`;
+ pageShell(w.kind==="下処理"?"下処理":w.kind==="清掃"?"清掃":"作業",`${esc(w.place||"")} ／ ${esc(w.status)}`,body);
+ if(w.status==="作業中"||w.status==="清掃中")h2Every(20000,()=>{if(!document.getElementById("h2JoinReader")&&!document.activeElement?.matches?.("input,select,textarea"))hqWorkPage(id)});
+}
+function labelBox(w,beforeClean){
+ const exp=w.expiry_days==null?"":ymdKey(new Date(new Date(w.work_date+"T00:00:00").getTime()+Number(w.expiry_days)*864e5));
+ return `<div class="card"><b style="font-size:19px">⑨ 仕掛品ラベルを印刷</b><div class="small" style="margin-top:4px">品名「${esc(w.product_name||"")}」／ 下処理日 ${esc(w.work_date)} ／ 使用期限 ${esc(exp)}（QRは付きません）</div>
+ <label class="label" style="margin-top:8px">ラベルの枚数（A4に8枚ずつ並びます）</label><input id="h2LabelN" class="input" inputmode="numeric" value="8">
+ ${beforeClean?`<button class="btn hqBtnPrint h2Big" style="margin-top:10px" ${btnAttr("h2PrintLabel",[w.id,true])}>ラベルを印刷して ⑩ 清掃へ</button><button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("h2ToClean",[w.id,false])}>印刷できないときは、印刷しないで清掃へ</button>`:`<button class="btn hqBtnPrint" style="width:100%;margin-top:10px" ${btnAttr("h2PrintLabel",[w.id,false])}>ラベルをもう一度印刷</button>`}</div>`;
+}
+async function h2WorkEnd(id){
+ if(H2.busy)return;if(!confirm("作業を終わります。よろしいですか？"))return;H2.busy=true;
+ try{const r=await r2("hq_work_end_v1500",{p_work_id:id});H2.busy=false;return hqWorkPage(id,r?.status==="入力待ち"?"作業を終えました。使用原料・廃棄・出来高を入れてください":"作業を終えました")}catch(e){H2.busy=false;alert(h2Err(e))}
+}
+async function h2CleanEnd(id){
+ if(H2.busy)return;if(!confirm("清掃を終わります。よろしいですか？"))return;H2.busy=true;
+ try{await r2("hq_work_clean_end_v1500",{p_work_id:id});H2.busy=false;return hqPrepHome("清掃を終えました。次の作業に進めます")}catch(e){H2.busy=false;alert(h2Err(e))}
+}
+async function h2WorkLeave(id,staffId,name){
+ if(!confirm(`${name}さんが、この作業から抜けます。よろしいですか？`))return;
+ try{await r2("hq_work_leave_v1500",{p_work_id:id,p_staff_id:staffId});return hqWorkPage(id,`${name}さんが抜けました`)}catch(e){alert(h2Err(e))}
+}
+async function h2WorkJoinOpen(id){
+ const box=document.getElementById("h2JoinBox");if(!box)return;
+ const staff=await h2Staff();
+ box.innerHTML=`<div id="h2JoinReader" style="width:100%;min-height:220px;background:#0f172a;border-radius:14px;margin-top:8px"></div><select class="input" style="margin-top:6px" id="h2JoinSel"><option value="">QRが読めないときは一覧から選ぶ</option>${staff.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}（${esc(s.team)}）</option>`).join("")}</select><button class="btn green" style="width:100%;margin-top:6px" ${btnAttr("h2JoinSelected",[id])}>選んだ人を入れる</button>`;
+ h2StartReader("h2JoinReader",async k=>{
+  if(!/^HQST-/i.test(k))return alert("スタッフQRを読み取ってください");
+  const s=staff.find(x=>x.qr_key===k);if(!s)return alert("このスタッフQRは登録されていません");
+  await r2("hq_work_join_v1500",{p_work_id:id,p_staff_ids:[s.id]});h2Beep();await h2StopReader();return hqWorkPage(id,`${s.name}さんが入りました`);
+ });
+}
+async function h2JoinSelected(id){const sid=h2Val("h2JoinSel");if(!sid)return alert("人を選んでください");try{await r2("hq_work_join_v1500",{p_work_id:id,p_staff_ids:[sid]});await h2StopReader();return hqWorkPage(id,"追加しました")}catch(e){alert(h2Err(e))}}
+async function h2SaveInputs(id){
+ if(H2.busy)return;
+ const mats=[];let bad="";
+ document.querySelectorAll(".h2MatQty").forEach(el=>{const v=num2(el.value);if(!Number.isFinite(v)||v<0)bad="使用原料の数を入れてください";mats.push({id:el.dataset.id,qty:v})});
+ const waste=num2(h2Val("h2Waste")),yld=num2(h2Val("h2Yield"));
+ if(bad)return alert(bad);if(!Number.isFinite(waste)||waste<0)return alert("廃棄（kg）を入れてください。無ければ 0 です");if(!Number.isFinite(yld)||yld<0)return alert("出来高（kg）を入れてください");
+ H2.busy=true;
+ try{await r2("hq_work_save_inputs_v1500",{p_work_id:id,p_materials:mats,p_waste_kg:waste,p_yield_kg:yld});H2.busy=false;await hqWorkPage(id,"保存しました。ラベルを印刷してください");document.getElementById("h2LabelN")?.scrollIntoView({block:"center"})}catch(e){H2.busy=false;alert(h2Err(e))}
+}
+function labelPages(w,n){
+ const exp=ymdKey(new Date(new Date(w.work_date+"T00:00:00").getTime()+Number(w.expiry_days||0)*864e5));
+ const f=d=>{const x=new Date(d+"T00:00:00");return `${x.getMonth()+1}月${x.getDate()}日（${"日月火水木金土"[x.getDay()]}）`};
+ const one=`<div class="lab"><div class="nm">${esc(w.product_name||"")}</div><table><tr><th>下処理日</th><td>${f(w.work_date)}</td></tr><tr><th>使用期限</th><td class="ex">${f(exp)}</td></tr></table></div>`;
+ const pages=[];for(let i=0;i<n;i+=8)pages.push(`<div class="labs">${Array.from({length:Math.min(8,n-i)},()=>one).join("")}</div>`);return pages;
+}
+const LABEL_CSS=`.h2PdfRoot .labs{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(4,1fr);gap:14px;height:100%}.h2PdfRoot .lab{border:3px solid #000;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;justify-content:center}.h2PdfRoot .nm{font-size:34px;font-weight:900;line-height:1.15;margin-bottom:10px;word-break:break-all}.h2PdfRoot .lab table{border-collapse:collapse;width:100%}.h2PdfRoot .lab th{font-size:18px;text-align:left;padding:4px 0;width:92px}.h2PdfRoot .lab td{font-size:26px;font-weight:900;padding:4px 0}.h2PdfRoot .lab td.ex{font-size:30px;text-decoration:underline}`;
+async function h2PrintLabel(id,thenClean){
+ if(H2.busy)return;
+ const n=Math.max(1,Math.min(80,Math.round(num2(h2Val("h2LabelN"))||8)));
+ H2.busy=true;
+ try{
+  const w=(await h2Works(`select=*&id=eq.${id}`))[0];if(!w)throw new Error("作業が見つかりません");
+  const ok=await h2MakePdf(labelPages(w,n),LABEL_CSS,`仕掛品ラベル_${w.product_name||""}_${w.work_date}.pdf`);
+  if(!ok){H2.busy=false;return}
+  if(thenClean){await r2("hq_work_to_clean_v1500",{p_work_id:id,p_printed:true});H2.busy=false;const st=document.getElementById("h2PdfStatus")?.innerHTML||"";await hqWorkPage(id,"ラベルのPDFを作りました。作業者全員が清掃に移りました");const host=document.createElement("div");host.id="h2PdfStatus";host.innerHTML=st;document.querySelector(".wrap")?.prepend(host)}
+  else{await r2("hq_work_mark_printed_v1500",{p_work_id:id});H2.busy=false}
+ }catch(e){H2.busy=false;alert(h2Err(e))}
+}
+async function h2ToClean(id,printed){
+ if(!confirm("ラベルを印刷しないで、清掃に移ります。ラベルはあとで「もう一度印刷」から印刷できます。よろしいですか？"))return;
+ try{await r2("hq_work_to_clean_v1500",{p_work_id:id,p_printed:!!printed});return hqWorkPage(id,"作業者全員が清掃に移りました")}catch(e){alert(h2Err(e))}
+}
+async function h2WorkCancel(id){
+ const reason=prompt("取り消す理由を入れてください（例：間違えて開始）");if(reason==null)return;
+ try{await r2("hq_work_cancel_v1500",{p_work_id:id,p_reason:reason});return hqPrepHome("作業を取り消しました")}catch(e){alert(h2Err(e))}
+}
+function toLocalInput(t){if(!t)return"";const d=new Date(t);const p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`}
+async function h2FixMember(mid,start,end,name){
+ const s=prompt(`${name}さんの開始（例：2026-10-25 09:05）`,toLocalInput(start).replace("T"," "));if(s==null)return;
+ const e=prompt(`${name}さんの終了（空欄＝まだ作業中／「削除」と入れるとこの記録を消します）`,end?toLocalInput(end).replace("T"," "):"");if(e==null)return;
+ try{
+  if(e.trim()==="削除"){if(!confirm("この記録を消します。よろしいですか？"))return;await r2("hq_member_fix_v1500",{p_member_id:mid,p_start:null,p_end:null,p_delete:true})}
+  else{const ps=new Date(s.trim().replace(" ","T")),pe=e.trim()?new Date(e.trim().replace(" ","T")):null;if(isNaN(ps)||(pe&&isNaN(pe)))return alert("日時の形が正しくありません（例：2026-10-25 09:05）");await r2("hq_member_fix_v1500",{p_member_id:mid,p_start:ps.toISOString(),p_end:pe?pe.toISOString():null,p_delete:false})}
+  return hqWorkPage(currentArgs?.[0]||"", "直しました");
+ }catch(err){alert(h2Err(err))}
+}
+async function h2AddMemberPage(workId){
+ const staff=await h2Staff();
+ const box=document.createElement("div");box.className="card";box.id="h2AddMem";
+ box.innerHTML=`<b>読み忘れた人を追加</b><label class="label" style="margin-top:6px">人</label><select id="h2AmS" class="input">${staff.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}（${esc(s.team)}）</option>`).join("")}</select><label class="label" style="margin-top:6px">作業か清掃か</label><select id="h2AmP" class="input"><option>作業</option><option>清掃</option></select><div class="row" style="margin-top:6px"><div><label class="label">開始</label><input id="h2AmA" type="datetime-local" class="input"></div><div><label class="label">終了</label><input id="h2AmB" type="datetime-local" class="input"></div></div><button class="btn green" style="width:100%;margin-top:8px" ${btnAttr("h2AddMemberSave",[workId])}>追加する</button>`;
+ document.getElementById("h2AddMem")?.remove();document.querySelector(".wrap")?.appendChild(box);box.scrollIntoView({block:"center"});
+}
+async function h2AddMemberSave(workId){
+ const a=h2Val("h2AmA"),b=h2Val("h2AmB");if(!a||!b)return alert("開始と終了を入れてください");
+ try{await r2("hq_member_add_v1500",{p_work_id:workId,p_staff_id:h2Val("h2AmS"),p_phase:h2Val("h2AmP"),p_start:new Date(a).toISOString(),p_end:new Date(b).toISOString()});return hqWorkPage(workId,"追加しました")}catch(e){alert(h2Err(e))}
+}
+Object.assign(window,{hqPrepHome,hqPrepNew,h2NwAddLot,h2NwDelLot,h2NwAddStaff,h2NwDelStaff,h2NwSet,h2NwStart,hqOpScanPage,hqWorkPage,h2WorkEnd,h2CleanEnd,h2WorkLeave,h2WorkJoinOpen,h2JoinSelected,h2SaveInputs,h2PrintLabel,h2ToClean,h2WorkCancel,h2FixMember,h2AddMemberPage,h2AddMemberSave});
+Object.assign(X,{labelPages,LABEL_CSS,workCard,liveData});
+})();
+
+/* ===== 下処理の確認・確定／下処理マスタ／スタッフQR／作業時間（本社社員・管理者） ===== */
+(function(){
+"use strict";
+const X=window.__h2;const{H2,r2,sel2,num2,kg2,yen2,pct2,time2,dt2,md2,mins2,hm2,btnAttr,roleIs,h2CanBoss,h2CanMoney,h2CanReport,h2Month,h2MonthRange,h2MonthLabel,h2Err,h2Notice,h2Loading,h2Set,h2Val,h2Stage2,h2MakePdf,h2Qr,h2Staff,h2Teams,h2Places,h2Tasks,h2Masters,h2QrItems,h2Works,h2Members,h2Materials,h2Diff,h2Yield,h2UsedKg,h2Prices,h2PriceOf}=X;
+const GROUPS=["","①下処理班①","②下処理班②","③人参班・ライン班ほか","④手切班","⑤機械班","⑥原料班"];
+
+/* --- 下処理の確認（一覧） --- */
+async function hqPrepCheckPage(from="",to="",only="未確定",msg=""){
+ if(!h2CanBoss()&&!h2CanReport())return hqHome();
+ to=to||hqToday();from=from||hqAddDays(to,-6);
+ setScreen("hqPrepCheckPage",[from,to,only,msg]);
+ const on=await h2Stage2(true);
+ pageShell("下処理の確認","パートさんが入れた下処理を確認して確定します",`${okHtml(msg)}
+ ${roleIs(["admin"])?`<div class="card" style="border:2px solid ${on?"#16a34a":"#d97706"}"><b>第2段階の在庫反映：${on?"オン（実用中）":"オフ（説明・練習の期間）"}</b><div class="small" style="margin-top:4px">${on?"下処理の確定で原料の在庫が減ります。使用出庫は使えません。":"下処理を確定しても原料の在庫は減りません（記録だけ）。使用出庫は今までどおり使えます。"}</div><button class="btn ${on?"btn2":"orange"}" style="width:100%;margin-top:8px" ${btnAttr("h2ToggleStage2",[!on])}>${on?"オフに戻す":"オンにする（実用開始）"}</button></div>`:(on?"":h2Notice("いまは説明・練習の期間です。下処理を確定しても、原料の在庫は減りません。"))}
+ <button class="btn hqBtnPrep" style="width:100%" ${btnAttr("hqPrepHome",[])}>いま動いている作業（下処理入力）</button>
+ <div class="card"><div class="row"><div><label class="label">から</label><input id="h2CkF" type="date" class="input" value="${esc(from)}"></div><div><label class="label">まで</label><input id="h2CkT" type="date" class="input" value="${esc(to)}"></div></div>
+ <div class="h2Tabs" style="margin-top:8px">${["未確定","確定","取消","すべて"].map(k=>`<button class="btn ${only===k?"hqBtnPrepCheck":"btn2"}" ${btnAttr("h2CkFilter",[k])}>${k}</button>`).join("")}</div></div>
+ <div id="h2CkList">${h2Loading()}</div>`);
+ try{
+  let q=`select=*&kind=eq.下処理&work_date=gte.${from}&work_date=lte.${to}&order=work_date.desc,started_at.desc&limit=500`;
+  if(only==="未確定")q=`select=*&kind=eq.下処理&confirm_status=eq.未確定&status=neq.取消&order=work_date.asc,started_at.asc&limit=500`;
+  else if(only!=="すべて")q+=`&confirm_status=eq.${encodeURIComponent(only)}`;
+  const works=await h2Works(q);const ids=works.map(w=>w.id);const[mats,mem]=await Promise.all([h2Materials(ids),h2Members(ids)]);
+  h2Set("h2CkList",works.length?works.map(w=>checkCard(w,mats.filter(m=>m.work_id===w.id),mem.filter(m=>m.work_id===w.id))).join(""):'<div class="notice">該当する下処理はありません。</div>');
+ }catch(e){h2Set("h2CkList",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+function checkCard(w,mats,mem){
+ const d=h2Diff(w,mats),u=h2UsedKg(mats),yr=h2Yield(w);
+ const people=new Set(mem.filter(m=>m.phase==="作業").map(m=>m.staff_id)).size,min=mem.filter(m=>m.phase==="作業").reduce((s,m)=>s+mins2(m.start_at,m.end_at),0);
+ const old=w.confirm_status==="未確定"&&w.work_date<hqToday();
+ return `<div class="card h2Work s${esc(w.status)}" ${old?'style="border:2px solid #dc2626"':""}><div class="itemHead"><div><b style="font-size:18px">${esc(w.raw_item_name||"")} → ${esc(w.product_name||"")}</b><div class="small">${esc(w.work_date)} ${esc(w.place||"")} ／ ${esc(w.status)}${old?' <span class="h2Red">前の日から未確定</span>':""}</div></div><span class="badge ${w.confirm_status==="確定"?"normal":w.confirm_status==="取消"?"unset":"warn"}">${esc(w.confirm_status)}</span></div>
+ <div class="hqLotMeta"><div><span>使用原料</span><b>${u.kg?kg2(u.kg)+"kg":"—"}${u.unknown?"＋量目不明":""}</b></div><div><span>出来高</span><b>${kg2(w.yield_kg)}kg</b></div><div><span>廃棄</span><b>${kg2(w.waste_kg)}kg</b></div><div><span>差</span><b class="${d&&Math.abs(d.rate)>=0.1?"h2Red":""}">${d?`${kg2(d.kg)}kg（${pct2(d.rate)}）`:"—"}</b></div><div><span>歩留まり</span><b>${pct2(yr)}</b></div><div><span>作業</span><b>${people}名 ${hm2(min)}</b></div></div>
+ ${w.confirm_status==="確定"?`<div class="small">確定：${esc(w.confirmed_by_name||"")} ${dt2(w.confirmed_at)}${w.stock_applied?" ／ 在庫に反映済み":" ／ 在庫には反映していません（オフの期間）"}</div>`:""}
+ <div class="row" style="margin-top:8px">${h2CanBoss()&&w.confirm_status!=="取消"&&w.status!=="作業中"?`<button class="btn hqBtnPrepCheck" ${btnAttr("hqPrepConfirmPage",[w.id])}>${w.confirm_status==="確定"?"修正・取消":"確認して確定"}</button>`:""}<button class="btn btn2" ${btnAttr("hqWorkPage",[w.id])}>作業の記録</button></div></div>`;
+}
+function h2CkFilter(k){return hqPrepCheckPage(h2Val("h2CkF"),h2Val("h2CkT"),k)}
+async function h2ToggleStage2(on){
+ const t=on?"第2段階の在庫反映を「オン」にします。\n\n・これから確定する下処理は、原料の在庫を減らします。\n・下処理への使用出庫は使えなくなります。\n・パートさんの画面から「使用出庫」が消えます。\n\n実用を始める日に押してください。よろしいですか？":"在庫反映を「オフ」に戻します。これから確定する下処理は在庫を減らしません。使用出庫が使えるようになります。よろしいですか？";
+ if(!confirm(t))return;
+ try{await r2("hq_set_setting_v1500",{p_key:"stage2_stock",p_value:!!on});await h2Stage2(true);return hqPrepCheckPage("","","未確定",on?"在庫反映をオンにしました":"在庫反映をオフにしました")}catch(e){alert(h2Err(e))}
+}
+
+/* --- 確認・確定（修正・取消） --- */
+async function hqPrepConfirmPage(id,msg=""){
+ if(!h2CanBoss())return hqHome();
+ setScreen("hqPrepConfirmPage",[id,msg]);pageShell("下処理の確定","",h2Loading());
+ let w,mats,mem;
+ try{w=(await h2Works(`select=*&id=eq.${id}`))[0];if(!w)throw new Error("下処理が見つかりません");[mats,mem]=await Promise.all([h2Materials([id]),h2Members([id])])}catch(e){return pageShell("下処理の確定","エラー",`<div class="err">${esc(h2Err(e))}</div>`)}
+ const on=await h2Stage2(true);const d=h2Diff(w,mats);
+ let price=null;if(h2CanMoney()){try{const pm=await h2Prices(w.work_date,w.work_date,[w.raw_item_name]);price=h2PriceOf(pm,w.raw_item_name,w.work_date)}catch(e){}}
+ const y=Number(w.yield_kg),ws=Number(w.waste_kg),cost=price!=null&&y>0?price*(y+ws)/y:null;
+ pageShell("下処理の確定",`${esc(w.work_date)} ${esc(w.product_name||"")}`,`${okHtml(msg)}
+ <div class="card"><b style="font-size:19px">${esc(w.raw_item_name||"")} → ${esc(w.product_name||"")}</b><div class="small">${esc(w.work_date)}（この日の数字として記録します）／ ${esc(w.place||"")} ／ 入力：${esc(w.inputs_saved_by_name||"未入力")}</div>
+ <div class="small" style="margin-top:4px">${on?"確定すると、下の使用数だけ原料の在庫を減らします。":"いまは在庫反映がオフです。確定しても原料の在庫は減りません（記録だけ）。"}</div></div>
+ <div class="card"><b>使用原料</b>${mats.map(m=>`<label class="label" style="margin-top:8px">${esc(m.lot_no)}（${m.unit==="kg"?"kg":"ケース"}${m.pack_kg?`・量目${hqQty(m.pack_kg)}kg`:"・量目不明"}）</label><input class="input h2CfQty" data-id="${esc(m.id)}" inputmode="decimal" value="${m.qty==null?"":hqQty(m.qty)}">`).join("")}
+ <div class="row" style="margin-top:8px"><div><label class="label">廃棄（kg）</label><input id="h2CfW" class="input" inputmode="decimal" value="${w.waste_kg==null?"":hqQty(w.waste_kg)}"></div><div><label class="label">出来高（kg）</label><input id="h2CfY" class="input" inputmode="decimal" value="${w.yield_kg==null?"":hqQty(w.yield_kg)}"></div></div>
+ <div class="hqLotMeta" style="margin-top:8px"><div><span>差（使用−出来高−廃棄）</span><b class="${d&&Math.abs(d.rate)>=0.1?"h2Red":""}">${d?`${kg2(d.kg)}kg（${pct2(d.rate)}）`:"—"}</b></div><div><span>歩留まり率</span><b>${pct2(h2Yield(w))}</b></div>${h2CanMoney()?`<div><span>単価（市場・週平均）</span><b>${price==null?"未計算":`${hqKg(price)}円/kg`}</b></div><div><span>歩留まり原価</span><b>${cost==null?"未計算":`${hqKg(Math.round(cost*10)/10)}円/kg`}</b></div>`:""}</div>
+ ${d&&Math.abs(d.rate)>=0.1?'<div class="err" style="margin-top:8px">差が10%以上あります。数を確かめてください。</div>':""}
+ ${w.confirm_status==="確定"?`<label class="label" style="margin-top:8px">修正の理由</label><input id="h2CfR" class="input" placeholder="例：出来高の入れ間違い">`:""}
+ <button class="btn hqBtnConfirm" style="width:100%;margin-top:12px" ${btnAttr("h2ConfirmPrep",[w.id,w.confirm_status==="確定"])}>${w.confirm_status==="確定"?"直して確定し直す":"この内容で確定する"}</button>
+ ${w.confirm_status==="確定"?'<div class="small" style="margin-top:4px">品名・日付は変わらないので、ラベルの印刷し直しは不要です。</div>':""}</div>
+ <div class="card"><b>仕掛品ラベル</b><div class="small">${w.label_printed_at?`印刷 ${dt2(w.label_printed_at)}（${w.label_print_count}回）`:"まだ印刷していません"}</div><label class="label" style="margin-top:6px">枚数</label><input id="h2LabelN" class="input" inputmode="numeric" value="8"><button class="btn hqBtnPrint" style="width:100%;margin-top:8px" ${btnAttr("h2PrintLabel",[w.id,false])}>ラベルを印刷する</button></div>
+ ${w.history?.length?`<div class="card"><b>確定・修正・取消の記録</b>${w.history.map(h=>`<div class="small" style="padding:4px 0;border-top:1px solid #e2e8f0">${dt2(h.at)} ${esc(h.by||"")}：${esc(h.action||"")}${h.reason?`（${esc(h.reason)}）`:""}${h.stock===true?" ／ 在庫に反映":h.stock===false?" ／ 在庫には反映なし":""}</div>`).join("")}</div>`:""}
+ <details class="card"><summary><b>この下処理を取り消す</b></summary><div class="small" style="margin-top:6px">確定済みなら、減らした原料の在庫と下処理ロスを元に戻します。印刷したラベルは使わないでください。</div><input id="h2CxR" class="input" style="margin-top:6px" placeholder="取消の理由（必須）"><button class="btn red" style="width:100%;margin-top:8px" ${btnAttr("h2CancelPrep",[w.id])}>取り消す</button></details>
+ <button class="btn btn2" style="width:100%" ${btnAttr("hqWorkPage",[w.id])}>作業時間の記録を見る・直す</button>`);
+}
+async function h2ConfirmPrep(id,again){
+ if(H2.busy)return;const mats=[];let bad=false;
+ document.querySelectorAll(".h2CfQty").forEach(el=>{const v=num2(el.value);if(!Number.isFinite(v)||v<0)bad=true;mats.push({id:el.dataset.id,qty:v})});
+ const ws=num2(h2Val("h2CfW")),y=num2(h2Val("h2CfY"));
+ if(bad)return alert("使用原料の数を入れてください");if(!Number.isFinite(ws)||ws<0||!Number.isFinite(y)||y<0)return alert("廃棄と出来高を入れてください");
+ const reason=h2Val("h2CfR");if(again&&!reason.trim())return alert("修正の理由を入れてください");
+ if(!confirm(again?"直した内容で確定し直します。よろしいですか？":"この内容で確定します。よろしいですか？"))return;
+ H2.busy=true;
+ try{const r=await r2("hq_prep_confirm_v1500",{p_work_id:id,p_materials:mats,p_waste_kg:ws,p_yield_kg:y,p_reason:reason||null});H2.busy=false;return hqPrepConfirmPage(id,r?.stock_applied?"確定しました（原料の在庫を減らしました）":"確定しました（在庫反映オフのため、在庫はそのままです）")}catch(e){H2.busy=false;alert(h2Err(e))}
+}
+async function h2CancelPrep(id){
+ const r=h2Val("h2CxR");if(!r.trim())return alert("取消の理由を入れてください");if(!confirm("この下処理を取り消します。よろしいですか？"))return;
+ try{await r2("hq_prep_cancel_v1500",{p_work_id:id,p_reason:r});return hqPrepCheckPage("","","取消","取り消しました")}catch(e){alert(h2Err(e))}
+}
+
+/* --- 下処理マスタ --- */
+async function hqPrepMasterPage(msg=""){
+ if(!h2CanBoss())return hqHome();setScreen("hqPrepMasterPage",[msg]);pageShell("下処理マスタ","仕掛品の登録（原料・名前・初期入れ数kg・使用期限）",h2Loading());
+ let ms=[],items=[];try{[ms,items]=await Promise.all([h2Masters(true),h2QrItems()])}catch(e){return pageShell("下処理マスタ","エラー",`<div class="err">${esc(h2Err(e))}</div>`)}
+ const opt=items.map(i=>`<option>${esc(i.name)}</option>`).join("");
+ const groups={};ms.forEach(m=>(groups[m.item_name]=groups[m.item_name]||[]).push(m));
+ pageShell("下処理マスタ","仕掛品の登録（原料・名前・初期入れ数kg・使用期限）",`${okHtml(msg)}
+ <div class="card"><b>仕掛品を追加</b><label class="label" style="margin-top:6px">原料の品目（本社のQR品目）</label><select id="h2MsI" class="input"><option value="">選んでください</option>${opt}</select>
+ <label class="label" style="margin-top:6px">仕掛品の名前</label><input id="h2MsN" class="input" placeholder="例：千切り用カット">
+ <div class="row" style="margin-top:6px"><div><label class="label">初期入れ数kg（必須）</label><input id="h2MsK" class="input" inputmode="decimal" placeholder="例：5"></div><div><label class="label">使用期限（日数）</label><input id="h2MsD" class="input" inputmode="numeric" value="2"></div></div>
+ <div class="small">1つの原料に、いくつでも登録できます。使用期限は「下処理日＋日数」でラベルに印字します。</div>
+ <button class="btn hqBtnMaster" style="width:100%;margin-top:8px" ${btnAttr("h2SaveMaster",[""])}>追加する</button></div>
+ ${Object.keys(groups).sort().map(k=>`<div class="card"><b>${esc(k)}</b>${groups[k].map(m=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><div><b>${esc(m.name)}</b><div class="small">初期入れ数 ${hqKg(m.default_pack_kg)}kg ／ 使用期限 ${m.expiry_days}日${m.active?"":" ／ 使わない"}</div></div><div style="display:flex;gap:6px"><button class="btn btn2" ${btnAttr("h2EditMaster",[m.id])}>直す</button><button class="btn ${m.active?"btn2":"green"}" ${btnAttr("h2ToggleMaster",[m.id])}>${m.active?"使わない":"使う"}</button></div></div>`).join("")}</div>`).join("")||'<div class="notice">まだ登録がありません。</div>'}`);
+ X.masterCache=ms;
+}
+async function h2SaveMaster(id,data){
+ const d=data||{item:h2Val("h2MsI"),name:h2Val("h2MsN").trim(),kg:num2(h2Val("h2MsK")),days:Math.round(num2(h2Val("h2MsD"))),active:true};
+ if(!d.item)return alert("原料の品目を選んでください");if(!d.name)return alert("仕掛品の名前を入れてください");if(!(d.kg>0))return alert("初期入れ数kgを入れてください");if(!(d.days>=0))return alert("使用期限の日数を入れてください");
+ try{await r2("hq_save_prep_master_v1500",{p_id:id||null,p_item_name:d.item,p_name:d.name,p_pack_kg:d.kg,p_expiry_days:d.days,p_active:d.active});return hqPrepMasterPage(`${d.name}を保存しました`)}catch(e){alert(h2Err(e))}
+}
+async function h2EditMaster(id){
+ const m=(X.masterCache||[]).find(x=>x.id===id);if(!m)return;
+ const name=prompt("仕掛品の名前",m.name);if(name==null)return;const kg=prompt("初期入れ数kg",String(m.default_pack_kg));if(kg==null)return;const days=prompt("使用期限（日数）",String(m.expiry_days));if(days==null)return;
+ return h2SaveMaster(id,{item:m.item_name,name:name.trim(),kg:num2(kg),days:Math.round(num2(days)),active:m.active});
+}
+function h2ToggleMaster(id){const m=(X.masterCache||[]).find(x=>x.id===id);if(!m)return;return h2SaveMaster(id,{item:m.item_name,name:m.name,kg:Number(m.default_pack_kg),days:m.expiry_days,active:!m.active})}
+
+/* --- スタッフQR（登録・印刷・作業名・作業場所） --- */
+function staffTabs(cur){const t=(k,act,l)=>`<button class="btn ${cur===k?"hqBtnStaff":"btn2"}" ${btnAttr(act,[])}>${l}</button>`;return `<div class="card h2Tabs">${t("reg","hqStaffPage","スタッフ登録")}${t("print","hqStaffPrintPage","QRの印刷")}${t("tasks","hqTaskPlacePage","作業名・作業場所")}${t("time","hqWorkTimePage","作業時間")}</div>`}
+async function hqStaffPage(msg=""){
+ if(!h2CanBoss())return hqHome();setScreen("hqStaffPage",[msg]);pageShell("スタッフQR","スタッフ登録",h2Loading());
+ let staff=[],teams=[];try{[staff,teams]=await Promise.all([h2Staff(),h2Teams()])}catch(e){return pageShell("スタッフQR","エラー",`<div class="err">${esc(h2Err(e))}</div><div class="notice">019のSQLが未実行の可能性があります。</div>`)}
+ X.staffCache=staff;X.teamCache=teams;
+ pageShell("スタッフQR","スタッフ登録（入社・退職・グループの変更）",`${okHtml(msg)}${staffTabs("reg")}
+ <div class="card"><b>入社したとき：スタッフを登録</b><label class="label" style="margin-top:6px">班名</label><select id="h2StT" class="input" ${seikaEventAttrs("change","h2TeamChanged",[{__seikaValue:true}])}><option value="">選んでください</option>${teams.map(t=>`<option value="${esc(t.name)}" data-g="${t.default_group}">${esc(t.name)}</option>`).join("")}<option value="__new">＋ 新しい班名を追加</option></select>
+ <input id="h2StTN" class="input" style="margin-top:6px;display:none" placeholder="新しい班名">
+ <label class="label" style="margin-top:6px">名前</label><input id="h2StN" class="input" placeholder="例：山田 花子">
+ <label class="label" style="margin-top:6px">印刷グループ（一覧ボード）</label><select id="h2StG" class="input">${[1,2,3,4,5,6].map(g=>`<option value="${g}">${GROUPS[g]}</option>`).join("")}</select>
+ <div class="small">班を選ぶと、ふだんのグループが自動で選ばれます。登録するとスタッフQRができます。</div>
+ <button class="btn hqBtnStaff" style="width:100%;margin-top:8px" ${btnAttr("h2SaveStaff",[""])}>登録する</button></div>
+ ${[1,2,3,4,5,6].map(g=>{const list=staff.filter(s=>s.print_group===g);return `<details class="card" ${list.length&&g<=2?"open":""}><summary><b>${GROUPS[g]}（${list.length}名）</b></summary>${list.map(s=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><div><b>${esc(s.name)}</b><div class="small">${esc(s.team)}</div></div><div style="display:flex;gap:6px"><button class="btn btn2" ${btnAttr("h2EditStaff",[s.id])}>変更</button><button class="btn red" ${btnAttr("h2DeleteStaff",[s.id])}>削除</button></div></div>`).join("")||'<div class="small">いません</div>'}</details>`}).join("")}
+ <div class="card small">退職したときは「削除」を押します。一覧ボードと読み取りの対象から消えますが、過去の作業時間の記録は名前つきで残ります。</div>`);
+}
+function h2TeamChanged(v){const n=document.getElementById("h2StTN");if(n)n.style.display=v==="__new"?"block":"none";const t=(X.teamCache||[]).find(x=>x.name===v);if(t){const g=document.getElementById("h2StG");if(g)g.value=String(t.default_group)}}
+async function h2SaveStaff(id,data){
+ let d=data;
+ if(!d){let team=h2Val("h2StT");if(team==="__new")team=h2Val("h2StTN").trim();d={team,name:h2Val("h2StN").trim(),group:Number(h2Val("h2StG"))}}
+ if(!d.team)return alert("班名を選んでください");if(!d.name)return alert("名前を入れてください");
+ try{await r2("hq_save_staff_v1500",{p_id:id||null,p_team:d.team,p_name:d.name,p_group:d.group});return hqStaffPage(`${d.name}さんを${id?"変更":"登録"}しました`)}catch(e){alert(h2Err(e))}
+}
+function h2EditStaff(id){
+ const s=(X.staffCache||[]).find(x=>x.id===id);if(!s)return;
+ const box=document.createElement("div");box.className="card";box.id="h2StEdit";
+ box.innerHTML=`<b>${esc(s.name)}さんを変更</b><label class="label" style="margin-top:6px">班名</label><select id="h2SeT" class="input">${(X.teamCache||[]).map(t=>`<option ${t.name===s.team?"selected":""}>${esc(t.name)}</option>`).join("")}</select><label class="label" style="margin-top:6px">名前</label><input id="h2SeN" class="input" value="${esc(s.name)}"><label class="label" style="margin-top:6px">印刷グループ</label><select id="h2SeG" class="input">${[1,2,3,4,5,6].map(g=>`<option value="${g}" ${g===s.print_group?"selected":""}>${GROUPS[g]}</option>`).join("")}</select><div class="small">QRはそのまま使えます（印刷し直す必要はありません。グループを変えたときは一覧ボードを印刷し直してください）。</div><button class="btn hqBtnStaff" style="width:100%;margin-top:8px" ${btnAttr("h2SaveStaffEdit",[id])}>変更する</button>`;
+ document.getElementById("h2StEdit")?.remove();document.querySelector(".wrap")?.prepend(box);box.scrollIntoView({block:"start"});
+}
+function h2SaveStaffEdit(id){return h2SaveStaff(id,{team:h2Val("h2SeT"),name:h2Val("h2SeN").trim(),group:Number(h2Val("h2SeG"))})}
+async function h2DeleteStaff(id){
+ const s=(X.staffCache||[]).find(x=>x.id===id);if(!s)return;
+ if(!confirm(`${s.name}さんを削除します（退職など）。\n過去の作業時間の記録は残ります。よろしいですか？`))return;
+ try{await r2("hq_delete_staff_v1500",{p_id:id});return hqStaffPage(`${s.name}さんを削除しました`)}catch(e){alert(h2Err(e))}
+}
+const BOARD_CSS=`.h2PdfRoot .bh{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #000;padding-bottom:8px;margin-bottom:6px}.h2PdfRoot .bh h1{font-size:30px;margin:0}.h2PdfRoot .bs{font-size:15px;margin:4px 0 12px}.h2PdfRoot .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.h2PdfRoot .c{border:2px solid #000;border-radius:10px;padding:8px 6px;text-align:center;height:196px}.h2PdfRoot .c img{width:132px;height:132px}.h2PdfRoot .c .n{font-size:20px;font-weight:900;line-height:1.15;margin-top:2px}.h2PdfRoot .c .t{font-size:13px}.h2PdfRoot .ft{position:absolute;left:36px;right:36px;bottom:26px;font-size:12px;border-top:1px solid #000;padding-top:4px}.h2PdfRoot .ops{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:20px}.h2PdfRoot .op{border:4px solid #000;border-radius:16px;text-align:center;padding:18px 10px;height:440px}.h2PdfRoot .op img{width:290px;height:290px}.h2PdfRoot .op .n{font-size:44px;font-weight:900}.h2PdfRoot .op .s{font-size:16px}`;
+async function hqStaffPrintPage(msg=""){
+ if(!h2CanBoss())return hqHome();setScreen("hqStaffPrintPage",[msg]);
+ let staff=[];try{staff=await h2Staff()}catch(e){}
+ pageShell("スタッフQR","QRの印刷（A4縦）",`${okHtml(msg)}${staffTabs("print")}
+ <div class="card"><b>スタッフQR 一覧ボード（グループごとに1枚）</b><div class="small">作業する人は、自分の名前のQRを読み取ります。QRの中身は名前ではなく番号です。</div>
+ ${[1,2,3,4,5,6].map(g=>`<button class="btn hqBtnStaff" style="width:100%;margin-top:8px" ${btnAttr("h2PrintBoard",[g])}>${GROUPS[g]}（${staff.filter(s=>s.print_group===g).length}名）を印刷</button>`).join("")}</div>
+ <div class="card"><b>操作用QR（作業開始・作業終了・清掃・清掃終了）</b><div class="small">画面のボタンでも同じ操作ができます。清掃のQRは、清掃だけ行うとき（大掃除など）にも使います。</div><button class="btn hqBtnStaff" style="width:100%;margin-top:8px" ${btnAttr("h2PrintOps",[])}>操作用QRを印刷</button></div>`);
+}
+async function h2PrintBoard(g){
+ const staff=(await h2Staff()).filter(s=>s.print_group===g);if(!staff.length)return alert("このグループには登録がありません");
+ const today=new Date();const ds=`${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日`;
+ const pages=[];for(let i=0;i<staff.length;i+=20){const part=staff.slice(i,i+20);
+  pages.push(`<div class="bh"><h1>スタッフQR 一覧ボード　${esc(GROUPS[g])}</h1><div style="font-size:14px">印刷日：${ds}　${staff.length}名${staff.length>20?`（${Math.floor(i/20)+1}枚目）`:""}</div></div><div class="bs">作業する人は、自分の名前のQRを読み取ってください。</div><div class="grid">${part.map(s=>`<div class="c"><img src="${h2Qr(s.qr_key,6)}"><div class="n">${esc(s.name)}</div><div class="t">${esc(s.team)}</div></div>`).join("")}</div><div class="ft">SEIKA＋ 本社　QRの中身は名前ではなく番号です。退職した人は登録画面で削除し、このボードを印刷し直してください。</div>`)}
+ return h2MakePdf(pages,BOARD_CSS,`スタッフQR_${GROUPS[g]}.pdf`);
+}
+async function h2PrintOps(){
+ const ops=[["HQOP-START","作業開始","作業する人のQRを読んだあとに読みます"],["HQOP-END","作業終了","作業が終わったら読みます"],["HQOP-CLEAN","清掃","清掃だけ行うときにも使えます"],["HQOP-CLEANEND","清掃終了","清掃が終わったら読みます"]];
+ return h2MakePdf([`<div class="bh"><h1>操作用QR</h1><div style="font-size:14px">SEIKA＋ 本社</div></div><div class="bs">画面のボタンでも同じ操作ができます。</div><div class="ops">${ops.map(o=>`<div class="op"><img src="${h2Qr(o[0],8)}"><div class="n">${o[1]}</div><div class="s">${o[2]}</div></div>`).join("")}</div>`],BOARD_CSS,"操作用QR.pdf");
+}
+async function hqTaskPlacePage(msg=""){
+ if(!h2CanBoss())return hqHome();setScreen("hqTaskPlacePage",[msg]);
+ let tasks=[],places=[];try{[tasks,places]=await Promise.all([h2Tasks(true),h2Places(true)])}catch(e){return pageShell("スタッフQR","エラー",`<div class="err">${esc(h2Err(e))}</div>`)}
+ const row=(name,active,act,fixed)=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><b>${esc(name)}${active?"":' <span class="badge unset">非表示</span>'}</b>${fixed?'<span class="small">（変えられません）</span>':`<button class="btn ${active?"btn2":"green"}" ${btnAttr(act,[name,!active])}>${active?"非表示にする":"表示する"}</button>`}</div>`;
+ pageShell("スタッフQR","作業名・作業場所",`${okHtml(msg)}${staffTabs("tasks")}
+ <div class="card"><b>作業名（下処理以外の作業）</b><div class="small">下処理・清掃のほかに、作業時間を記録したい作業を追加します（例：袋詰め、仕分け）。</div><div class="row" style="margin-top:6px"><input id="h2TkN" class="input" placeholder="例：袋詰め"><button class="btn hqBtnStaff" ${btnAttr("h2SaveTask",["",true])}>追加</button></div>${tasks.map(t=>row(t.name,t.active,"h2SaveTask",t.kind!=="作業")).join("")}</div>
+ <div class="card"><b>作業場所</b><div class="small">作業を始めるときに選ぶ場所です。</div><div class="row" style="margin-top:6px"><input id="h2PlN" class="input" placeholder="例：下処理室③"><button class="btn hqBtnStaff" ${btnAttr("h2SavePlace",["",true])}>追加</button></div>${places.map(p=>row(p.name,p.active,"h2SavePlace",false)).join("")}</div>`);
+}
+async function h2SaveTask(name,active){name=name||h2Val("h2TkN").trim();if(!name)return alert("作業名を入れてください");try{await r2("hq_save_task_v1500",{p_name:name,p_active:active});return hqTaskPlacePage("保存しました")}catch(e){alert(h2Err(e))}}
+async function h2SavePlace(name,active){name=name||h2Val("h2PlN").trim();if(!name)return alert("作業場所を入れてください");try{await r2("hq_save_place_v1500",{p_name:name,p_active:active});return hqTaskPlacePage("保存しました")}catch(e){alert(h2Err(e))}}
+
+/* --- 作業時間（人×時間）と作業人数 --- */
+async function workTimeData(month){
+ const{from,to}=h2MonthRange(month);
+ const works=await h2Works(`select=*&work_date=gte.${from}&work_date=lte.${to}&status=neq.取消&order=work_date.asc&limit=5000`);
+ const mem=await h2Members(works.map(w=>w.id));
+ return{works,mem};
+}
+function workTimeSummary(works,mem){
+ const wm=new Map(works.map(w=>[w.id,w]));const per=new Map(),perDay=new Map(),perTask=new Map();
+ for(const m of mem){const w=wm.get(m.work_id);if(!w)continue;const min=mins2(m.start_at,m.end_at);
+  const p=per.get(m.staff_id)||{name:m.staff_name,team:m.team||"",work:0,clean:0,days:new Set()};if(m.phase==="清掃")p.clean+=min;else p.work+=min;p.days.add(w.work_date);per.set(m.staff_id,p);
+  const d=perDay.get(w.work_date)||{people:new Set(),min:0};d.people.add(m.staff_id);d.min+=min;perDay.set(w.work_date,d);
+  const tk=m.phase==="清掃"?"清掃":w.kind==="下処理"?`下処理（${w.product_name||""}）`:w.task_name;const t=perTask.get(tk)||{min:0,people:new Set(),count:new Set()};t.min+=min;t.people.add(m.staff_id);t.count.add(w.id);perTask.set(tk,t);
+ }
+ return{per,perDay,perTask};
+}
+async function hqWorkTimePage(month=""){
+ if(!h2CanBoss()&&!h2CanReport())return hqHome();month=h2Month(month);setScreen("hqWorkTimePage",[month]);
+ pageShell("作業時間","人×時間・作業人数（月ごと）",`${h2CanBoss()?staffTabs("time"):""}<div class="card"><label class="label">月</label><input type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqWorkTimePage",[{__seikaValue:true}])}><button class="btn hqBtnExcelOut" style="width:100%;margin-top:8px" ${btnAttr("h2ExcelWorkTime",[month])}>この月の作業時間をExcelにする</button></div><div id="h2WtBody">${h2Loading()}</div>`);
+ try{
+  const{works,mem}=await workTimeData(month);const{per,perDay,perTask}=workTimeSummary(works,mem);
+  const open=mem.filter(m=>!m.end_at).length;
+  h2Set("h2WtBody",`${open?h2Notice(`終わっていない記録が ${open}件あります（作業中、または読み忘れ）。時間は「いま」までで計算しています。`):""}
+  <div class="card" style="overflow-x:auto"><b>人ごと</b><table class="h2Tbl"><tr><th>名前</th><th>班</th><th>日数</th><th>作業</th><th>清掃</th><th>合計</th></tr>${[...per.values()].sort((a,b)=>a.team.localeCompare(b.team,"ja")||a.name.localeCompare(b.name,"ja")).map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.team)}</td><td>${p.days.size}</td><td>${hm2(p.work)}</td><td>${hm2(p.clean)}</td><td><b>${hm2(p.work+p.clean)}</b></td></tr>`).join("")||'<tr><td colspan="6">記録がありません</td></tr>'}</table></div>
+  <div class="card" style="overflow-x:auto"><b>日ごとの作業人数</b><table class="h2Tbl"><tr><th>日付</th><th>人数</th><th>人×時間</th></tr>${[...perDay.entries()].sort().map(([d,v])=>`<tr><td>${esc(d)}</td><td>${v.people.size}名</td><td>${hm2(v.min)}</td></tr>`).join("")}</table></div>
+  <div class="card" style="overflow-x:auto"><b>作業ごと</b><table class="h2Tbl"><tr><th>作業</th><th>回数</th><th>人数（のべ）</th><th>人×時間</th></tr>${[...perTask.entries()].sort((a,b)=>b[1].min-a[1].min).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v.count.size}</td><td>${v.people.size}名</td><td>${hm2(v.min)}</td></tr>`).join("")}</table></div>
+  <div class="card small">読み忘れは、作業の画面の「作業時間の記録」で本社社員が直せます。時給はアプリに持ちません。荷受けは対象外です。</div>`);
+ }catch(e){h2Set("h2WtBody",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+async function h2ExcelWorkTime(month){return X.excelOut("worktime",month)}
+Object.assign(window,{hqPrepCheckPage,h2CkFilter,h2ToggleStage2,hqPrepConfirmPage,h2ConfirmPrep,h2CancelPrep,hqPrepMasterPage,h2SaveMaster,h2EditMaster,h2ToggleMaster,hqStaffPage,h2TeamChanged,h2SaveStaff,h2EditStaff,h2SaveStaffEdit,h2DeleteStaff,hqStaffPrintPage,h2PrintBoard,h2PrintOps,hqTaskPlacePage,h2SaveTask,h2SavePlace,hqWorkTimePage,h2ExcelWorkTime});
+Object.assign(X,{workTimeData,workTimeSummary,GROUPS});
+})();
+
+/* ===== 在庫入力（原料・仕掛品）／在庫表／使用数量／棚卸し ===== */
+(function(){
+"use strict";
+const X=window.__h2;const{H2,r2,sel2,num2,kg2,btnAttr,roleIs,h2CanBoss,h2CanCount,h2CanReport,h2Month,h2MonthRange,h2MonthLabel,h2Err,h2Notice,h2Loading,h2Set,h2Val,h2MakePdf,h2Masters}=X;
+
+/* --- 在庫入力 --- */
+let SC=null;
+function scLines(c,defKg){const ls=(c?.lines||[]).map(l=>({pack:String(l.pack_kg??""),cases:String(l.cases??"")}));return ls.length?ls:[{pack:defKg==null?"":String(defKg),cases:""}]}
+async function h2StockInputPage(date="",msg="",tab=""){
+ date=date||hqToday();if(date>hqToday())date=hqToday();
+ if(!SC||SC.date!==date)SC={date,tab:tab||SC?.tab||"原料",rows:null};if(tab)SC.tab=tab;
+ setScreen("hqNormalPage",[date,msg]);
+ const can=hqCanNormal()&&!hqViewOnly();
+ pageShell("在庫入力","原料と仕掛品の在庫（入れ数kg × ケース数）",`${okHtml(msg)}<div class="card"><label class="label">日付</label><input type="date" class="input" max="${hqToday()}" value="${esc(date)}" ${seikaEventAttrs("change","hqNormalPage",[{__seikaValue:true}])}>
+ <div class="h2Tabs" style="margin-top:8px"><button class="btn ${SC.tab==="原料"?"hqBtnNormal":"btn2"}" ${btnAttr("h2ScTab",["原料"])}>原料</button><button class="btn ${SC.tab==="仕掛品"?"hqBtnNormal":"btn2"}" ${btnAttr("h2ScTab",["仕掛品"])}>仕掛品</button></div></div><div id="h2ScBody">${h2Loading()}</div>`);
+ if(!SC.rows){
+  try{
+   const[items,masters,cur,prev]=await Promise.all([hqNormalItems(),h2Masters(),sel2("hq_stock_counts_v1500",`select=*&count_date=eq.${date}`),sel2("hq_stock_counts_v1500",`select=kind,item_name,count_date,total_kg&count_date=lt.${date}&order=count_date.desc&limit=2000`)]);
+   const cm={},pm={};cur.forEach(c=>cm[c.kind+"|"+c.item_name]=c);prev.forEach(c=>{const k=c.kind+"|"+c.item_name;if(!pm[k])pm[k]=c});
+   const raw=items.map(i=>({kind:"原料",name:i.name,def:Number(i.pack_weight_kg),cur:cm["原料|"+i.name],prev:pm["原料|"+i.name]}));
+   const wip=[];const seen=new Set();
+   masters.forEach(m=>{if(seen.has(m.name))return;seen.add(m.name);wip.push({kind:"仕掛品",name:m.name,master:m.id,item:m.item_name,def:Number(m.default_pack_kg),cur:cm["仕掛品|"+m.name],prev:pm["仕掛品|"+m.name]})});
+   cur.filter(c=>c.kind==="仕掛品"&&!seen.has(c.item_name)).forEach(c=>wip.push({kind:"仕掛品",name:c.item_name,manual:true,def:null,cur:c}));
+   cur.filter(c=>c.kind==="原料"&&!items.some(i=>i.name===c.item_name)).forEach(c=>raw.push({kind:"原料",name:c.item_name,def:null,cur:c,hidden:true}));
+   SC.rows=[...raw,...wip].map(r=>({...r,lines:scLines(r.cur,r.def),dirty:false}));
+  }catch(e){return h2Set("h2ScBody",`<div class="err">${esc(h2Err(e))}</div><div class="notice">019のSQLが未実行の可能性があります。</div>`)}
+ }
+ scRender(can);
+}
+function scTotal(r){let kg=0,any=false;for(const l of r.lines){const p=num2(l.pack),c=num2(l.cases);if(Number.isFinite(p)&&Number.isFinite(c)){kg+=p*c;any=true}}return any?kg:null}
+function scRender(can){
+ const rows=SC.rows.map((r,i)=>({r,i})).filter(x=>x.r.kind===SC.tab);
+ const card=({r,i})=>`<div class="card" style="padding:12px 14px"><div class="itemHead"><div><b>${esc(r.name)}</b>${r.manual?' <span class="badge warn">手入力</span>':""}${r.hidden?' <span class="badge unset">表示しない品目</span>':""}<div class="small">${r.def!=null?`初期入れ数 ${hqKg(r.def)}kg`:""}${r.item?` ／ 原料：${esc(r.item)}`:""}${r.prev?` ／ 前回 ${esc(String(r.prev.count_date).slice(5).replace("-","/"))} ${hqKg(r.prev.total_kg)}kg`:""}${r.cur?` ／ この日の入力：${esc(r.cur.user_name||"")}`:""}</div></div><div style="text-align:right"><b style="font-size:20px" id="h2ScT${i}">${kg2(scTotal(r))}</b><div class="small">kg</div></div></div>
+ ${r.lines.map((l,j)=>`<div class="h2Line"><div><label class="label">入れ数kg</label><input class="input" inputmode="decimal" value="${esc(l.pack)}" ${can?"":"disabled"} ${seikaEventAttrs("input","h2ScField",[i,j,"pack",{__seikaValue:true}])}></div><div style="padding-bottom:12px;font-weight:900">×</div><div><label class="label">ケース数</label><input class="input" inputmode="decimal" value="${esc(l.cases)}" ${can?"":"disabled"} ${seikaEventAttrs("input","h2ScField",[i,j,"cases",{__seikaValue:true}])}></div>${j&&can?`<button class="btn btn2 x" ${btnAttr("h2ScDelLine",[i,j])}>削除</button>`:"<span></span>"}</div>`).join("")}
+ ${can?`<button class="btn btn2" style="margin-top:6px;min-height:40px" ${btnAttr("h2ScAddLine",[i])}>＋ 入れ数を追加</button>`:""}</div>`;
+ const sum=rows.reduce((s,x)=>s+(scTotal(x.r)||0),0);
+ h2Set("h2ScBody",`<div class="small" style="margin:4px 0 10px">1行が「入れ数kg × ケース数」です。入れ数がちがう箱は「＋ 入れ数を追加」で行を増やします。全部の行を空にして保存すると、その日の入力を消します。</div>
+ ${rows.map(card).join("")||`<div class="notice">${SC.tab==="原料"?"原料の品目がありません。本社社員が「入荷登録・品目 → 品目の追加・変更 → 在庫入力の原料」で追加します。":"仕掛品がありません。本社社員が下処理マスタで登録します（下の手入力も使えます）。"}</div>`}
+ ${SC.tab==="仕掛品"&&can?`<details class="card"><summary><b>マスタに無い仕掛品を手入力</b></summary><label class="label" style="margin-top:6px">品名</label><input id="h2ScMN" class="input"><div class="row"><div><label class="label">1ケースのkg</label><input id="h2ScMK" class="input" inputmode="decimal"></div><div><label class="label">数量（ケース数）</label><input id="h2ScMC" class="input" inputmode="decimal"></div></div><div class="small">手入力した仕掛品は、この日の記録だけに残ります（マスタには追加されません）。</div><button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("h2ScManual",[])}>この日の在庫に追加</button></details>`:""}
+ <div class="card"><b>${SC.tab}の合計：<span id="h2ScSum">${kg2(sum)}</span>kg</b></div>
+ ${can?`<button class="btn hqBtnNormal" style="width:100%;margin-top:6px" ${btnAttr("h2ScSave",[])}>保存する（原料・仕掛品の両方）</button>`:""}
+ ${SC.tab==="原料"&&hqCanItems()&&!hqViewOnly()?hqNormalAddForm("hqNormalPage"):""}`);
+}
+function h2ScTab(t){SC.tab=t;return h2StockInputPage(SC.date,"",t)}
+function h2ScField(i,j,f,v){const r=SC.rows[i];if(!r)return;r.lines[j][f]=v;r.dirty=true;const t=document.getElementById("h2ScT"+i);if(t)t.textContent=kg2(scTotal(r));const s=document.getElementById("h2ScSum");if(s)s.textContent=kg2(SC.rows.filter(x=>x.kind===SC.tab).reduce((a,x)=>a+(scTotal(x)||0),0))}
+function h2ScAddLine(i){const r=SC.rows[i];r.lines.push({pack:r.def==null?"":String(r.def),cases:""});r.dirty=true;scRender(true)}
+function h2ScDelLine(i,j){const r=SC.rows[i];r.lines.splice(j,1);r.dirty=true;scRender(true)}
+function h2ScManual(){const n=h2Val("h2ScMN").trim(),k=h2Val("h2ScMK"),c=h2Val("h2ScMC");if(!n)return alert("品名を入れてください");if(!(num2(k)>0))return alert("1ケースのkgを入れてください");if(!(num2(c)>=0))return alert("数量を入れてください");if(SC.rows.some(r=>r.kind==="仕掛品"&&r.name===n))return alert("同じ名前の仕掛品があります。上の行に入れてください");SC.rows.push({kind:"仕掛品",name:n,manual:true,def:null,lines:[{pack:k,cases:c}],dirty:true});scRender(true)}
+async function h2ScSave(){
+ if(H2.busy)return;const rows=[];let bad="";
+ for(const r of SC.rows){
+  const lines=r.lines.filter(l=>String(l.pack).trim()!==""||String(l.cases).trim()!=="").map(l=>({pack_kg:num2(l.pack),cases:num2(l.cases)}));
+  for(const l of lines){if(!(l.pack_kg>0))bad=`${r.name} の入れ数kgを入れてください`;if(!(l.cases>=0))bad=`${r.name} のケース数を入れてください`}
+  const onlyDefault=r.lines.every(l=>String(l.cases).trim()==="");
+  if(!r.cur&&!lines.length)continue;
+  if(!r.cur&&onlyDefault)continue;
+  rows.push({kind:r.kind,item_name:r.name,master_id:r.master||null,manual:!!r.manual,lines:onlyDefault?[]:lines});
+ }
+ if(bad)return alert(bad);if(!rows.length)return alert("入力がありません");
+ H2.busy=true;
+ try{const a=await r2("hq_save_stock_counts_v1500",{p_date:SC.date,p_rows:rows});H2.busy=false;SC.rows=null;return h2StockInputPage(SC.date,`保存しました（${a?.saved??0}品目${a?.cleared?`・消去 ${a.cleared}品目`:""}）`)}catch(e){H2.busy=false;alert(h2Err(e))}
+}
+hqNormalPage=async function(date="",msg=""){if(SC&&date&&SC.date!==date)SC=null;return h2StockInputPage(date,msg)};
+window.hqNormalPage=hqNormalPage;
+window.hqNormalKeepDraft=function(){};
+const nfBase=hqNormalAddForm;
+hqNormalAddForm=function(back){return nfBase(back).replace("通常在庫の品目を追加","在庫入力の原料を追加").replace("1ケースのkg","初期入れ数kg（必須）").replace("例：8","例：8（在庫入力の1行目に入ります）")};
+window.hqNormalAddForm=hqNormalAddForm;
+const niBase=hqNormalItemsPage;
+hqNormalItemsPage=async function(...a){const r=await niBase.apply(this,a);try{const app=document.getElementById("app");app.querySelectorAll(".small").forEach(el=>{el.innerHTML=el.innerHTML.replace(/1ケース ([0-9.,]+)kg/,"初期入れ数 $1kg")});app.querySelectorAll("button").forEach(b=>{if(b.textContent==="kgを直す")b.textContent="初期入れ数を直す";if(b.textContent==="通常在庫の品目")b.textContent="在庫入力の原料"});const s=app.querySelector(".head .sub");if(s)s.textContent="在庫入力の原料（QRで管理しない品目）"}catch(e){}return r};
+window.hqNormalItemsPage=hqNormalItemsPage;
+const itBase=hqItemTabs;hqItemTabs=function(cur){return itBase(cur).replace(">通常在庫の品目<",">在庫入力の原料<")};window.hqItemTabs=hqItemTabs;
+hqEditNormalItem=async function(name,kg,active){const v=prompt(`${name} の初期入れ数kg`,String(kg));if(v==null)return;const n=Number(v);if(!(n>0))return alert("0より大きい数を入れてください");return hqSaveNormalItem(name,n,active,"hqNormalItemsPage")};window.hqEditNormalItem=hqEditNormalItem;
+const snBase=hqSaveNormalItem;hqSaveNormalItem=async function(name,kg,active,back){if(back==="hqNormalPage")SC=null;return snBase.apply(this,arguments)};window.hqSaveNormalItem=hqSaveNormalItem;
+
+/* --- 在庫表（QR品目＋原料＋仕掛品） --- */
+hqTableData=async function(from,to,raw){const r=await r2("get_hq_stock_table_v1500",{p_from:from,p_to:to});const d=Array.isArray(r)?r[0]:r;if(raw)return d;X.lastTable=d;return{...d,rows:(d?.rows||[]).map(x=>x.kind==="QR"?x:{...x,kind:"通常",_kind:x.kind})}};
+window.hqTableData=hqTableData;
+const tpBase=hqTablePage;
+hqTablePage=async function(...a){
+ const r=await tpBase.apply(this,a);
+ try{
+  const box=document.getElementById("hqTbl");if(!box)return r;
+  const sub=document.querySelector(".head .sub");if(sub)sub.textContent="本社のQR品目・原料・仕掛品の在庫（kg）";
+  const rows=X.lastTable?.rows||[];let k=0;
+  box.querySelectorAll("table tr").forEach((tr,i)=>{if(!i)return;const rr=rows[k];const b=tr.querySelector("td .badge");if(!rr||!b)return;k++;if(rr.kind==="原料"){b.textContent="原料";b.className="badge warn"}else if(rr.kind==="仕掛品"){b.textContent="仕掛品";b.className="badge danger"}});
+  const note=box.querySelector(".small");if(note)note.textContent="QR品目：その日の終わりの在庫（取り消した出庫・受け入れは数えません。下処理の確定で減らした分・廃棄も引きます）。原料・仕掛品：その日に在庫入力した数（入力がない日は「—」）。量目が分からないQRのロットは「kg不明」として別に出します。";
+ }catch(e){}
+ return r;
+};
+window.hqTablePage=hqTablePage;
+
+/* --- 品目別使用数量 --- */
+async function usageData(month){
+ const{from,toCap}=h2MonthRange(month);const prevDay=hqAddDays(from,-1);
+ if(from>hqToday())return{dates:[],items:[],countDays:[]};
+ const data=await hqTableData(prevDay,toCap,true);const rows=data?.rows||[];
+ const countDays=new Set((data?.count_days||[]).map(String));
+ const dates=(rows[0]?.values||[]).map(v=>v.date).slice(1);
+ const items=[];
+ for(const r of rows){
+  if(r.kind==="仕掛品")continue;
+  const days=[];
+  for(let i=1;i<r.values.length;i++){
+   const p=r.values[i-1],c=r.values[i];
+   if(r.kind==="QR"){
+    const caseUse=Number(p.cases)+Number(c.in_cases)-Number(c.cases),kgUse=Number(p.kg)+Number(c.in_kg)-Number(c.kg),kguUse=Number(p.kg_unit_qty)+Number(c.in_kgu)-Number(c.kg_unit_qty);
+    days.push({date:c.date,cases:caseUse,kgu:kguUse,kg:kgUse,waste:Number(c.waste_kg),rawout:Number(c.rawout_kg),work:countDays.has(String(c.date))});
+   }else{
+    if(c.kg==null||p.kg==null){days.push({date:c.date,kg:null,cases:null,work:countDays.has(String(c.date))});continue}
+    days.push({date:c.date,kg:Number(p.kg)-Number(c.kg),cases:Number(p.cases)-Number(c.cases),work:true});
+   }
+  }
+  const has=days.some(d=>d.kg);if(!has)continue;
+  items.push({name:r.item_name,kind:r.kind,days});
+ }
+ return{dates,items,countDays:[...countDays].sort()};
+}
+function usageTotals(it){const wd=it.days.filter(d=>d.work&&d.kg!=null);const sum=k=>it.days.reduce((s,d)=>s+(Number(d[k])||0),0);return{kg:sum("kg"),cases:sum("cases"),kgu:sum("kgu"),waste:sum("waste"),rawout:sum("rawout"),avgKg:wd.length?wd.reduce((s,d)=>s+d.kg,0)/wd.length:null,avgCases:wd.length?wd.reduce((s,d)=>s+(d.cases||0),0)/wd.length:null,workDays:wd.length}}
+async function hqUsagePage(month=""){
+ if(!h2CanReport())return hqHome();month=h2Month(month);setScreen("hqUsagePage",[month]);
+ pageShell("品目別使用数量","前日の在庫＋その日の入荷−その日の在庫",`<div class="card"><label class="label">月</label><input type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqUsagePage",[{__seikaValue:true}])}><button class="btn hqBtnExcelOut" style="width:100%;margin-top:8px" ${btnAttr("h2ExcelUsage",[month])}>この月の使用数量をExcelにする</button></div><div id="h2UsBody">${h2Loading()}</div>`);
+ try{
+  const{dates,items,countDays}=await usageData(month);
+  const u=(v,unit)=>v==null||!Number.isFinite(v)?"—":`${hqQty(Math.round(v*100)/100)}${unit}`;
+  h2Set("h2UsBody",`<div class="card small">稼働日（在庫を入力した日）：${countDays.length}日。平均は稼働日で割っています。QR品目は単位の数（ケース・大型容器はkg）とkgを並べています。仕掛品は対象外です。</div>
+  ${items.map(it=>{const t=usageTotals(it);return `<details class="card"><summary><b>${esc(it.name)}</b> <span class="badge ${it.kind==="QR"?"normal":"warn"}">${it.kind==="QR"?"QR":"原料"}</span><div class="small">月の合計 ${kg2(t.kg)}kg${it.kind==="QR"?`（ケース ${u(t.cases,"")}・大型容器 ${u(t.kgu,"kg")}）`:`（${u(t.cases,"ケース")}）`} ／ 稼働日平均 ${kg2(t.avgKg)}kg${it.kind==="QR"?` ／ 廃棄 ${kg2(t.waste)}kg ／ 原料のまま出荷 ${kg2(t.rawout)}kg`:""}</div></summary>
+   <div style="overflow-x:auto"><table class="h2Tbl"><tr><th>日付</th><th>使用kg</th>${it.kind==="QR"?"<th>ケース</th><th>大型容器kg</th><th>うち廃棄kg</th><th>うち原料出しkg</th>":"<th>ケース</th>"}<th>稼働日</th></tr>${it.days.map(d=>`<tr><td>${esc(String(d.date).slice(5))}</td><td>${kg2(d.kg)}</td>${it.kind==="QR"?`<td>${u(d.cases,"")}</td><td>${u(d.kgu,"")}</td><td>${kg2(d.waste)}</td><td>${kg2(d.rawout)}</td>`:`<td>${u(d.cases,"")}</td>`}<td>${d.work?"○":""}</td></tr>`).join("")}</table></div></details>`}).join("")||'<div class="notice">この月の使用数量はありません。</div>'}`);
+ }catch(e){h2Set("h2UsBody",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+function h2ExcelUsage(m){return X.excelOut("usage",m)}
+
+/* --- 棚卸し --- */
+const TAKE_CSS=`.h2PdfRoot h1{font-size:26px;margin:0 0 4px}.h2PdfRoot .m{font-size:13px;margin-bottom:8px}.h2PdfRoot table{border-collapse:collapse;width:100%;font-size:13px}.h2PdfRoot th,.h2PdfRoot td{border:1px solid #000;padding:5px 6px}.h2PdfRoot th{background:#e5e7eb}.h2PdfRoot td.n{text-align:right}.h2PdfRoot td.blank{width:90px}.h2PdfRoot .neg{font-weight:900;text-decoration:underline}`;
+async function hqStocktakePage(msg=""){
+ if(!h2CanBoss())return hqHome();setScreen("hqStocktakePage",[msg]);pageShell("棚卸し","確認表を印刷 → 数える → 実数を入力 → 結果を印刷",h2Loading());
+ let list=[];try{list=await sel2("hq_stocktakes_v1500","select=id,take_date,status,created_by_name,confirmed_at,confirmed_by_name&order=created_at.desc&limit=30")}catch(e){return pageShell("棚卸し","エラー",`<div class="err">${esc(h2Err(e))}</div>`)}
+ const cur=list.find(t=>t.status==="入力中");
+ pageShell("棚卸し","確認表を印刷 → 数える → 実数を入力 → 結果を印刷",`${okHtml(msg)}
+ ${cur?`<div class="card"><b>入力中の棚卸し：${esc(cur.take_date)}</b><button class="btn hqBtnTake" style="width:100%;margin-top:8px" ${btnAttr("hqStocktakeEdit",[cur.id])}>続きを入力する</button></div>`:`<div class="card"><b>新しい棚卸しを始める</b><label class="label" style="margin-top:6px">棚卸しの日</label><input id="h2TkD" type="date" class="input" max="${hqToday()}" value="${hqToday()}"><div class="small">その時点で在庫のあるQRの原料（ロットごと）と、在庫入力の原料・仕掛品が確認表に並びます。</div><button class="btn hqBtnTake" style="width:100%;margin-top:8px" ${btnAttr("h2TakeNew",[])}>確認表を作る</button></div>`}
+ <div class="card"><b>これまでの棚卸し</b>${list.map(t=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><div><b>${esc(t.take_date)}</b> <span class="badge ${t.status==="確定"?"normal":"warn"}">${esc(t.status)}</span><div class="small">${esc(t.created_by_name||"")}${t.confirmed_at?` ／ 確定 ${esc(t.confirmed_by_name||"")}`:""}</div></div><button class="btn btn2" ${btnAttr("hqStocktakeEdit",[t.id])}>開く</button></div>`).join("")||'<div class="small">まだありません</div>'}</div>`);
+}
+async function h2TakeNew(){
+ const date=h2Val("h2TkD")||hqToday();
+ try{
+  const[lots,cnt,items,masters]=await Promise.all([hqLots("select=id,lot_no,item_name,current_qty,unit,pack_weight&status=eq.在庫あり&order=item_name.asc,lot_no.asc&limit=2000"),sel2("hq_stock_counts_v1500",`select=*&count_date=lte.${date}&order=count_date.desc&limit=3000`),hqNormalItems(),h2Masters()]);
+  const latest={};cnt.forEach(c=>{const k=c.kind+"|"+c.item_name;if(!latest[k])latest[k]=c});
+  const rows=lots.map(l=>({type:"QR",lot_id:l.id,lot_no:l.lot_no,item_name:l.item_name,unit:l.unit,book:Number(l.current_qty),actual:""}));
+  items.forEach(i=>{const c=latest["原料|"+i.name];rows.push({type:"count",kind:"原料",item_name:i.name,pack_kg:Number(c?.lines?.[0]?.pack_kg||i.pack_weight_kg),book_cases:c?Number(c.total_cases):null,book_kg:c?Number(c.total_kg):null,book_date:c?.count_date||null,actual:""})});
+  const seen=new Set();masters.forEach(m=>{if(seen.has(m.name))return;seen.add(m.name);const c=latest["仕掛品|"+m.name];rows.push({type:"count",kind:"仕掛品",item_name:m.name,master_id:m.id,pack_kg:Number(c?.lines?.[0]?.pack_kg||m.default_pack_kg),book_cases:c?Number(c.total_cases):null,book_kg:c?Number(c.total_kg):null,book_date:c?.count_date||null,actual:""})});
+  const r=await r2("hq_stocktake_save_v1500",{p_id:null,p_date:date,p_rows:rows});
+  return hqStocktakeEdit(r.id,"確認表を作りました。印刷して数えてください");
+ }catch(e){alert(h2Err(e))}
+}
+let TK=null;
+async function hqStocktakeEdit(id,msg=""){
+ if(!h2CanBoss())return hqHome();setScreen("hqStocktakeEdit",[id,msg]);pageShell("棚卸し","",h2Loading());
+ try{TK=(await sel2("hq_stocktakes_v1500",`select=*&id=eq.${id}`))[0];if(!TK)throw new Error("棚卸しが見つかりません")}catch(e){return pageShell("棚卸し","エラー",`<div class="err">${esc(h2Err(e))}</div>`)}
+ const done=TK.status==="確定",rows=done?(TK.result||TK.rows):TK.rows;
+ const sec=(title,list)=>`<div class="card" style="overflow-x:auto"><b>${title}（${list.length}）</b><table class="h2Tbl"><tr><th>品名</th><th>${title==="QRの原料"?"ロットNo.":"入れ数kg"}</th><th>帳簿</th><th>実数${title==="QRの原料"?"":"（ケース）"}</th>${done?"<th>差・結果</th>":""}</tr>${list.map(({r,i})=>`<tr><td>${esc(r.item_name)}</td><td>${r.type==="QR"?esc(r.lot_no):hqKg(r.pack_kg)}</td><td>${r.type==="QR"?`${hqQty(r.book)}${r.unit==="kg"?"kg":"ケース"}`:r.book_cases==null?"—":`${hqQty(r.book_cases)}ケース（${esc(String(r.book_date||"").slice(5))}）`}</td><td>${done?esc(r.actual===""||r.actual==null?"—":String(r.actual)):`<input class="input" style="min-width:90px" inputmode="decimal" value="${esc(r.actual??"")}" ${seikaEventAttrs("input","h2TakeField",[i,{__seikaValue:true}])}>`}</td>${done?`<td class="${r.diff?"h2Red":""}">${r.diff!=null?`${r.diff>0?"+":""}${hqQty(r.diff)} `:""}${esc(r.result||"")}</td>`:""}</tr>`).join("")}</table></div>`;
+ const idx=rows.map((r,i)=>({r,i}));
+ pageShell("棚卸し",`${esc(TK.take_date)} ／ ${esc(TK.status)}`,`${okHtml(msg)}
+ <div class="card"><div class="row"><button class="btn btn2" ${btnAttr("h2TakePrint",[false])}>確認表を印刷</button>${done?`<button class="btn hqBtnTake" ${btnAttr("h2TakePrint",[true])}>結果を印刷</button>`:""}</div>${done?"":'<div class="small" style="margin-top:6px">数えた数を入れて「途中保存」。全部入れたら「確定」。空欄の行は変えません。</div>'}</div>
+ ${sec("QRの原料",idx.filter(x=>x.r.type==="QR"))}${sec("原料",idx.filter(x=>x.r.type!=="QR"&&x.r.kind==="原料"))}${sec("仕掛品",idx.filter(x=>x.r.type!=="QR"&&x.r.kind==="仕掛品"))}
+ ${done?"":`<div class="row"><button class="btn btn2" ${btnAttr("h2TakeSave",[false])}>途中保存</button><button class="btn hqBtnConfirm" ${btnAttr("h2TakeSave",[true])}>確定する</button></div><div class="small" style="margin-top:6px">確定すると、QRの原料はロットごとに「実数調整（棚卸し）」として記録し、原料・仕掛品はその日の在庫入力として保存します。</div>`}`);
+}
+function h2TakeField(i,v){if(TK&&TK.rows[i])TK.rows[i].actual=v}
+async function h2TakeSave(confirmIt){
+ if(H2.busy)return;
+ for(const r of TK.rows){if(String(r.actual??"").trim()!==""&&!(num2(r.actual)>=0))return alert(`${r.item_name} の実数が正しくありません`);r.actual=String(r.actual??"").trim()===""?"":num2(r.actual)}
+ if(confirmIt&&!confirm("棚卸しを確定します。差がある分は在庫を直します。よろしいですか？"))return;
+ H2.busy=true;
+ try{await r2("hq_stocktake_save_v1500",{p_id:TK.id,p_date:TK.take_date,p_rows:TK.rows});if(confirmIt)await r2("hq_stocktake_confirm_v1500",{p_id:TK.id});H2.busy=false;return hqStocktakeEdit(TK.id,confirmIt?"確定しました。結果を印刷できます":"途中保存しました")}catch(e){H2.busy=false;alert(h2Err(e))}
+}
+async function h2TakePrint(result){
+ const rows=result?(TK.result||[]):TK.rows;const perPage=30;const pages=[];
+ const head=`<h1>本社 棚卸し ${result?"結果":"確認表"}　${esc(TK.take_date)}</h1><div class="m">作成：${esc(TK.created_by_name||"")}${TK.confirmed_at?` ／ 確定：${esc(TK.confirmed_by_name||"")}`:""}</div>`;
+ const tr=r=>`<tr><td>${r.type==="QR"?"QR":esc(r.kind)}</td><td>${esc(r.item_name)}</td><td>${r.type==="QR"?esc(r.lot_no):`入れ数${hqKg(r.pack_kg)}kg`}</td><td class="n">${r.type==="QR"?`${hqQty(r.book)}${r.unit==="kg"?"kg":"ケース"}`:r.book_cases==null?"—":`${hqQty(r.book_cases)}ケース`}</td>${result?`<td class="n">${r.actual===""||r.actual==null?"—":hqQty(r.actual)}</td><td class="n ${r.diff?"neg":""}">${r.diff!=null?hqQty(r.diff):""}</td><td>${esc(r.result||"")}</td>`:'<td class="blank"></td>'}</tr>`;
+ for(let i=0;i<Math.max(1,rows.length);i+=perPage)pages.push(`${head}<table><tr><th>区分</th><th>品名</th><th>ロット・入れ数</th><th>帳簿</th>${result?"<th>実数</th><th>差</th><th>結果</th>":"<th>実数</th>"}</tr>${rows.slice(i,i+perPage).map(tr).join("")}</table>`);
+ return h2MakePdf(pages,TAKE_CSS,`本社_棚卸し${result?"結果":"確認表"}_${TK.take_date}.pdf`);
+}
+Object.assign(window,{h2ScTab,h2ScField,h2ScAddLine,h2ScDelLine,h2ScManual,h2ScSave,hqUsagePage,h2ExcelUsage,hqStocktakePage,h2TakeNew,hqStocktakeEdit,h2TakeField,h2TakeSave,h2TakePrint});
+Object.assign(X,{usageData,usageTotals});
+})();
+
+/* ===== 廃棄一覧／仕入れ価格表／歩留まり／品質評価一覧／Excel出力 ===== */
+(function(){
+"use strict";
+const X=window.__h2;const{H2,r2,sel2,num2,kg2,yen2,pct2,dt2,mins2,hm2,btnAttr,roleIs,h2CanBoss,h2CanRaw,h2CanMoney,h2CanReport,h2Month,h2MonthRange,h2MonthLabel,h2Monday,h2FiscalStart,h2Err,h2Notice,h2Loading,h2Set,h2Val,h2Works,h2Materials,h2Members,h2UsedKg,h2Diff,h2Yield,h2Prices,h2PriceOf,h2QrItems}=X;
+const KINDS=["下処理ロス","原料出しロス","原料廃棄"];
+
+/* --- 廃棄一覧 --- */
+async function wasteData(month){const{from,to}=h2MonthRange(month);return sel2("hq_waste_v1500",`select=*&waste_date=gte.${from}&waste_date=lte.${to}&order=waste_date.asc,created_at.asc&limit=5000`)}
+async function hqWastePage(month="",kind="すべて",msg=""){
+ if(!h2CanReport()&&!h2CanRaw())return hqHome();month=h2Month(month);setScreen("hqWastePage",[month,kind,msg]);
+ const{from,to}=h2MonthRange(month);
+ let items=[];try{const[a,b]=await Promise.all([h2QrItems(),hqNormalItems()]);items=[...new Set([...a.map(x=>x.name),...b.map(x=>x.name)])]}catch(e){}
+ pageShell("廃棄一覧","下処理ロス・原料出しロス・原料廃棄",`${okHtml(msg)}<div class="card"><label class="label">月</label><input type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqWastePage",[{__seikaValue:true},kind])}>
+ <div class="h2Tabs" style="margin-top:8px">${["すべて",...KINDS].map(k=>`<button class="btn ${kind===k?"hqBtnWaste":"btn2"}" ${btnAttr("hqWastePage",[month,k])}>${k}</button>`).join("")}</div>
+ ${h2CanReport()?`<button class="btn hqBtnExcelOut" style="width:100%;margin-top:8px" ${btnAttr("h2ExcelWaste",[month])}>この月の廃棄をExcelにする</button>`:""}</div>
+ ${h2CanRaw()&&!hqViewOnly()?`<details class="card" ${kind==="原料出しロス"?"open":""}><summary><b>原料出しロスを入力（kg）</b></summary><div class="small" style="margin-top:4px">原料のまま出荷するときに出たロスです。在庫は減らしません。</div><div class="row" style="margin-top:6px"><div><label class="label">日付</label><input id="h2WsD" type="date" class="input" max="${hqToday()}" value="${hqToday()}"></div><div><label class="label">kg</label><input id="h2WsK" class="input" inputmode="decimal" placeholder="例：3.5"></div></div><label class="label" style="margin-top:6px">品目</label><select id="h2WsI" class="input"><option value="">選んでください</option>${items.map(n=>`<option>${esc(n)}</option>`).join("")}</select><label class="label" style="margin-top:6px">メモ（任意）</label><input id="h2WsM" class="input"><button class="btn hqBtnWaste" style="width:100%;margin-top:8px" ${btnAttr("h2SaveRawLoss",[month])}>保存する</button></details>
+ <div class="card small">原料廃棄（在庫を減らす廃棄）は、原料のQRを読み取って、ロットの画面の「廃棄」で入れます。</div>`:""}
+ <div id="h2WsBody">${h2Loading()}</div>`);
+ try{
+  let rows=(await wasteData(month)).filter(r=>!r.cancelled_at);const all=rows;if(kind!=="すべて")rows=rows.filter(r=>r.kind===kind);
+  const money=h2CanMoney();let pm={};if(money&&all.length){try{pm=await h2Prices(from,to,[...new Set(all.map(r=>r.item_name))])}catch(e){}}
+  const amt=r=>{const p=h2PriceOf(pm,r.item_name,r.waste_date);return p==null?null:p*Number(r.kg)};
+  const byKind=KINDS.map(k=>{const l=all.filter(r=>r.kind===k);return{k,kg:l.reduce((s,r)=>s+Number(r.kg),0),yen:l.reduce((s,r)=>s+(amt(r)||0),0),un:l.some(r=>amt(r)==null)}});
+  const byItem={};rows.forEach(r=>{const o=byItem[r.item_name]=byItem[r.item_name]||{kg:0,yen:0,un:false};o.kg+=Number(r.kg);const a=amt(r);if(a==null)o.un=true;else o.yen+=a});
+  h2Set("h2WsBody",`<div class="card" style="overflow-x:auto"><b>区分別（${esc(h2MonthLabel(month))}）</b><table class="h2Tbl"><tr><th>区分</th><th>kg</th>${money?"<th>金額</th>":""}</tr>${byKind.map(o=>`<tr><td>${o.k}</td><td>${kg2(o.kg)}</td>${money?`<td>${yen2(o.yen)}${o.un?"＋未計算あり":""}</td>`:""}</tr>`).join("")}</table></div>
+  <div class="card" style="overflow-x:auto"><b>品目別（${esc(kind)}）</b><table class="h2Tbl"><tr><th>品目</th><th>kg</th>${money?"<th>金額</th>":""}</tr>${Object.entries(byItem).sort((a,b)=>b[1].kg-a[1].kg).map(([n,o])=>`<tr><td>${esc(n)}</td><td>${kg2(o.kg)}</td>${money?`<td>${yen2(o.yen)}${o.un?"＋未計算あり":""}</td>`:""}</tr>`).join("")||'<tr><td colspan="3">ありません</td></tr>'}</table>${money?'<div class="small">金額は、作業日の週の市場価格（同じ品目の平均）×kg です。</div>':""}</div>
+  ${rows.slice().reverse().map(r=>`<div class="card" style="padding:10px 14px"><div class="itemHead"><div><b>${esc(r.item_name)}</b> <span class="badge ${r.kind==="原料廃棄"?"danger":r.kind==="下処理ロス"?"warn":"unset"}">${esc(r.kind)}</span><div class="small">${esc(r.waste_date)} ／ ${kg2(r.kg)}kg${r.qty!=null?`（${hqQty(r.qty)}${r.unit==="kg"?"kg":"ケース"}）`:""}${money?` ／ ${yen2(amt(r))}`:""} ／ ${esc(r.user_name||"")}${r.lot_no?` ／ ${esc(r.lot_no)}`:""}${r.memo?` ／ ${esc(r.memo)}`:""}</div></div>${h2CanBoss()&&r.kind!=="下処理ロス"?`<button class="btn btn2" ${btnAttr("h2CancelWaste",[r.id,month,kind])}>取消</button>`:""}</div></div>`).join("")}`);
+ }catch(e){h2Set("h2WsBody",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+async function h2SaveRawLoss(month){
+ const d=h2Val("h2WsD"),k=num2(h2Val("h2WsK")),i=h2Val("h2WsI");if(!i)return alert("品目を選んでください");if(!(k>0))return alert("kgを入れてください");
+ try{await r2("hq_rawout_loss_v1500",{p_date:d,p_item_name:i,p_kg:k,p_memo:h2Val("h2WsM")});return hqWastePage(month,"原料出しロス","保存しました")}catch(e){alert(h2Err(e))}
+}
+async function h2CancelWaste(id,month,kind){const r=prompt("取り消す理由");if(r==null)return;try{await r2("hq_waste_cancel_v1500",{p_id:id,p_reason:r});return hqWastePage(month,kind,"取り消しました")}catch(e){alert(h2Err(e))}}
+async function h2Dispose(lotId,key,unit,cur){
+ const q=num2(h2Val("h2DsQ"));if(!(q>0))return alert("数量を入れてください");if(q>Number(cur))return alert("在庫より多くは廃棄できません");
+ if(!confirm(`${hqQty(q)}${unit==="kg"?"kg":"ケース"} を廃棄します。在庫から減ります。よろしいですか？`))return;
+ try{const r=await r2("hq_dispose_v1500",{p_operation_id:newId(),p_lot_id:lotId,p_qty:q,p_memo:h2Val("h2DsM")});return hqLotPage(key,r?.kg_unknown?"廃棄しました（量目が分からないため、廃棄一覧のkgは0です。量目を確認してください）":"廃棄しました")}catch(e){alert(h2Err(e))}
+}
+
+/* --- 仕入れ価格表（本社用） --- */
+async function hqPricePage(end=""){
+ if(!h2CanMoney())return hqHome();end=end||hqToday();setScreen("hqPricePage",[end]);
+ const last=h2Monday(end),first=hqAddDays(last,-49);
+ pageShell("仕入れ価格表（本社）","市場価格の週平均（同じ品目・産地は問わない）",`<div class="card"><label class="label">この週まで（8週分）</label><input type="date" class="input" value="${esc(end)}" ${seikaEventAttrs("change","hqPricePage",[{__seikaValue:true}])}><div class="small" style="margin-top:6px">社内売りは週間価格（市場相場）なので、石岡の契約価格は使いません。市場は 水戸大同・大同・水戸中央・中央・東一・シティ です。その週に価格がないときは前の週（さらに前）の価格を使い、1件もなければ「未計算」です。価格の入力は石岡の「仕入れ価格表」の画面のままです。</div></div><div id="h2PrBody">${h2Loading()}</div>`);
+ try{
+  const rows=await r2("hq_price_table_v1500",{p_from:first,p_to:last,p_items:null});
+  const weeks=[...new Set((rows||[]).map(r=>r.week))].sort(),items=[...new Set((rows||[]).map(r=>r.item_name))].sort((a,b)=>a.localeCompare(b,"ja"));
+  const m={};(rows||[]).forEach(r=>m[r.item_name+"|"+r.week]=r);
+  h2Set("h2PrBody",`<div class="card" style="overflow-x:auto"><table class="h2Tbl"><tr><th>品目</th>${weeks.map(w=>`<th>${esc(w.slice(5).replace("-","/"))}週</th>`).join("")}</tr>${items.map(n=>`<tr><td>${esc(n)}</td>${weeks.map(w=>{const r=m[n+"|"+w];if(!r||r.price==null)return '<td style="color:#94a3b8">未計算</td>';const carry=r.src_week!==w;return `<td><b>${hqKg(r.price)}</b>${carry?`<div class="small" style="color:#b45309">${esc(String(r.src_week).slice(5).replace("-","/"))}週の価格</div>`:`<div class="small">${r.count}件の平均</div>`}</td>`}).join("")}</tr>`).join("")}</table><div class="small">円/kg（税抜）。週は月曜日から始まります。</div></div>`);
+ }catch(e){h2Set("h2PrBody",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+
+/* --- 歩留まり管理 --- */
+async function yieldData(from,to){
+ const works=await h2Works(`select=*&kind=eq.下処理&confirm_status=eq.確定&work_date=gte.${from}&work_date=lte.${to}&order=work_date.asc,started_at.asc&limit=5000`);
+ const ids=works.map(w=>w.id);const[mats,mem]=await Promise.all([h2Materials(ids),h2Members(ids)]);
+ let pm={};if(h2CanMoney()&&works.length){try{pm=await h2Prices(from,to,[...new Set(works.map(w=>w.raw_item_name))])}catch(e){}}
+ return works.map(w=>{const ms=mats.filter(m=>m.work_id===w.id),mm=mem.filter(m=>m.work_id===w.id&&m.phase==="作業");const u=h2UsedKg(ms);const y=Number(w.yield_kg),ws=Number(w.waste_kg);const price=h2PriceOf(pm,w.raw_item_name,w.work_date);
+  return{w,date:w.work_date,item:w.raw_item_name||"",product:w.product_name||"",used:u.kg,usedUnknown:u.unknown,usedText:ms.map(m=>`${hqQty(m.qty)}${m.unit==="kg"?"kg":"ケース"}`).join("+"),yield:y,waste:ws,rate:h2Yield(w),diff:h2Diff(w,ms),price,cost:price!=null&&y>0?price*(y+ws)/y:null,people:new Set(mm.map(m=>m.staff_id)).size,min:mm.reduce((s,m)=>s+mins2(m.start_at,m.end_at),0)}});
+}
+function yieldAvg(list){const by={};list.forEach(r=>{const k=r.item+"|"+r.product;const o=by[k]=by[k]||{item:r.item,product:r.product,n:0,y:0,ws:0,used:0,costW:0,costY:0};o.n++;o.y+=r.yield;o.ws+=r.waste;o.used+=r.used||0;if(r.cost!=null){o.costW+=r.cost*r.yield;o.costY+=r.yield}});return Object.values(by).map(o=>({...o,rate:o.y+o.ws>0?o.y/(o.y+o.ws):null,cost:o.costY>0?o.costW/o.costY:null})).sort((a,b)=>a.item.localeCompare(b.item,"ja")||a.product.localeCompare(b.product,"ja"))}
+async function hqYieldPage(month="",tab="日報"){
+ if(!h2CanReport())return hqHome();month=h2Month(month);setScreen("hqYieldPage",[month,tab]);
+ const money=h2CanMoney();
+ pageShell("歩留まり管理","製造日報・平均・月ごとの推移（確定した下処理）",`<div class="card"><label class="label">月</label><input type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqYieldPage",[{__seikaValue:true},tab])}>
+ <div class="h2Tabs" style="margin-top:8px">${["日報","平均","推移"].map(k=>`<button class="btn ${tab===k?"hqBtnYield":"btn2"}" ${btnAttr("hqYieldPage",[month,k])}>${k==="日報"?"製造日報":k==="平均"?"品目・仕掛品の平均":"年度の推移"}</button>`).join("")}</div>
+ <button class="btn hqBtnExcelOut" style="width:100%;margin-top:8px" ${btnAttr("h2ExcelYield",[month])}>この月の歩留まりをExcelにする</button>
+ <div class="small" style="margin-top:6px">歩留まり率＝出来高÷（出来高＋廃棄）。${money?"歩留まり原価（1kgあたり）＝単価×（出来高＋廃棄）÷出来高。単価は作業日の週の市場価格の平均です。":""}</div></div><div id="h2YdBody">${h2Loading()}</div>`);
+ try{
+  if(tab==="推移"){
+   const fy=h2FiscalStart(month);const from=`${fy}-09-01`,to=`${fy+1}-08-31`;const list=await yieldData(from,to>hqToday()?hqToday():to);
+   const months=[];for(let i=0;i<12;i++){const d=new Date(fy,8+i,1);months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`)}
+   const keys=yieldAvg(list).map(o=>o.item+"|"+o.product);
+   const cell=(k,m)=>{const l=list.filter(r=>r.date.startsWith(m)&&r.item+"|"+r.product===k);if(!l.length)return"—";const a=yieldAvg(l)[0];return `${pct2(a.rate)}${money&&a.cost!=null?`<div class="small">${hqKg(Math.round(a.cost))}円</div>`:""}`};
+   h2Set("h2YdBody",`<div class="card" style="overflow-x:auto"><b>${fy}年度（${fy}年9月〜${fy+1}年8月）</b><table class="h2Tbl"><tr><th>原料 → 仕掛品</th>${months.map(m=>`<th>${Number(m.slice(5))}月</th>`).join("")}</tr>${keys.map(k=>`<tr><td>${esc(k.replace("|"," → "))}</td>${months.map(m=>`<td>${cell(k,m)}</td>`).join("")}</tr>`).join("")||'<tr><td>確定した下処理がありません</td></tr>'}</table></div>`);
+   return;
+  }
+  const{from,to}=h2MonthRange(month);const list=await yieldData(from,to);
+  if(tab==="平均"){
+   h2Set("h2YdBody",`<div class="card" style="overflow-x:auto"><table class="h2Tbl"><tr><th>原料 → 仕掛品</th><th>回数</th><th>出来高kg</th><th>廃棄kg</th><th>歩留まり率</th>${money?"<th>歩留まり原価</th>":""}</tr>${yieldAvg(list).map(o=>`<tr><td>${esc(o.item)} → ${esc(o.product)}</td><td>${o.n}</td><td>${kg2(o.y)}</td><td>${kg2(o.ws)}</td><td>${pct2(o.rate)}</td>${money?`<td>${o.cost==null?"未計算":`${hqKg(Math.round(o.cost*10)/10)}円/kg`}</td>`:""}</tr>`).join("")||'<tr><td colspan="6">確定した下処理がありません</td></tr>'}</table><div class="small">平均の歩留まり率は、月の合計（出来高÷（出来高＋廃棄））で出しています。</div></div>`);
+   return;
+  }
+  const days=[...new Set(list.map(r=>r.date))];
+  h2Set("h2YdBody",days.map(d=>`<div class="card" style="overflow-x:auto"><b>${esc(hqDateLabel(d))}</b><table class="h2Tbl"><tr><th>原料 → 仕掛品</th><th>使用原料</th><th>出来高kg</th><th>廃棄kg</th><th>差</th><th>歩留まり率</th>${money?"<th>単価</th><th>歩留まり原価</th>":""}<th>作業</th></tr>${list.filter(r=>r.date===d).map(r=>`<tr><td>${esc(r.item)} → ${esc(r.product)}</td><td>${esc(r.usedText)}${r.used?`（${kg2(r.used)}kg）`:""}</td><td>${kg2(r.yield)}</td><td>${kg2(r.waste)}</td><td class="${r.diff&&Math.abs(r.diff.rate)>=0.1?"h2Red":""}">${r.diff?pct2(r.diff.rate):"—"}</td><td>${pct2(r.rate)}</td>${money?`<td>${r.price==null?"未計算":hqKg(r.price)}</td><td>${r.cost==null?"未計算":`${hqKg(Math.round(r.cost*10)/10)}円/kg`}</td>`:""}<td>${r.people}名 ${hm2(r.min)}</td></tr>`).join("")}</table></div>`).join("")||'<div class="notice">この月に確定した下処理はありません。</div>');
+ }catch(e){h2Set("h2YdBody",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+
+/* --- 本社の品質評価一覧 --- */
+async function qualityData(month){const{from,to}=h2MonthRange(month);return hqLots(`select=*&grade=not.is.null&hq_received_date=gte.${from}&hq_received_date=lte.${to}&order=hq_received_date.desc,confirmed_at.desc&limit=2000`)}
+function qState(l){if(l.grade==="good")return"確認不要";if(l.quality_checked_at)return"確認済み";return l.purchase_staff?`${l.purchase_staff}さんの確認待ち`:"管理者の確認待ち"}
+async function hqQualityPage(month="",only="all",msg=""){
+ if(!h2CanReport()&&!roleIs(["hq_receiver"]))return hqHome();month=h2Month(month);setScreen("hqQualityPage",[month,only,msg]);
+ pageShell("品質評価一覧","本社で評価した原料（直接入荷・石岡からの受け入れ）",`${okHtml(msg)}<div class="card"><label class="label">本社入荷の月</label><input type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqQualityPage",[{__seikaValue:true},only])}>
+ <div class="h2Tabs" style="margin-top:8px">${[["all","すべて"],["need","要確認・不良"],["wait","確認待ち"]].map(([k,l])=>`<button class="btn ${only===k?"hqBtnQuality":"btn2"}" ${btnAttr("hqQualityPage",[month,k])}>${l}</button>`).join("")}</div>
+ ${h2CanReport()?`<button class="btn hqBtnExcelOut" style="width:100%;margin-top:8px" ${btnAttr("h2ExcelQuality",[month])}>この月の品質評価をExcelにする</button>`:""}</div><div id="h2QBody">${h2Loading()}</div>`);
+ try{
+  let rows=await qualityData(month);let dis=new Set();
+  if(roleIs(["admin","hq_worker"])&&authProfile?.id){try{(await sel2("hq_quality_dismiss_v1500",`select=lot_id&user_id=eq.${authProfile.id}&limit=5000`)).forEach(d=>dis.add(d.lot_id))}catch(e){}}
+  if(only==="need")rows=rows.filter(l=>l.grade!=="good");if(only==="wait")rows=rows.filter(l=>l.grade!=="good"&&!l.quality_checked_at);
+  const me=authProfile?.id;
+  h2Set("h2QBody",`<div class="small" style="margin:4px 0 8px">${rows.length}件。要確認・不良は写真1枚以上が必須です。担当の仕入れ担当者が「確認済み」にします（担当がいないときは管理者）。管理者・本社社員は「確認しました」で自分のお知らせを消せます。</div>`+rows.map(l=>{
+   const canCheck=l.grade!=="good"&&!l.quality_checked_at&&((roleIs(["buyer"])&&l.purchase_staff_profile_id===me)||(roleIs(["admin"])&&(!l.purchase_staff_profile_id||l.purchase_staff_profile_id===me)));
+   const canDis=l.grade!=="good"&&roleIs(["admin","hq_worker"])&&!dis.has(l.id);
+   return `<div class="card" style="padding:10px 14px"><div class="itemHead"><div><b>${esc(l.item_name)}</b> ${hqGradeBadge(l.grade)} <span class="badge ${l.source_kind==="石岡から"?"normal":"warn"}">${l.source_kind==="石岡から"?"石岡からの受け入れ":"直接入荷"}</span><div class="small">${esc(l.hq_received_date||"")} ／ ${esc(l.supplier||"-")}${l.cooperative_name?` ／ ${esc(l.cooperative_name)}`:""} ／ 写真 ${(l.photo_paths||[]).length}枚 ／ 評価：${esc(l.evaluated_by_name||"")}</div>${(l.issues||[]).length||l.quality_memo?`<div class="small">${esc((l.issues||[]).join("・"))} ${esc(l.quality_memo||"")}</div>`:""}<div class="small"><b>${esc(qState(l))}</b>${l.quality_checked_at?`（${esc(l.quality_checked_by_name||"")} ${dt2(l.quality_checked_at)}）`:""}${dis.has(l.id)?" ／ お知らせ確認済み":""}</div></div></div>
+   <div class="row" style="margin-top:6px">${(l.photo_paths||[]).length?`<button class="btn btn2" ${btnAttr("h2QPhotos",[l.id])}>写真</button>`:""}<button class="btn btn2" ${btnAttr("hqLotPage",[l.qr_key])}>ロット</button>${canCheck?`<button class="btn hqBtnQuality" ${btnAttr("h2QCheck",[l.id,month,only])}>確認済みにする</button>`:""}${canDis?`<button class="btn btn2" ${btnAttr("h2QDismiss",[l.id,month,only])}>確認しました</button>`:""}</div><div id="hqPhotoView_${esc(l.id)}"></div></div>`}).join(""));
+ }catch(e){h2Set("h2QBody",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+async function h2QPhotos(id){document.getElementById("hqPhotoView")?.removeAttribute("id");const b=document.getElementById("hqPhotoView_"+id);if(!b)return;b.id="hqPhotoView";await hqShowPhotos(id);b.id="hqPhotoView_"+id}
+async function h2QCheck(id,m,o){try{await r2("hq_quality_check_v1500",{p_lot_id:id});return hqQualityPage(m,o,"確認済みにしました")}catch(e){alert(h2Err(e))}}
+async function h2QDismiss(id,m,o){try{await r2("hq_quality_dismiss_v1500",{p_lot_id:id});return hqQualityPage(m,o,"お知らせを消しました")}catch(e){alert(h2Err(e))}}
+
+/* --- Excel出力 --- */
+function sheet(wb,name,aoa,w){const s=XLSX.utils.aoa_to_sheet(aoa);s["!cols"]=(aoa[0]||[]).map((_,i)=>({wch:Array.isArray(w)?(w[i]||12):(w||14)}));XLSX.utils.book_append_sheet(wb,s,String(name).replace(/[\\/?*\[\]:]/g,"").slice(0,31))}
+async function excelOut(kind,month){
+ if(typeof XLSX==="undefined")return alert("Excel機能を読み込めませんでした");
+ month=h2Month(month);const{from,to,toCap}=h2MonthRange(month);const label=h2MonthLabel(month),money=h2CanMoney();const wb=XLSX.utils.book_new();let title="";
+ try{
+  if(kind==="stock"){
+   title="在庫";const[moves,stock]=await Promise.all([hqMonthMoves(month),hqLots("select=*&status=eq.在庫あり&order=item_name.asc,hq_received_date.asc&limit=5000")]);
+   sheet(wb,"本社在庫（現在）",[["品名","本社ロットNo.","元ロットNo.","入荷区分","数量","単位","量目","仕入先","産地","単協名","本社入荷日","石岡入荷日","品質評価"]].concat(stock.map(l=>[l.item_name,l.lot_no,l.source_lot_no||"",l.source_kind,Number(l.current_qty),l.unit,l.pack_weight||"",l.supplier||"",l.origin||"",l.cooperative_name||"",l.hq_received_date||"",l.ishioka_received_date||"",HQ_GRADE[l.grade]||""])));
+   sheet(wb,"入出庫",[["日時","区分","品名","本社ロットNo.","数量","単位","前","後","出庫先","理由","メモ","担当"]].concat(moves.map(m=>[new Date(m.occurred_at).toLocaleString("ja-JP"),m.movement_type+(m.cancelled_at?"（取消済み）":""),m.item_name||"",m.lot_no||"",Number(m.qty),m.unit||"",m.before_qty==null?"":Number(m.before_qty),m.after_qty==null?"":Number(m.after_qty),m.destination||"",m.reason||"",m.memo||"",m.user_name||""])));
+  }else if(kind==="counts"){
+   title="在庫入力";const c=await sel2("hq_stock_counts_v1500",`select=*&count_date=gte.${from}&count_date=lte.${to}&order=count_date.asc,kind.asc,item_name.asc&limit=10000`);
+   sheet(wb,"在庫入力",[["日付","区分","品名","入れ数kg×ケース数","ケース合計","合計kg","手入力","入力者"]].concat(c.map(x=>[x.count_date,x.kind,x.item_name,(x.lines||[]).map(l=>`${l.pack_kg}kg×${l.cases}`).join("、"),Number(x.total_cases),Number(x.total_kg),x.manual?"手入力":"",x.user_name||""])));
+  }else if(kind==="table"){
+   title="在庫表";if(from>hqToday())throw new Error("先の月です");const t=await hqTableData(from,toCap,true);const rs=t?.rows||[],ds=rs[0]?.values?.map(v=>v.date)||[];
+   sheet(wb,`在庫表`,[["品名","区分"].concat(ds)].concat(rs.map(r=>[r.item_name,r.kind].concat(r.values.map(v=>v.kg==null?"":Number(v.kg))))).concat([["合計kg",""].concat(ds.map((_,i)=>rs.reduce((s,r)=>s+(r.values[i].kg==null?0:Number(r.values[i].kg)),0)))]),[16,8]);
+  }else if(kind==="waste"){
+   title="廃棄";const rows=(await wasteData(month)).filter(r=>!r.cancelled_at);let pm={};if(money&&rows.length)pm=await h2Prices(from,to,[...new Set(rows.map(r=>r.item_name))]);
+   const amt=r=>{const p=h2PriceOf(pm,r.item_name,r.waste_date);return p==null?"":Math.round(p*Number(r.kg))};
+   sheet(wb,"廃棄一覧",[["日付","区分","品目","kg","数量","単位","ロットNo.",...(money?["単価（円/kg）","金額"]:[]),"メモ","入力者"]].concat(rows.map(r=>[r.waste_date,r.kind,r.item_name,Number(r.kg),r.qty==null?"":Number(r.qty),r.unit||"",r.lot_no||"",...(money?[h2PriceOf(pm,r.item_name,r.waste_date)??"未計算",amt(r)]:[]),r.memo||"",r.user_name||""])));
+   const agg={};rows.forEach(r=>{const k=r.kind+"|"+r.item_name;const o=agg[k]=agg[k]||{kind:r.kind,item:r.item_name,kg:0,yen:0};o.kg+=Number(r.kg);const a=amt(r);if(a!=="")o.yen+=a});
+   sheet(wb,"区分別・品目別",[["区分","品目","kg",...(money?["金額"]:[])]].concat(Object.values(agg).sort((a,b)=>a.kind.localeCompare(b.kind,"ja")||b.kg-a.kg).map(o=>[o.kind,o.item,Math.round(o.kg*10)/10,...(money?[o.yen]:[])])));
+  }else if(kind==="yield"){
+   title="歩留まり";const list=await yieldData(from,to);
+   sheet(wb,"製造日報",[["作業日","原料","仕掛品","使用原料","使用原料kg","出来高kg","廃棄kg","差kg","差%","歩留まり率",...(money?["単価（円/kg）","歩留まり原価（円/kg）"]:[]),"人数","人×時間（分）"]].concat(list.map(r=>[r.date,r.item,r.product,r.usedText,Math.round((r.used||0)*10)/10,r.yield,r.waste,r.diff?Math.round(r.diff.kg*10)/10:"",r.diff?Math.round(r.diff.rate*1000)/10:"",r.rate==null?"":Math.round(r.rate*1000)/10,...(money?[r.price??"未計算",r.cost==null?"未計算":Math.round(r.cost*10)/10]:[]),r.people,r.min])));
+   sheet(wb,"平均",[["原料","仕掛品","回数","出来高kg","廃棄kg","歩留まり率%",...(money?["歩留まり原価（円/kg）"]:[])]].concat(yieldAvg(list).map(o=>[o.item,o.product,o.n,o.y,o.ws,o.rate==null?"":Math.round(o.rate*1000)/10,...(money?[o.cost==null?"未計算":Math.round(o.cost*10)/10]:[])])));
+   const fy=h2FiscalStart(month);const all=await yieldData(`${fy}-09-01`,`${fy+1}-08-31`>hqToday()?hqToday():`${fy+1}-08-31`);const months=[];for(let i=0;i<12;i++){const d=new Date(fy,8+i,1);months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`)}
+   const keys=yieldAvg(all).map(o=>[o.item,o.product]);
+   sheet(wb,`${fy}年度の推移（歩留まり率%）`,[["原料","仕掛品"].concat(months.map(m=>`${Number(m.slice(5))}月`))].concat(keys.map(([i,p])=>[i,p].concat(months.map(m=>{const l=all.filter(r=>r.date.startsWith(m)&&r.item===i&&r.product===p);if(!l.length)return"";const a=yieldAvg(l)[0];return a.rate==null?"":Math.round(a.rate*1000)/10})))),[14,16]);
+  }else if(kind==="usage"){
+   title="使用数量";const{items,countDays}=await X.usageData(month);
+   sheet(wb,"月のまとめ",[["品目","区分","使用kg（月計）","ケース（月計）","大型容器kg（月計）","廃棄kg","原料のまま出荷kg","稼働日","稼働日平均kg"]].concat(items.map(it=>{const t=X.usageTotals(it);return[it.name,it.kind==="QR"?"QR":"原料",Math.round(t.kg*10)/10,Math.round(t.cases*100)/100,Math.round((t.kgu||0)*10)/10,Math.round((t.waste||0)*10)/10,Math.round((t.rawout||0)*10)/10,t.workDays,t.avgKg==null?"":Math.round(t.avgKg*10)/10]})));
+   const ds=items[0]?.days.map(d=>d.date)||[];
+   sheet(wb,"日ごと（kg）",[["品目","区分"].concat(ds)].concat(items.map(it=>[it.name,it.kind==="QR"?"QR":"原料"].concat(it.days.map(d=>d.kg==null?"":Math.round(d.kg*10)/10)))).concat([["稼働日",""].concat(ds.map(d=>countDays.includes(String(d))?"○":""))]),[16,8]);
+  }else if(kind==="quality"){
+   title="品質評価";const rows=await qualityData(month);
+   sheet(wb,"品質評価",[["本社入荷日","評価した場所","品目","仕入先","単協名","産地","評価","内容","メモ","写真枚数","評価した人","確認の状況","確認した人","確認日時"]].concat(rows.map(l=>[l.hq_received_date||"",l.source_kind==="石岡から"?"石岡からの受け入れ":"直接入荷",l.item_name,l.supplier||"",l.cooperative_name||"",l.origin||"",HQ_GRADE[l.grade]||"",(l.issues||[]).join("・"),l.quality_memo||"",(l.photo_paths||[]).length,l.evaluated_by_name||"",qState(l),l.quality_checked_by_name||"",l.quality_checked_at?new Date(l.quality_checked_at).toLocaleString("ja-JP"):""])));
+  }else if(kind==="worktime"){
+   title="作業時間";const{works,mem}=await X.workTimeData(month);const{per,perDay,perTask}=X.workTimeSummary(works,mem);const wm=new Map(works.map(w=>[w.id,w]));
+   sheet(wb,"人ごと",[["名前","班","日数","作業（分）","清掃（分）","合計（分）","合計（時間）"]].concat([...per.values()].map(p=>[p.name,p.team,p.days.size,p.work,p.clean,p.work+p.clean,Math.round((p.work+p.clean)/6)/10])));
+   sheet(wb,"日ごとの作業人数",[["日付","人数","人×時間（分）"]].concat([...perDay.entries()].sort().map(([d,v])=>[d,v.people.size,v.min])));
+   sheet(wb,"作業ごと",[["作業","回数","人数（のべ）","人×時間（分）"]].concat([...perTask.entries()].map(([k,v])=>[k,v.count.size,v.people.size,v.min])));
+   sheet(wb,"記録",[["作業日","作業","仕掛品","作業場所","名前","班","作業／清掃","開始","終了","分","終わり方","修正した人"]].concat(mem.map(m=>{const w=wm.get(m.work_id)||{};return[w.work_date||"",w.task_name||"",w.product_name||"",w.place||"",m.staff_name,m.team||"",m.phase,new Date(m.start_at).toLocaleString("ja-JP"),m.end_at?new Date(m.end_at).toLocaleString("ja-JP"):"（終わっていない）",mins2(m.start_at,m.end_at),m.end_reason||"",m.fixed_by_name||""]})));
+  }
+  XLSX.writeFile(wb,`本社_${title}_${label}.xlsx`);
+ }catch(e){alert(h2Err(e))}
+}
+X.excelOut=excelOut;
+async function hqExcelPage(month=""){
+ if(!h2CanReport())return hqHome();month=h2Month(month);setScreen("hqExcelPage",[month]);
+ const b=(k,l,s)=>`<button class="btn hqBtnExcelOut" style="width:100%;margin-top:8px" ${btnAttr("h2ExcelOut",[k,month])}>${l}<br><span style="font-size:13px;font-weight:700">${s}</span></button>`;
+ pageShell("Excel出力","月を選んで、Excelを作ります",`<div class="card"><label class="label">月</label><input type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqExcelPage",[{__seikaValue:true}])}><div class="small" style="margin-top:6px">ファイル名の例：本社_歩留まり_${esc(h2MonthLabel(month))}.xlsx</div></div>
+ <div class="card">${b("stock","在庫（現在・入出庫）","いまの本社在庫と、その月の入出庫")}${b("counts","在庫入力（原料・仕掛品）","その月に入力した在庫")}${b("table","在庫表","QR品目・原料・仕掛品の日ごとのkg")}${b("waste","廃棄（区分別）","下処理ロス・原料出しロス・原料廃棄")}${b("yield","歩留まり","製造日報・平均・年度の推移")}${b("usage","使用数量","品目別・日ごと・稼働日平均")}${b("quality","品質評価","本社で評価した原料")}${b("worktime","作業時間・作業人数","人×時間・日ごとの人数")}</div>`);
+}
+function h2ExcelOut(k,m){return excelOut(k,m)}
+function h2ExcelWaste(m){return excelOut("waste",m)}
+function h2ExcelYield(m){return excelOut("yield",m)}
+function h2ExcelQuality(m){return excelOut("quality",m)}
+Object.assign(window,{hqWastePage,h2SaveRawLoss,h2CancelWaste,h2Dispose,hqPricePage,hqYieldPage,hqQualityPage,h2QPhotos,h2QCheck,h2QDismiss,hqExcelPage,h2ExcelOut,h2ExcelWaste,h2ExcelYield,h2ExcelQuality});
+})();
+
+/* ===== つなぎ込み（ホーム・在庫管理・ロット画面・戻る・石岡ホームのお知らせ） ===== */
+(function(){
+"use strict";
+const X=window.__h2;const{H2,sel2,btnAttr,roleIs,h2CanPrep,h2CanBoss,h2CanRaw,h2CanMoney,h2CanReport,h2Stage2,h2Err}=X;
+
+/* 出庫は v1500（在庫反映オンの後は下処理への使用出庫を止める） */
+hqRpc=async function(name,args){return callRpc(name==="hq_outbound_v1400"?"hq_outbound_v1500":name,args)};window.hqRpc=hqRpc;
+hqCanOut=function(){return H2.s2?roleIs(["admin","hq_worker","hq_receiver"]):roleIs(["admin","hq_worker","hq_prep","hq_receiver"])};window.hqCanOut=hqCanOut;
+
+/* ロットの画面：出庫先の絞り込み・廃棄 */
+const lotBase=hqLotPage;
+hqLotPage=async function(key,msg=""){
+ await h2Stage2();
+ const r=await lotBase.apply(this,arguments);
+ try{
+  const sel=document.getElementById("hqDest");
+  if(sel){
+   const onlyRaw=H2.s2||roleIs(["hq_receiver"]);
+   if(onlyRaw){[...sel.options].forEach(o=>{if(o.value&&o.value!=="原料出し")o.remove()});sel.value="原料出し";const b=sel.closest(".card")?.querySelector("b");if(b)b.textContent="原料出し（原料のまま出荷）"}
+   else if(roleIs(["hq_prep"])){[...sel.options].forEach(o=>{if(o.value&&o.value!=="下処理"&&o.value!=="原料出し")o.remove()})}
+  }
+  if(h2CanRaw()&&!hqViewOnly()){
+   const l=(await hqLots(`select=id,qr_key,status,current_qty,unit&or=(qr_key.eq.${encodeURIComponent(key)},lot_no.eq.${encodeURIComponent(key)})&limit=1`))[0];
+   if(l&&l.status==="在庫あり"&&currentScreen==="hqLotPage"){
+    const hist=[...document.querySelectorAll(".wrap .card")].find(c=>c.querySelector("b")?.textContent==="このロットの履歴");
+    const html=`<details class="card" id="h2DisposeCard"><summary><b>廃棄（原料廃棄・在庫から減らす）</b></summary><label class="label" style="margin-top:8px">廃棄する数量（${l.unit==="kg"?"kg":"ケース"}・在庫 ${hqQty(l.current_qty)}）</label><input id="h2DsQ" class="input" inputmode="decimal"><label class="label" style="margin-top:8px">理由・メモ</label><input id="h2DsM" class="input" placeholder="例：腐敗"><button class="btn hqBtnWaste" style="width:100%;margin-top:10px" ${btnAttr("h2Dispose",[l.id,l.qr_key,l.unit,Number(l.current_qty)])}>廃棄する</button><div class="small" style="margin-top:4px">廃棄一覧の「原料廃棄」に入ります。</div></details>`;
+    if(hist)hist.insertAdjacentHTML("beforebegin",html);
+   }
+  }
+ }catch(e){}
+ return r;
+};
+window.hqLotPage=hqLotPage;
+
+/* 在庫管理のボタン */
+hqStockHubItems=function(){
+ const s2=H2.s2;
+ return[["hqBtnStock","hqStockPage","本社在庫",'<span id="hqHubStockCount"></span>'],["hqBtnTable","hqTablePage","在庫表","QR品目・原料・仕掛品（kg）"],hqCanNormal()?["hqBtnNormal","hqNormalPage","在庫入力","原料・仕掛品"]:null,
+  hqCanOut()&&!s2&&roleIs(["admin","hq_worker","hq_prep"])?["hqBtnOut","hqOutPage","使用出庫","在庫反映オフの間だけ"]:null,
+  h2CanRaw()?["hqBtnWaste","hqWastePage","原料出しロスの入力・廃棄一覧"]:null,
+  h2CanReport()?["hqBtnUsage","hqUsagePage","品目別使用数量"]:null,
+  h2CanBoss()?["hqBtnTake","hqStocktakePage","棚卸し"]:null,
+  ["hqBtnHistory","hqHistoryPage","入出庫履歴"]].filter(Boolean);
+};
+window.hqStockHubItems=hqStockHubItems;
+const hubBase=hqStockHub;hqStockHub=async function(...a){await h2Stage2();const r=hubBase.apply(this,a);try{const s=document.querySelector(".head .sub");if(s)s.textContent="本社の在庫・在庫入力・使用数量・棚卸し・入出庫履歴"}catch(e){}return r};window.hqStockHub=hqStockHub;
+
+/* 本社ホーム（役割ごと） */
+hqHome=async function(msg=""){
+ if(roleIs(["hq_prep"]))return hqPrepHome(msg);
+ setScreen("hqHome",[msg]);
+ const b=(cls,act,label,sub="")=>`<button class="btn ${cls}" ${btnAttr(act,[])}>${label}${sub?`<br><span style="font-size:14px;font-weight:700">${sub}</span>`:""}</button>`;
+ const boss=h2CanBoss(),recv=roleIs(["hq_receiver"]),view=!boss&&!recv;
+ const btns=[
+  b("hqBtnPending","hqPendingPage","入荷待ち原料",'<span id="hqPendingCount">…</span>'),
+  boss||recv?b("hqBtnScan","hqScanPage","QR読み取り（受け入れ・出庫）"):"",
+  b("hqBtnStockHub","hqStockHub","在庫管理",'<span id="hqStockCount">…</span>'),
+  hqEntryHubItems().length&&(boss||recv)?b("hqBtnEntryHub","hqEntryHub","入荷登録・品目"):"",
+  boss?b("hqBtnPrepCheck","hqPrepCheckPage","下処理の確認",'<span id="h2PrepCount">…</span>'):"",
+  b("hqBtnQuality","hqQualityPage","品質評価一覧"),
+  h2CanReport()?b("hqBtnYield","hqYieldPage","歩留まり管理"):"",
+  h2CanReport()?b("hqBtnWaste","hqWastePage","廃棄一覧"):"",
+  h2CanMoney()&&h2CanReport()?b("hqBtnPrice","hqPricePage","仕入れ価格表"):"",
+  boss?b("hqBtnMaster","hqPrepMasterPage","下処理マスタ"):"",
+  boss?b("hqBtnStaff","hqStaffPage","スタッフQR","登録・印刷・作業時間"):"",
+  !boss&&h2CanReport()?b("hqBtnTime","hqWorkTimePage","作業時間"):"",
+  h2CanReport()?b("hqBtnExcelOut","hqExcelPage","Excel出力"):"",
+  b("hqBtnGuide","v195RoleGuidePage","操作ガイド")
+ ].join("");
+ pageShell("SEIKA＋",`本社 / ${esc(db.user||"")}（${esc(ROLE[db.role]||db.role)}）`,`${okHtml(msg)}${hqSwitchHtml()}<div id="h2HomeNotice"></div>${hqViewOnly()?'<div class="card notice">本社の画面は見るだけです（入力・出庫は本社のアカウントと管理者が行います）。</div>':""}<div class="homePrimary hqHomeGrid">${btns}</div>`,{noBack:true});
+ h2Stage2();
+ Promise.all([hqLots("select=id,source_kind&status=eq.入荷待ち"),hqLots("select=id&status=eq.在庫あり")]).then(([p,s])=>{
+  const a=document.getElementById("hqPendingCount"),c=document.getElementById("hqStockCount");const mv=p.filter(x=>x.source_kind==="石岡から").length,dr=p.length-mv;
+  if(a)a.textContent=`移動中 ${mv}件${dr?`・直接入荷 ${dr}件`:""}`;if(c)c.textContent=`本社在庫 ${s.length}ロット`;
+ }).catch(()=>{});
+ if(boss){
+  try{
+   const[un,live,q]=await Promise.all([sel2("hq_works_v1500","select=id,work_date&kind=eq.下処理&confirm_status=eq.未確定&status=neq.取消&limit=500"),sel2("hq_works_v1500","select=id&status=in.(作業中,入力待ち,清掃中)&limit=500"),hqLots("select=id&grade=in.(review,bad)&quality_checked_at=is.null&limit=500")]);
+   let dis=new Set();if(authProfile?.id&&q.length){try{(await sel2("hq_quality_dismiss_v1500",`select=lot_id&user_id=eq.${authProfile.id}&limit=5000`)).forEach(d=>dis.add(d.lot_id))}catch(e){}}
+   const old=un.filter(w=>w.work_date<hqToday()).length,qn=q.filter(l=>!dis.has(l.id)).length;
+   const c=document.getElementById("h2PrepCount");if(c)c.textContent=`作業中 ${live.length}件・未確定 ${un.length}件`;
+   const box=document.getElementById("h2HomeNotice");if(box&&currentScreen==="hqHome")box.innerHTML=(old?`<div class="card err" style="cursor:pointer" ${btnAttr("hqPrepCheckPage",[])}><b>前の日から未確定の下処理が ${old}件あります。</b>「下処理の確認」で確定してください。</div>`:"")+(qn?`<div class="card notice" style="cursor:pointer" ${btnAttr("hqQualityPage",["","need"])}><b>要確認・不良の品質評価が ${qn}件あります。</b>品質評価一覧で「確認しました」を押すと消えます。</div>`:"");
+  }catch(e){}
+ }
+};
+window.hqHome=hqHome;
+
+/* 戻る */
+const BACK={hqPrepNew:()=>hqPrepHome(),hqOpScanPage:()=>hqPrepHome(),hqWorkPage:()=>h2CanBoss()?hqPrepCheckPage():hqPrepHome(),hqPrepHome:()=>home(),hqPrepConfirmPage:()=>hqPrepCheckPage(),
+ hqPrepCheckPage:()=>home(),hqPrepMasterPage:()=>home(),hqStaffPage:()=>home(),hqStaffPrintPage:()=>hqStaffPage(),hqTaskPlacePage:()=>hqStaffPage(),hqWorkTimePage:()=>h2CanBoss()?hqStaffPage():home(),
+ hqWastePage:()=>home(),hqPricePage:()=>home(),hqYieldPage:()=>home(),hqQualityPage:()=>home(),hqExcelPage:()=>home(),hqUsagePage:()=>hqStockHub(),hqStocktakePage:()=>hqStockHub(),hqStocktakeEdit:()=>hqStocktakePage()};
+const backBase=goBack;
+goBack=function(...a){const f=BACK[currentScreen];if(f){h2StopReader();return f()}return backBase.apply(this,a)};window.goBack=goBack;
+
+/* 石岡ホーム：本社で受け入れたときの数量の差（管理者・青果社員）と、本社の品質評価の確認待ち（担当の仕入れ担当者） */
+async function h2IshiokaNotice(){
+ if(currentScreen!=="home"||!db?.user||hqSite()==="honsha"||hqIsHqRole()||document.getElementById("h2IshNotice"))return;
+ const main=document.querySelector("#app main");if(!main)return;
+ const box=document.createElement("div");box.id="h2IshNotice";main.insertBefore(box,document.getElementById("hqIshiokaFoot")?.nextSibling||main.firstChild);
+ let html="";
+ try{
+  if(roleIs(["admin","worker"])){
+   const since=hqAddDays(hqToday(),-30);
+   const lots=await hqLots(`select=id,lot_no,item_name,unit,planned_qty,received_qty,hq_received_date,source_lot_no,confirmed_by_name&source_kind=eq.石岡から&status=in.(在庫あり,在庫なし)&hq_received_date=gte.${since}&order=hq_received_date.desc&limit=300`);
+   const diff=lots.filter(l=>Number(l.planned_qty)!==Number(l.received_qty));
+   if(diff.length){const acks=await sel2("hq_diff_acks_v1500",`select=lot_id&lot_id=in.(${diff.map(l=>l.id).join(",")})`);const ak=new Set(acks.map(a=>a.lot_id));const list=diff.filter(l=>!ak.has(l.id));
+    if(list.length)html+=`<div class="card" style="border:2px solid #d97706;background:#fffbeb"><b>本社で受け入れた数が、石岡で予定した数と違います（${list.length}件）</b><div class="small">石岡の在庫は自動では直しません。必要なら実数調整をしてください。</div>${list.slice(0,8).map(l=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #fde68a"><div><b>${esc(l.item_name)}</b><div class="small">${esc(l.hq_received_date||"")} ／ 石岡ロット ${esc(l.source_lot_no||"")} ／ 予定 ${hqQty(l.planned_qty)}${l.unit==="kg"?"kg":"ケース"} → 本社 ${hqQty(l.received_qty)}${l.unit==="kg"?"kg":"ケース"}（${esc(l.confirmed_by_name||"")}）</div></div><button class="btn btn2" ${btnAttr("h2DiffAck",[l.id])}>確認しました</button></div>`).join("")}${list.length>8?`<div class="small">ほか ${list.length-8}件</div>`:""}</div>`}
+  }
+  if(roleIs(["buyer","admin"])&&authProfile?.id){
+   const q=await hqLots(`select=id&grade=in.(review,bad)&quality_checked_at=is.null${roleIs(["buyer"])?`&purchase_staff_profile_id=eq.${authProfile.id}`:"&purchase_staff_profile_id=is.null"}&limit=200`);
+   if(q.length)html+=`<div class="card notice" style="cursor:pointer" ${btnAttr("h2OpenHqQuality",[])}><b>本社の品質評価で、確認待ちが ${q.length}件あります。</b>${roleIs(["buyer"])?"担当の原料です。":"担当の仕入れ担当者がいない原料です。"}押すと本社の品質評価一覧を開きます。</div>`;
+  }
+ }catch(e){}
+ box.innerHTML=html;
+}
+async function h2DiffAck(id){try{await callRpc("hq_diff_ack_v1500",{p_lot_id:id});document.getElementById("h2IshNotice")?.remove();h2IshiokaNotice()}catch(e){alert(h2Err(e))}}
+function h2OpenHqQuality(){return hqQualityPage("","wait")}
+(()=>{const app=document.getElementById("app");if(!app||window.h2IshObserver)return;window.h2IshObserver=new MutationObserver(()=>{if(currentScreen==="home"&&!document.getElementById("h2IshNotice"))h2IshiokaNotice()});window.h2IshObserver.observe(app,{childList:true,subtree:true})})();
+
+Object.assign(window,{h2DiffAck,h2OpenHqQuality});
+})();
+
+/* ===== 操作ガイド（第2段階） ===== */
+(function(){
+"use strict";
+try{
+ const G={
+  prepStart:{title:"下処理を始める（パートさん）",where:"ホーム（下処理）→「＋ 新しい下処理を始める」",steps:["原料の貼り紙のQRを読みます。原料が2つ以上なら、続けて読みます。","仕掛品のボタンを押します。","作業場所のボタンを押します。","作業する人全員の名前のQRを読みます。","「作業開始」を押します（「作業開始」のQRを読んでもよいです）。"],check:"ホームの一覧に、作業が緑色で出ます。",caution:"同じ人は、1つの作業にしか入れません。"},
+  prepEnd:{title:"下処理を終える（パートさん）",where:"ホーム（下処理）→ 作業の「開く」",steps:["「作業終了」を押します。","使った原料の数を入れます（大きい容器はkg、それ以外はケース。0.5なども入れられます）。","廃棄のkgを入れます。無ければ 0 です。","出来高のkgを入れます。","「保存して ⑨ ラベルへ」を押します。","ラベルの枚数を入れて「ラベルを印刷して ⑩ 清掃へ」を押します。","PDFを開いて印刷します。","清掃が終わったら「清掃終了」を押します。"],check:"作業した人は、全員そろって清掃に移ります。",caution:"確定は本社社員がします。間違えたときは本社社員に言ってください。"},
+  prepJoin:{title:"途中から入る・抜ける（パートさん）",where:"作業の画面",steps:["途中から入る人：「途中から入る人を追加」を押して、名前のQRを読みます。","抜ける人：名前の横の「抜ける」を押します。","ほかの作業に移るときは、先に「抜ける」を押します。"],check:"「いまの作業者」に名前が出ます。",caution:""},
+  prepOther:{title:"ほかの作業・清掃だけを記録する",where:"ホーム（下処理）→「ほかの作業を始める」「清掃だけ始める」",steps:["作業名（清掃のときはなし）と作業場所を選びます。","作業する人の名前のQRを読みます。","「作業開始」（清掃は「清掃開始」）を押します。","終わったら「作業終了」（清掃は「清掃終了」）を押します。"],check:"作業時間に記録されます。",caution:"大掃除など、清掃だけのときは「清掃」のQRでも始められます。"},
+  prepCheck:{title:"下処理を確認して確定する（本社社員）",where:"本社ホーム →「下処理の確認」",steps:["「未確定」の一覧から、下処理の「確認して確定」を押します。","使用原料・廃棄・出来高を確かめます。差（使用−出来高−廃棄）が10%以上のときは赤く出ます。","違っていれば直して「この内容で確定する」を押します。","確定した後に直すときは、理由を入れて「直して確定し直す」を押します。取り消すときは「この下処理を取り消す」を使います。"],check:"確定すると、廃棄一覧（下処理ロス）・歩留まり・製造日報に入ります。在庫反映がオンなら、原料の在庫も減ります。",caution:"確定が次の日になっても、下処理をした日の数字になります。前の日から未確定のものは、ホームにお知らせが出ます。"},
+  stage2:{title:"第2段階の在庫反映をオンにする（管理者・実用開始の日）",where:"本社ホーム →「下処理の確認」→ いちばん上",steps:["説明・練習のあいだは「オフ」のままにします（確定しても原料の在庫は減らず、使用出庫が使えます）。","実用を始める日に「オンにする（実用開始）」を押します。","オンにすると、使用出庫のボタンが消え、下処理の確定で原料の在庫が減ります。"],check:"「第2段階の在庫反映：オン（実用中）」と出ます。",caution:"オンにする前に、練習で作った下処理は取り消しておくと、集計がきれいです。"},
+  master:{title:"下処理マスタ（仕掛品）を登録する",where:"本社ホーム →「下処理マスタ」",steps:["原料の品目（本社のQR品目）を選びます。","仕掛品の名前・初期入れ数kg・使用期限の日数（ふつうは2日）を入れて「追加する」を押します。","使わなくなったら「使わない」を押します（削除はしません）。"],check:"パートさんの下処理で、その原料を読んだときに候補に出ます。",caution:"初期入れ数kgは、在庫入力で仕掛品を選んだときの入れ数になります。"},
+  staff:{title:"スタッフを登録・削除する（スタッフQR）",where:"本社ホーム →「スタッフQR」→「スタッフ登録」",steps:["入社したとき：班名を選び、名前を入れて「登録する」を押します（グループは班に合わせて自動で選ばれます）。","グループや班を変えるとき：名前の横の「変更」を押します。","退職したとき：「削除」を押します。","「QRの印刷」で、グループごとの一覧ボードと操作用QRを印刷します。"],check:"登録するとスタッフQRができます。",caution:"削除しても、過去の作業時間は名前つきで残ります。登録・削除・グループ変更のあとは、一覧ボードを印刷し直してください。"},
+  tasks:{title:"作業名・作業場所を増やす",where:"スタッフQR →「作業名・作業場所」",steps:["作業名（下処理以外の作業）を入れて「追加」を押します。","作業場所を入れて「追加」を押します。","使わなくなったものは「非表示にする」を押します。"],check:"作業を始める画面のボタンに出ます。",caution:""},
+  worktime:{title:"作業時間を見る・読み忘れを直す",where:"スタッフQR →「作業時間」／ 作業の画面",steps:["月を選ぶと、人ごと・日ごとの人数・作業ごとの人×時間が出ます。","読み忘れは、作業の画面の「時刻を直す」「読み忘れた人を追加する」で直します。","「この月の作業時間をExcelにする」で月次のExcelを作ります。"],check:"",caution:"時給はアプリに持ちません。荷受けは対象外です。"},
+  stockInput:{title:"在庫入力（原料・仕掛品）",where:"本社ホーム → 在庫管理 →「在庫入力」",steps:["日付を確かめます（ふだんは今日）。","上の「原料」「仕掛品」で切り替えます。","1行に「入れ数kg × ケース数」を入れます。入れ数がちがう箱は「＋ 入れ数を追加」で行を増やします。","マスタに無い仕掛品は「マスタに無い仕掛品を手入力」で入れます。","「保存する」を押します。"],check:"在庫表に、原料・仕掛品として出ます。",caution:"同じ日に入れ直すと上書きです。全部の行を空にして保存すると、その日の入力を消します。手入力の仕掛品はマスタに追加されません。"},
+  waste:{title:"廃棄一覧・原料出しロス・原料廃棄",where:"本社ホーム →「廃棄一覧」／ 在庫管理 →「原料出しロスの入力・廃棄一覧」",steps:["原料出しロス：「原料出しロスを入力」で日付・品目・kgを入れます（在庫は減りません）。","原料廃棄：原料のQRを読み、ロットの画面の「廃棄」で数量を入れます（在庫が減ります）。","下処理ロスは、下処理の確定で自動で入ります。","月を選ぶと、区分別・品目別の合計（金額つき）が出ます。"],check:"",caution:"金額は、作業日の週の市場価格（同じ品目の平均）×kgです。"},
+  rawout:{title:"原料出し（原料のまま出荷）",where:"QR読み取り → ロットの画面",steps:["原料のQRを読みます。","「原料出し（原料のまま出荷）」に数量（ケース・大きい容器はkg）を入れて「出庫する」を押します。"],check:"このロットの履歴に「出庫 → 原料出し」が残ります。",caution:"在庫反映がオンになると、下処理への使用出庫はなくなり、出庫は原料出しだけになります。"},
+  price:{title:"仕入れ価格表（本社）を見る",where:"本社ホーム →「仕入れ価格表」",steps:["品目ごとの週の市場価格（平均）が8週分並びます。","価格がない週は、前の週の価格を使います（黄色の字で何週の価格か出ます）。"],check:"",caution:"価格の入力は石岡の「仕入れ価格表」の画面です。"},
+  yield:{title:"歩留まり管理（製造日報・平均・推移）",where:"本社ホーム →「歩留まり管理」",steps:["月を選びます。","「製造日報」で日ごとの下処理、「品目・仕掛品の平均」で月の平均、「年度の推移」で9月〜8月の月ごとの歩留まり率を見ます。"],check:"確定した下処理だけが入ります。",caution:"歩留まり率＝出来高÷（出来高＋廃棄）。歩留まり原価＝単価×（出来高＋廃棄）÷出来高。"},
+  usage:{title:"品目別使用数量を見る",where:"在庫管理 →「品目別使用数量」",steps:["月を選びます。","品目を押すと、日ごとの使用数量（前日の在庫＋入荷−その日の在庫）と、廃棄・原料のまま出荷の内訳が出ます。"],check:"",caution:"平均は在庫を入力した日（稼働日）で割っています。仕掛品は対象外です。"},
+  take:{title:"棚卸しをする",where:"在庫管理 →「棚卸し」",steps:["棚卸しの日を選び「確認表を作る」を押します。","「確認表を印刷」で印刷し、実物を数えます。","数えた数を入れて「途中保存」。全部入れたら「確定する」を押します。","「結果を印刷」で差の入った結果を印刷します。"],check:"QRの原料はロットごとに「実数調整（棚卸し）」、原料・仕掛品はその日の在庫入力になります。",caution:"実数が空欄の行は変えません。"},
+  quality:{title:"本社の品質評価一覧",where:"本社ホーム →「品質評価一覧」",steps:["月を選び、「要確認・不良」「確認待ち」で絞り込みます。","担当の仕入れ担当者は「確認済みにする」を押します（担当がいないときは管理者）。","管理者・本社社員は「確認しました」で自分のお知らせを消します。"],check:"",caution:"要確認・不良は写真1枚以上が必須です。"},
+  excel:{title:"Excelを作る",where:"本社ホーム →「Excel出力」",steps:["月を選びます。","作りたいもののボタンを押します（在庫・在庫入力・在庫表・廃棄・歩留まり・使用数量・品質評価・作業時間）。"],check:"ファイル名は「本社_歩留まり_2026年10月.xlsx」のようになります。",caution:""},
+  diff:{title:"本社で数が違ったときのお知らせ（石岡）",where:"石岡のホームのいちばん上",steps:["本社で受け入れた数が、石岡で予定した数と違うと、お知らせが出ます。","内容を見て「確認しました」を押すと消えます。"],check:"",caution:"石岡の在庫は自動では直しません。必要なら実数調整をします。"},
+  viewHq:{title:"本社の画面を見る（見るだけ）",where:"ホーム →「本社の画面へ」",steps:["本社の在庫・品質評価・歩留まり・廃棄・仕入れ価格表・作業時間を見られます。","「Excel出力」で月ごとのExcelを作れます。"],check:"",caution:"入力はできません。"}
+ };
+ Object.assign(HQ_GUIDE,G);
+ HQ_GUIDE.hqNormal=G.stockInput;
+ HQ_GUIDE.hqTable={...HQ_GUIDE.hqTable,title:"在庫表を見る（QR品目＋原料＋仕掛品）",steps:["最後の日と日数（7・14・31日）を選びます。「◀ 前」「次 ▶」で期間を動かせます。","QR品目・原料・仕掛品が1つの表に並び、日ごとのkgといちばん下に合計kgが出ます。"],check:"QR品目はその日の終わりの在庫、原料・仕掛品はその日に在庫入力した数です（入力がない日は「—」）。"};
+ const R={
+  hq_prep:{name:"本社 下処理班",intro:"下処理と作業時間の記録をします。お金の数字は出ません。",keys:["prepStart","prepEnd","prepJoin","prepOther"]},
+  hq_worker:{name:"本社社員",intro:"受け入れ・確定、下処理の確認と確定、在庫入力、棚卸し、マスタ・スタッフの登録、集計とExcelができます。",keys:["switch","hqReceive","prepCheck","stockInput","rawout","waste","take","usage","quality","yield","price","master","staff","tasks","worktime","excel","hqDirect","hqStock","hqTable","hqItems","prepStart","prepEnd","hqOut"]},
+  hq_receiver:{name:"本社 荷受け担当者",intro:"届いた原料の品質評価と確定、貼り紙の印刷、在庫入力、原料出しと原料出しロス・廃棄の入力ができます。",keys:["hqReceive","hqDirect","stockInput","rawout","waste","quality","hqStock","hqTable"]},
+  hq_clerk:{name:"本社事務",intro:"本社の在庫・集計を見て、Excelを作れます。",keys:["switch","viewHq","hqStock","hqTable","usage","yield","waste","price","quality","worktime","excel"]}
+ };
+ for(const[r,g]of Object.entries(R))V195_ROLE_GUIDES[r]={name:g.name,intro:g.intro,sections:g.keys.map(k=>HQ_GUIDE[k]).filter(Boolean)};
+ const add={admin:["stage2","prepCheck","stockInput","rawout","waste","take","usage","quality","yield","price","master","staff","tasks","worktime","excel","diff"],worker:["diff"],buyer:["viewHq","quality","price","yield","excel"],sales:["viewHq","price","yield","usage","excel"]};
+ for(const[r,keys]of Object.entries(add)){const g=V195_ROLE_GUIDES[r];if(!g||!Array.isArray(g.sections))continue;g.sections=g.sections.map(s=>s&&s.title&&s.title.startsWith("通常在庫を入力する")?G.stockInput:s);for(const k of keys)if(!g.sections.some(s=>s&&s.title===HQ_GUIDE[k].title))g.sections.push(HQ_GUIDE[k])}
+ for(const r of Object.keys(V195_ROLE_GUIDES)){const g=V195_ROLE_GUIDES[r];if(g&&Array.isArray(g.sections))g.sections=g.sections.map(s=>s&&s.title===HQ_GUIDE.hqTable.title.replace("（QR品目＋原料＋仕掛品）","（QR品目＋通常在庫）")?HQ_GUIDE.hqTable:s)}
+}catch(e){console.warn("[本社 第2段階 ガイド]",e)}
+})();
 })();
 
 
