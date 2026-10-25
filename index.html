@@ -17098,7 +17098,7 @@ Object.assign(X,{labelPages,LABEL_CSS,workCard,liveData});
 (function(){
 "use strict";
 const X=window.__h2;const{H2,r2,sel2,num2,kg2,yen2,pct2,time2,dt2,md2,mins2,hm2,btnAttr,roleIs,h2CanBoss,h2CanMoney,h2CanReport,h2Month,h2MonthRange,h2MonthLabel,h2Err,h2Notice,h2Loading,h2Set,h2Val,h2Stage2,h2MakePdf,h2Qr,h2Staff,h2Teams,h2Places,h2Tasks,h2Masters,h2QrItems,h2Works,h2Members,h2Materials,h2Diff,h2Yield,h2UsedKg,h2Prices,h2PriceOf}=X;
-const GROUPS=["","①下処理班①","②下処理班②","③人参班・ライン班ほか","④手切班","⑤機械班","⑥原料班"];
+const GROUPS=["","①下処理班","②下処理班","③人参班・ライン班ほか","④手切班","⑤機械班","⑥原料班"];
 
 /* --- 下処理の確認（一覧） --- */
 async function hqPrepCheckPage(from="",to="",only="未確定",msg=""){
@@ -17250,7 +17250,7 @@ async function h2PrintBoard(g){
  const staff=(await h2Staff()).filter(s=>s.print_group===g);if(!staff.length)return alert("このグループには登録がありません");
  const today=new Date();const ds=`${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日`;
  const pages=[];for(let i=0;i<staff.length;i+=20){const part=staff.slice(i,i+20);
-  pages.push(`<div class="bh"><h1>スタッフQR 一覧ボード　${esc(GROUPS[g])}</h1><div style="font-size:14px">印刷日：${ds}　${staff.length}名${staff.length>20?`（${Math.floor(i/20)+1}枚目）`:""}</div></div><div class="bs">作業する人は、自分の名前のQRを読み取ってください。</div><div class="grid">${part.map(s=>`<div class="c"><img src="${h2Qr(s.qr_key,6)}"><div class="n">${esc(s.name)}</div><div class="t">${esc(s.team)}</div></div>`).join("")}</div><div class="ft">SEIKA＋ 本社　QRの中身は名前ではなく番号です。退職した人は登録画面で削除し、このボードを印刷し直してください。</div>`)}
+  pages.push(`<div class="bh"><h1>スタッフQR 一覧ボード　${esc(GROUPS[g])}</h1><div style="font-size:14px;white-space:nowrap">印刷日：${ds}　${staff.length}名${staff.length>20?`（${Math.floor(i/20)+1}枚目）`:""}</div></div><div class="bs">作業する人は、自分の名前のQRを読み取ってください。</div><div class="grid">${part.map(s=>`<div class="c"><img src="${h2Qr(s.qr_key,6)}"><div class="n">${esc(s.name)}</div><div class="t">${esc(String(s.team||"").replace(/[①-⑳]$/,""))}</div></div>`).join("")}</div><div class="ft">SEIKA＋ 本社　QRの中身は名前ではなく番号です。退職した人は登録画面で削除し、このボードを印刷し直してください。</div>`)}
  return h2MakePdf(pages,BOARD_CSS,`スタッフQR_${GROUPS[g]}.pdf`);
 }
 async function h2PrintOps(){

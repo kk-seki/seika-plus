@@ -3,6 +3,7 @@
 2026年9月18日付の本社工場 班名簿から、最初のスタッフ67名を登録します（名簿で黒く消してある人は入れていません）。
 前提：019_本社_第2段階 を実行済みであること。
 同じ班・同じ名前の人がすでに登録されている（削除済みを除く）ときは登録しません。何度実行しても同じ結果になります。
+2026年10月26日：下処理班①と②のメンバーを入れ替えました（021と同じ内容）。
 名前の字は、登録したあとでも「スタッフQR → スタッフ登録」の画面で直せます。
 説明は行頭のハイフン2つを使わない書き方にしています（スマホから貼り付けても壊れないようにするため）。
 */
@@ -10,28 +11,28 @@ begin;
 insert into public.hq_staff_v1500(team, name, print_group, sort_order, created_by_name)
 select v.team, v.name, v.grp, v.ord, '初期登録（020）'
 from (values
-  (1,'下処理班①','大内 せつ子',1),
-  (2,'下処理班①','根本 直美',1),
-  (3,'下処理班①','菊池 広美',1),
-  (4,'下処理班①','鎌田 靖子',1),
-  (5,'下処理班①','井上 美記',1),
-  (6,'下処理班①','クリスティナ',1),
-  (7,'下処理班①','ラクシュミ',1),
-  (8,'下処理班①','マニシャ',1),
-  (9,'下処理班①','ススミタ',1),
-  (10,'下処理班①','カルキ',1),
-  (11,'下処理班②','市毛 志津子',2),
-  (12,'下処理班②','江橋 泰子',2),
-  (13,'下処理班②','根本 百合子',2),
-  (14,'下処理班②','佐藤 恵子',2),
-  (15,'下処理班②','大和田 正子',2),
-  (16,'下処理班②','大内 幸子',2),
-  (17,'下処理班②','山下 美枝子',2),
-  (18,'下処理班②','出井 達也',2),
-  (19,'下処理班②','鈴木 敏江',2),
-  (20,'下処理班②','チュック',2),
-  (21,'下処理班②','カン',2),
-  (22,'下処理班②','川崎 節子',2),
+  (1,'下処理班①','市毛 志津子',1),
+  (2,'下処理班①','江橋 泰子',1),
+  (3,'下処理班①','根本 百合子',1),
+  (4,'下処理班①','佐藤 恵子',1),
+  (5,'下処理班①','大和田 正子',1),
+  (6,'下処理班①','大内 幸子',1),
+  (7,'下処理班①','山下 美枝子',1),
+  (8,'下処理班①','出井 達也',1),
+  (9,'下処理班①','鈴木 敏江',1),
+  (10,'下処理班①','チュック',1),
+  (11,'下処理班①','カン',1),
+  (12,'下処理班①','川崎 節子',1),
+  (13,'下処理班②','大内 せつ子',2),
+  (14,'下処理班②','根本 直美',2),
+  (15,'下処理班②','菊池 広美',2),
+  (16,'下処理班②','鎌田 靖子',2),
+  (17,'下処理班②','井上 美記',2),
+  (18,'下処理班②','クリスティナ',2),
+  (19,'下処理班②','ラクシュミ',2),
+  (20,'下処理班②','マニシャ',2),
+  (21,'下処理班②','ススミタ',2),
+  (22,'下処理班②','カルキ',2),
   (23,'人参班','井上 かほる',3),
   (24,'人参班','望月 由美子',3),
   (25,'人参班','佐藤 聖子',3),
@@ -82,8 +83,8 @@ where not exists (select 1 from public.hq_staff_v1500 s where s.team = v.team an
 commit;
 
 /* 成功の確かめ方：下のSELECTを実行して「OK」になれば成功です（グループごとの人数も出ます）。 */
-select '①' as グループ, count(*) as 人数, case when count(*) >= 10 then 'OK' else 'NG' end as 結果 from public.hq_staff_v1500 where print_group = 1 and deleted_at is null
-union all select '②', count(*), case when count(*) >= 12 then 'OK' else 'NG' end from public.hq_staff_v1500 where print_group = 2 and deleted_at is null
+select '①' as グループ, count(*) as 人数, case when count(*) >= 12 then 'OK' else 'NG' end as 結果 from public.hq_staff_v1500 where print_group = 1 and deleted_at is null
+union all select '②', count(*), case when count(*) >= 10 then 'OK' else 'NG' end from public.hq_staff_v1500 where print_group = 2 and deleted_at is null
 union all select '③', count(*), case when count(*) >= 12 then 'OK' else 'NG' end from public.hq_staff_v1500 where print_group = 3 and deleted_at is null
 union all select '④', count(*), case when count(*) >= 11 then 'OK' else 'NG' end from public.hq_staff_v1500 where print_group = 4 and deleted_at is null
 union all select '⑤', count(*), case when count(*) >= 9 then 'OK' else 'NG' end from public.hq_staff_v1500 where print_group = 5 and deleted_at is null
