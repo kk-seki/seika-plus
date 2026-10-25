@@ -16988,8 +16988,8 @@ function c56ApplyStorage(){
  const item=document.getElementById("qrItemName"),loc=document.getElementById("qrLoc");if(!item||!loc)return;
  const auto=loc.dataset.c56auto||"";if(loc.value&&loc.value!==auto)return;
  const v=c56StorageFor(item.value);loc.value=v;loc.dataset.c56auto=v;
- let note=document.getElementById("c56LocNote");if(!note){loc.insertAdjacentHTML("afterend",`<div id="c56LocNote" class="small" style="margin-top:4px"></div>`);note=document.getElementById("c56LocNote")}
- note.textContent=v?"品目の設定から「いつもの保管場所」を入れました。違うときは選び直してください。":"";
+ let note=document.getElementById("c56LocNote");if(!note){loc.insertAdjacentHTML("beforebegin",`<div id="c56LocNote" class="small" style="margin:0 0 4px;color:#0f766e;font-weight:700"></div>`);note=document.getElementById("c56LocNote")}
+ note.textContent=v?"品目の設定から自動で入れました（違うときは選び直し）":"";note.style.display=v?"block":"none";
 }
 const c56FillBase=window.qrAutoFillStaff;
 window.qrAutoFillStaff=function(){const r=c56FillBase?.apply(this,arguments);try{c56ApplyStorage()}catch(e){console.warn("[保管場所]",e)}return r};
