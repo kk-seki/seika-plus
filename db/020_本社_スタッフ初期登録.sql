@@ -1,9 +1,11 @@
--- 020_本社_スタッフ初期登録.sql（v1.199-c58）
--- 2026年9月18日付の本社工場 班名簿から、最初のスタッフ67名を登録します（名簿で黒く消してある人は入れていません）。
--- 前提：019_本社_第2段階 を実行済みであること。
--- 同じ班・同じ名前の人がすでに登録されている（削除済みを除く）ときは登録しません。何度実行しても同じ結果になります。
--- 名前の字は、登録したあとでも「スタッフQR → スタッフ登録」の画面で直せます。
-
+/*
+020_本社_スタッフ初期登録.sql（v1.199-c58）
+2026年9月18日付の本社工場 班名簿から、最初のスタッフ67名を登録します（名簿で黒く消してある人は入れていません）。
+前提：019_本社_第2段階 を実行済みであること。
+同じ班・同じ名前の人がすでに登録されている（削除済みを除く）ときは登録しません。何度実行しても同じ結果になります。
+名前の字は、登録したあとでも「スタッフQR → スタッフ登録」の画面で直せます。
+説明は行頭のハイフン2つを使わない書き方にしています（スマホから貼り付けても壊れないようにするため）。
+*/
 begin;
 insert into public.hq_staff_v1500(team, name, print_group, sort_order, created_by_name)
 select v.team, v.name, v.grp, v.ord, '初期登録（020）'
@@ -79,7 +81,7 @@ from (values
 where not exists (select 1 from public.hq_staff_v1500 s where s.team = v.team and s.name = v.name and s.deleted_at is null);
 commit;
 
--- 成功の確かめ方：下のSELECTを実行して「OK」になれば成功です（グループごとの人数も出ます）。
+/* 成功の確かめ方：下のSELECTを実行して「OK」になれば成功です（グループごとの人数も出ます）。 */
 select '①' as グループ, count(*) as 人数, case when count(*) >= 10 then 'OK' else 'NG' end as 結果 from public.hq_staff_v1500 where print_group = 1 and deleted_at is null
 union all select '②', count(*), case when count(*) >= 12 then 'OK' else 'NG' end from public.hq_staff_v1500 where print_group = 2 and deleted_at is null
 union all select '③', count(*), case when count(*) >= 12 then 'OK' else 'NG' end from public.hq_staff_v1500 where print_group = 3 and deleted_at is null
