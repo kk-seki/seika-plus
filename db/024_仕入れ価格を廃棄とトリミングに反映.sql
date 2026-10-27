@@ -4,7 +4,7 @@
    市場から仕入れた原料は、その週の市場価格を使います。その週が未入力なら「未入力」として金額を出しません
    （前の週の価格は使いません）。廃棄は廃棄した日の週、トリミング日報は原料ロットの入荷日の週です。
    契約価格はこれまでどおり、次の改定まで同じ価格を使います。
-   仕入先が空欄などで「同一品目平均」になる行は、その週に使える価格（その週の市場価格と、その週に有効な契約価格）だけで平均します。
+   仕入先が空欄などで「同一品目平均」になる行と、トリミング日報で入荷日の週以前に価格がまったく無いときの扱いは、これまでどおりです。
 2. 仕入れ価格表で価格を保存・修正・持ち越ししたとき、その価格を使う廃棄（QR廃棄・通常廃棄）とトリミング日報を計算し直します。
    手で単価を直した行も、Excel出力済みの行も計算し直します。
 3. このSQLを実行したときに、2026年9月1日以降の分を一度まとめて計算し直します。
@@ -65,25 +65,16 @@ begin
     end if;
   end if;
 
-  with valid as (
-    select x.price_yen_per_kg from (
-      select pp.price_yen_per_kg from public.purchase_prices pp
-      where pp.week_start = v_week and pp.item_name = any(v_names) and pp.price_type = 'market'
-        and public.trimming_normalize_supplier_v1117(pp.supplier) = '市場'
-      order by pp.updated_at desc limit 1
-    ) x
-    union all
-    select y.price_yen_per_kg from (
-      select distinct on (pp.origin, public.trimming_normalize_supplier_v1117(pp.supplier)) pp.price_yen_per_kg
-      from public.purchase_prices pp
-      where pp.week_start <= v_week and pp.item_name = any(v_names) and pp.price_type = 'contract'
-      order by pp.origin, public.trimming_normalize_supplier_v1117(pp.supplier), pp.week_start desc, pp.updated_at desc
-    ) y
+  with latest as (
+    select distinct on (pp.price_type, pp.origin, public.trimming_normalize_supplier_v1117(pp.supplier)) pp.price_yen_per_kg
+    from public.purchase_prices pp
+    where pp.item_name = any(v_names) and pp.week_start <= v_week
+    order by pp.price_type, pp.origin, public.trimming_normalize_supplier_v1117(pp.supplier), pp.week_start desc, pp.updated_at desc
   )
-  select round(avg(price_yen_per_kg),0), count(*) into v_price, v_count from valid;
+  select round(avg(price_yen_per_kg),0), count(*) into v_price, v_count from latest;
   if v_count > 0 then
     return jsonb_build_object('found',true,'price_yen_per_kg',v_price,'match_type','同一品目平均',
-      'match_reason',concat('市場・契約価格に該当なし。',to_char(v_week,'YYYY/MM/DD'),'の週に使える価格',v_count,'件を平均して四捨五入'),
+      'match_reason',concat('市場・契約価格に該当なし。同一品目の有効価格',v_count,'件を平均して四捨五入'),
       'source_supplier','同一品目平均','source_week_start',v_week,'average_count',v_count);
   end if;
   return jsonb_build_object('found',false,'match_type','未入力',
@@ -95,7 +86,7 @@ create or replace function public.seika_reprice_trimming_job_v1620(p_job_id uuid
 returns void language plpgsql security definer set search_path to ''
 as $function$
 declare r record; v jsonb; v_price numeric; v_cost numeric := 0; v_all boolean := true; v_types text[] := array[]::text[];
-  v_input numeric; v_work date;
+  v_input numeric; v_work date; v_type text; v_reason text; v_src text; v_week date; v_cnt integer;
 begin
   select work_date, input_weight_kg into v_work, v_input from public.trimming_jobs where id = p_job_id;
   if not found then return; end if;
@@ -107,17 +98,38 @@ begin
   loop
     v := public.resolve_trimming_purchase_price_v1117(r.item_name, r.origin, r.supplier, r.ref_date);
     v_price := nullif(v->>'price_yen_per_kg','')::numeric;
+    v_type := coalesce(v->>'match_type','未計算'); v_reason := coalesce(v->>'match_reason',''); v_src := coalesce(v->>'source_supplier','');
+    v_week := nullif(v->>'source_week_start','')::date; v_cnt := coalesce(nullif(v->>'average_count','')::integer,0);
+    if coalesce(v_price,0) <= 0 and not exists (
+      select 1 from public.purchase_prices pp
+      where btrim(pp.item_name) = any(public.seika_item_name_group_v1200(r.item_name)) and pp.week_start <= public.trimming_week_start(r.ref_date)
+    ) then
+      with oldest as (
+        select distinct on (pp.price_type, pp.origin, public.trimming_normalize_supplier_v1117(pp.supplier)) pp.price_yen_per_kg, pp.week_start
+        from public.purchase_prices pp
+        where btrim(pp.item_name) = any(public.seika_item_name_group_v1200(r.item_name))
+        order by pp.price_type, pp.origin, public.trimming_normalize_supplier_v1117(pp.supplier), pp.week_start asc, pp.updated_at desc
+      )
+      select round(avg(price_yen_per_kg),0), count(*), min(week_start) into v_price, v_cnt, v_week from oldest;
+      if coalesce(v_price,0) > 0 then
+        v_type := '同一品目平均（登録前の入荷）';
+        v_reason := concat('入荷日', r.ref_date::text, 'の週以前に登録価格が無いため、最も古い登録価格', v_cnt, '件を平均して四捨五入');
+        v_src := '同一品目平均';
+      else
+        v_price := null;
+      end if;
+    end if;
     if coalesce(v_price,0) > 0 then v_cost := v_cost + coalesce(r.used_weight_kg,0) * v_price;
     else v_all := false; v_price := null; end if;
     update public.trimming_job_lots
        set purchase_price_yen_per_kg = v_price,
-           purchase_price_week_start = nullif(v->>'source_week_start','')::date,
-           price_match_type = coalesce(v->>'match_type','未計算'),
-           price_match_reason = coalesce(v->>'match_reason',''),
-           price_source_supplier = coalesce(v->>'source_supplier',''),
-           price_average_count = coalesce(nullif(v->>'average_count','')::integer,0)
+           purchase_price_week_start = v_week,
+           price_match_type = v_type,
+           price_match_reason = v_reason,
+           price_source_supplier = v_src,
+           price_average_count = v_cnt
      where trimming_job_id = p_job_id and qr_key = r.qr_key;
-    v_types := v_types || coalesce(v->>'match_type','未計算');
+    v_types := v_types || v_type;
   end loop;
   update public.trimming_jobs
      set purchase_price_yen_per_kg = case when v_all and coalesce(v_input,0) > 0 then round(v_cost / v_input, 2) end,
