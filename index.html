@@ -16128,6 +16128,7 @@ async function hqDoOut(lotId,key){
  if(hqBusy)return;
  const dest=document.getElementById("hqDest")?.value||"",qty=Number(String(document.getElementById("hqOutQty")?.value||"").replace(/[０-９．]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0)));
  if(!dest)return alert("出庫先を選んでください");if(!Number.isFinite(qty)||qty<=0)return alert("数量を入れてください");
+ if(window.hqLimitGuard){let lot=null;try{lot=(await hqLots(`select=*&id=eq.${encodeURIComponent(lotId)}&limit=1`))[0]}catch(_){}if(lot&&!window.hqLimitGuard(lot,`${dest}へ出庫`))return}
  if(!confirm(`${dest}へ ${hqQty(qty)} 出庫します。よろしいですか？`))return;
  hqBusy=true;
  try{await hqRpc("hq_outbound_v1400",{p_operation_id:newId(),p_lot_id:lotId,p_qty:qty,p_destination:dest,p_memo:document.getElementById("hqOutMemo")?.value||null});hqBusy=false;return hqLotPage(key,`${dest}へ出庫しました`)}
@@ -16922,6 +16923,7 @@ async function nwScan(k){
 function addLot(l){
  if(!l)return alert("この原料は見つかりません");
  if(!["在庫あり","在庫なし"].includes(l.status))return alert(`この原料は、まだ使えません（${l.status}）。受け入れの確定をしてください`);
+ if(!NW.lots.some(x=>x.id===l.id)&&window.hqLimitGuard&&!window.hqLimitGuard(l,"下処理に使う"))return;
  if(NW.lots.length&&NW.lots[0].item_name!==l.item_name)return alert(`ちがう品目です（${l.item_name}）。1つの下処理では、同じ品目の原料だけを使います`);
  if(!NW.lots.some(x=>x.id===l.id)){NW.lots.push(l);h2Beep()}
  nwRender();
@@ -17843,6 +17845,172 @@ try{
  for(const[r,keys]of Object.entries(add)){const g=V195_ROLE_GUIDES[r];if(!g||!Array.isArray(g.sections))continue;g.sections=g.sections.map(s=>s&&s.title&&s.title.startsWith("通常在庫を入力する")?G.stockInput:s);for(const k of keys)if(!g.sections.some(s=>s&&s.title===HQ_GUIDE[k].title))g.sections.push(HQ_GUIDE[k])}
  for(const r of Object.keys(V195_ROLE_GUIDES)){const g=V195_ROLE_GUIDES[r];if(g&&Array.isArray(g.sections))g.sections=g.sections.map(s=>s&&s.title===HQ_GUIDE.hqTable.title.replace("（QR品目＋原料＋仕掛品）","（QR品目＋通常在庫）")?HQ_GUIDE.hqTable:s)}
 }catch(e){console.warn("[本社 第2段階 ガイド]",e)}
+})();
+/* ===== v1.199-c61 本社の使用期限（本社入荷日から）・トレース表・品目の呼び方のまとめ ===== */
+(function(){
+"use strict";
+try{
+ const H=window.__h2||{};
+ const css=`.hqBtnRules{background:linear-gradient(135deg,#0e7490,#164e63)!important;color:#fff!important}
+.hqBtnTrace{background:#fff!important;color:#0f172a!important;border:3px solid #334155!important}
+.hqNg{margin-top:8px;padding:10px 12px;border-radius:12px;background:#f8fafc;border:1px solid #cbd5e1}
+.hqNg b{display:block;font-size:13px;color:#475569;margin-bottom:2px}`;
+ const st=document.createElement("style");st.textContent=css;document.head.appendChild(st);
+
+ let rules=[],rulesAt=0,ruleMap=new Map(),ruleKeys=[];
+ const norm=v=>qrNormalizeName(String(v||"")).toLowerCase();
+ function build(){
+  const m=new Map();
+  for(const r of rules){const k=norm(r.item_name);if(k)m.set(k,r)}
+  for(const r of rules)for(const a of(r.aliases||[])){const k=norm(a);if(k&&!m.has(k))m.set(k,r)}
+  ruleMap=m;ruleKeys=[...m.keys()].sort((a,b)=>b.length-a.length);
+ }
+ async function loadRules(force=false){
+  if(!force&&rulesAt&&Date.now()-rulesAt<300000)return rules;
+  try{rules=await qrSelect("hq_item_rules_v1600","select=*&order=sort_order.asc,item_name.asc");rulesAt=Date.now();build()}catch(e){console.warn("[本社の使用期限] 読み込めません",e)}
+  return rules;
+ }
+ function ruleOf(name){
+  const raw=String(name||"").trim();if(!raw)return null;
+  const n=norm(raw),plain=norm(raw.replace(/[（(][^）)]*[）)]/g,""));
+  for(const k of[n,plain])if(ruleMap.has(k))return ruleMap.get(k);
+  if(/皮むき|カット/.test(raw))return null;
+  const hit=ruleKeys.find(k=>plain.includes(k));
+  return hit?ruleMap.get(hit):null;
+ }
+ function limitInfo(l){
+  if(!l||l.status==="取消"||l.status==="在庫なし")return null;
+  const r=ruleOf(l.item_name);if(!r||!r.limit_days)return null;
+  const base=l.hq_received_date||l.planned_date;if(!base)return null;
+  const elapsed=Math.max(0,Math.floor((new Date(hqToday()+"T00:00:00")-new Date(String(base).slice(0,10)+"T00:00:00"))/864e5));
+  const limit=Number(r.limit_days),level=v1250LevelOf(elapsed,limit);
+  return{rule:r,elapsed,limit,level,over:elapsed>limit,lv:V1250_LEVELS[level]};
+ }
+ const canConfirm=()=>["admin","hq_worker"].includes(db?.role);
+ function guard(l,what){
+  const i=limitInfo(l);if(!i||!i.over)return true;
+  const msg=`この原料は使用期限を過ぎています。\n${l.item_name||""}（${l.lot_no||""}）：本社入荷から${i.elapsed}日（期限${i.limit}日）${i.rule.ng_sign?`\n\nNGサイン：${i.rule.ng_sign}`:""}`;
+  if(!canConfirm()){alert(`${msg}\n\n${what}できません。本社社員に相談してください。`);return false}
+  if(!confirm(`${msg}\n\n実物を確認し、使える品質であることを確認しましたか？\n「OK」で${what}します（確認した人を記録します）。`))return false;
+  callRpc("hq_limit_check_v1600",{p_lot_id:String(l.id),p_action:what,p_elapsed:i.elapsed,p_limit:i.limit}).catch(e=>console.warn("[本社の使用期限] 確認の記録を保存できません",e));
+  return true;
+ }
+ window.hqLimitGuard=guard;window.hqLimitInfo=limitInfo;window.hqItemRuleOf=ruleOf;
+
+ hqLoadLimits=async function(){await loadRules();hqLimits=hqLimits||{};return hqLimits};window.hqLoadLimits=hqLoadLimits;
+ hqAgeBadge=function(l){const i=limitInfo(l);if(!i)return"";return `<span class="badge ${i.lv.badge}">${esc(i.lv.label)}｜本社入荷から${i.elapsed}日（期限${i.limit}日）</span>`};window.hqAgeBadge=hqAgeBadge;
+ const cardBase=hqLotCard;
+ hqLotCard=function(l,open){const h=cardBase.apply(this,arguments);const i=limitInfo(l);return i&&i.level>1?h.replace('class="card hqLotCard"',`class="card hqLotCard ${i.lv.card}"`):h};window.hqLotCard=hqLotCard;
+
+ const lotPageBase=hqLotPage;
+ hqLotPage=async function(key,msg){
+  await loadRules();
+  const r=await lotPageBase.apply(this,arguments);
+  try{
+   if(currentScreen!=="hqLotPage")return r;
+   const k=String(key||"");const l=(await hqLots(`select=*&or=(qr_key.eq.${encodeURIComponent(k)},lot_no.eq.${encodeURIComponent(k)})&limit=1`))[0];
+   const card=document.querySelector(".hqLotCard");
+   if(l&&card){
+    const i=limitInfo(l),rule=ruleOf(l.item_name);let add="";
+    if(i&&i.over)add+=`<div class="${i.level>=5?"v1250Stop":"v1250Need"}">使用期限を過ぎています（本社入荷から${i.elapsed}日／期限${i.limit}日）。使う前に実物を確認してください。</div>`;
+    if(rule&&rule.ng_sign)add+=`<div class="hqNg"><b>NGサイン（この症状があれば社員に報告し廃棄）</b>${esc(rule.ng_sign)}</div>`;
+    if(add)card.insertAdjacentHTML("beforeend",add);
+   }
+   const wrap=document.querySelector(".wrap");
+   if(l&&wrap&&!document.getElementById("hqTraceBtn"))wrap.insertAdjacentHTML("beforeend",`<div class="card" id="hqTraceBtn"><b>トレース表（監査用）</b><div class="small">石岡の入荷から本社での使用・下処理・廃棄までを、A4縦の紙に印刷します。</div><button class="btn hqBtnTrace" style="width:100%;margin-top:8px" ${H.btnAttr("hqTracePrint",["hq",l.qr_key])}>トレース表を印刷</button></div>`);
+  }catch(e){console.warn("[本社の使用期限]",e)}
+  return r;
+ };window.hqLotPage=hqLotPage;
+
+ const qrDetailBase=qrLotDetail;
+ qrLotDetail=async function(q,msg){
+  const r=await qrDetailBase.apply(this,arguments);
+  try{
+   const lot=await qrFindLot(q);const wrap=document.querySelector(".wrap");
+   if(lot&&wrap&&!document.getElementById("qrTraceBtn"))wrap.insertAdjacentHTML("beforeend",`<div class="card" id="qrTraceBtn"><b>トレース表（監査用）</b><div class="small">このロットの入荷から、本社への移動・本社での使用までを、A4縦の紙に印刷します。</div><button class="btn hqBtnTrace" style="width:100%;margin-top:8px" ${H.btnAttr("hqTracePrint",["qr",lot.qr_key||lot.lot_no])}>トレース表を印刷</button></div>`);
+  }catch(e){}
+  return r;
+ };window.qrLotDetail=qrLotDetail;
+
+ /* --- トレース表 --- */
+ const d10=v=>v?String(v).slice(0,10):"";
+ const dtj=v=>{if(!v)return"";const s=String(v);if(s.length<=10)return s.replace(/-/g,"/");const x=new Date(s);const p=n=>String(n).padStart(2,"0");return `${x.getFullYear()}/${p(x.getMonth()+1)}/${p(x.getDate())} ${p(x.getHours())}:${p(x.getMinutes())}`};
+ const q2=(v,u)=>v==null||v===""?"":`${hqQty(v)}${u==="kg"?"kg":u?` ${u}`:""}`;
+ function traceRows(t){
+  const ev=[],ql=t.qr_lot,hqNo=new Map((t.hq_lots||[]).map(l=>[l.id,l.lot_no]));
+  if(ql)ev.push({at:ql.received_date||ql.created_at,place:"石岡",kind:"入荷",lot:ql.lot_no,qty:q2(ql.received_qty,ql.unit),detail:[ql.supplier,ql.origin,ql.storage_location?`保管：${ql.storage_location}`:""].filter(Boolean).join(" / "),who:ql.user_name||ql.purchase_staff||""});
+  for(const m of t.qr_moves||[])ev.push({at:m.occurred_at,place:"石岡",kind:m.movement_type+(m.cancelled_at?"（取消済み）":""),lot:m.lot_no||ql?.lot_no,qty:q2(m.qty,m.unit||ql?.unit),detail:[m.destination?`出庫先：${m.destination}`:"",m.reason||"",m.memo||""].filter(Boolean).join(" / "),who:m.user_name||""});
+  for(const l of t.hq_lots||[]){
+   ev.push({at:l.created_at,place:"本社",kind:l.source_kind==="石岡から"?"移動（入荷待ち）":"直接入荷の登録",lot:l.lot_no,qty:q2(l.planned_qty,l.unit),detail:[l.shipped_date?`出庫日 ${d10(l.shipped_date)}`:"",l.ship_run||"",l.planned_date?`本社入荷日（予定）${d10(l.planned_date)}`:""].filter(Boolean).join(" / "),who:l.created_by_name||""});
+   if(l.confirmed_at)ev.push({at:l.confirmed_at,place:"本社",kind:"受け入れ確定",lot:l.lot_no,qty:q2(l.received_qty,l.unit),detail:[l.hq_received_date?`本社入荷日 ${d10(l.hq_received_date)}`:"",l.grade?`品質：${({good:"良好",review:"要確認",bad:"不良"})[l.grade]||l.grade}`:"",(l.issues||[]).join("・")].filter(Boolean).join(" / "),who:l.confirmed_by_name||l.evaluated_by_name||""});
+  }
+  for(const m of t.hq_moves||[]){if(m.movement_type==="入庫確定")continue;ev.push({at:m.occurred_at,place:"本社",kind:m.movement_type+(m.cancelled_at?"（取消済み）":""),lot:m.lot_no||hqNo.get(m.lot_id),qty:q2(m.qty,m.unit),detail:[m.destination?`出庫先：${m.destination}`:"",m.reason||"",m.memo||""].filter(Boolean).join(" / "),who:m.user_name||""})}
+  for(const x of t.works||[]){const w=x.work||{};const mats=x.materials||[];ev.push({at:w.started_at||w.work_date,place:"本社",kind:`下処理${w.confirm_status==="確定"?"（確定）":w.confirm_status==="取消"||w.status==="取消"?"（取消）":"（未確定）"}`,lot:mats.map(m=>m.lot_no||hqNo.get(m.lot_id)).filter(Boolean).join("、"),qty:mats.map(m=>q2(m.qty,m.unit==="kg"?"kg":"ケース")).join("＋"),detail:[w.product_name?`仕掛品：${w.product_name}`:"",w.yield_kg!=null?`出来高 ${hqQty(w.yield_kg)}kg`:"",w.waste_kg!=null?`廃棄 ${hqQty(w.waste_kg)}kg`:"",w.expiry_days!=null&&w.work_date?`使用期限 ${hqAddDays(d10(w.work_date),Number(w.expiry_days))}`:""].filter(Boolean).join(" / "),who:w.confirmed_by_name||w.created_by_name||""})}
+  for(const x of t.waste||[]){if(x.work_id)continue;ev.push({at:x.created_at,place:"本社",kind:x.kind+(x.cancelled_at?"（取消済み）":""),lot:x.lot_no||hqNo.get(x.lot_id),qty:x.kg!=null?`${hqQty(x.kg)}kg`:q2(x.qty,x.unit),detail:x.memo||"",who:x.user_name||""})}
+  return ev.sort((a,b)=>String(a.at||"").localeCompare(String(b.at||"")));
+ }
+ const TRACE_CSS=`.h2PdfRoot .th{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #000;padding-bottom:6px}.h2PdfRoot .th h1{font-size:26px;margin:0}.h2PdfRoot .ti{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;font-size:13px;margin:8px 0 10px}.h2PdfRoot .ti div{border-bottom:1px solid #cbd5e1;padding:3px 0}.h2PdfRoot .ti span{display:inline-block;width:7.5em;color:#334155}.h2PdfRoot table.tr{width:100%;border-collapse:collapse;font-size:11.5px;table-layout:fixed}.h2PdfRoot table.tr th{background:#e2e8f0;border:1px solid #000;padding:4px 3px}.h2PdfRoot table.tr td{border:1px solid #000;padding:4px 3px;vertical-align:top;word-break:break-all;line-height:1.35}.h2PdfRoot .tf{position:absolute;left:36px;right:36px;bottom:24px;font-size:11px;border-top:1px solid #000;padding-top:4px;display:flex;justify-content:space-between}`;
+ async function tracePrint(kind,key){
+  let t;H.h2PdfStatus&&H.h2PdfStatus("トレース表を作っています…");
+  try{t=await callRpc("get_lot_trace_v1600",{p_kind:kind,p_key:String(key||"")})}catch(e){return H.h2PdfStatus(`トレース表を作れませんでした。${esc(e?.message||String(e))}`,"err")}
+  const ql=t.qr_lot,hl=t.hq_lots||[],first=hl[0]||{};
+  const item=ql?.item_name||first.item_name||"",rows=traceRows(t);
+  const info=[["品目",item],["石岡ロットNo.",ql?.lot_no||"（本社直接入荷）"],["本社ロットNo.",hl.map(l=>l.lot_no).join("、")||"-"],["仕入先",ql?.supplier||first.supplier||"-"],["産地",ql?.origin||first.origin||"-"],["量目",ql?.pack_weight||first.pack_weight||"-"],["石岡入荷日",ql?.received_date?d10(ql.received_date):"-"],["本社入荷日",hl.map(l=>d10(l.hq_received_date||l.planned_date)).filter(Boolean).join("、")||"-"],["石岡の残り",ql?q2(ql.current_qty,ql.unit):"-"],["本社の残り",hl.map(l=>`${l.lot_no.slice(-4)}：${q2(l.current_qty,l.unit)||0}（${l.status}）`).join("、")||"-"]];
+  const now=new Date(),ds=dtj(now.toISOString());
+  const head=p=>`<div class="th"><h1>ロットのトレース表</h1><div style="font-size:12px">印刷日時：${esc(ds)}　${p}</div></div>`;
+  const tbl=list=>`<table class="tr"><colgroup><col style="width:15%"><col style="width:7%"><col style="width:15%"><col style="width:14%"><col style="width:12%"><col style="width:26%"><col style="width:11%"></colgroup><tr><th>日時</th><th>場所</th><th>内容</th><th>ロットNo.</th><th>数量</th><th>詳細</th><th>担当</th></tr>${list.map(r=>`<tr><td>${esc(dtj(r.at))}</td><td>${esc(r.place)}</td><td>${esc(r.kind)}</td><td>${esc(r.lot||"")}</td><td>${esc(r.qty||"")}</td><td>${esc(r.detail||"")}</td><td>${esc(r.who||"")}</td></tr>`).join("")||'<tr><td colspan="7">記録がありません</td></tr>'}</table>`;
+  const foot=`<div class="tf"><span>SEIKA＋　株式会社せき</span><span>印刷した人：${esc(t.printed_by||db.user||"")}</span></div>`;
+  const chunks=[];let i=0;const firstN=20,nextN=28;chunks.push(rows.slice(0,firstN));i=firstN;while(i<rows.length){chunks.push(rows.slice(i,i+nextN));i+=nextN}
+  const pages=chunks.map((c,n)=>`${head(chunks.length>1?`${n+1}/${chunks.length}枚`:"")}${n===0?`<div class="ti">${info.map(x=>`<div><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join("")}</div>`:'<div style="height:10px"></div>'}${tbl(c)}${foot}`);
+  return H.h2MakePdf(pages,TRACE_CSS,`トレース表_${item}_${ql?.lot_no||first.lot_no||""}.pdf`);
+ }
+ window.hqTracePrint=tracePrint;
+
+ /* --- 使用期限・品目の呼び方の設定（本社社員・管理者） --- */
+ async function rulesPage(msg=""){
+  if(!["admin","hq_worker"].includes(db?.role))return hqHome();
+  setScreen("hqItemRulesPage",[msg]);pageShell("原料の使用期限・呼び方","本社入荷日から数える使用期限／同じ品目の別の書き方",'<div class="notice">読み込んでいます…</div>');
+  await loadRules(true);
+  const lvGuide=d=>{d=Number(d);if(!d)return"期限なし（呼び方のまとめだけ）";const w=Math.ceil(d*0.5);return `要観察 ${w}日〜／優先使用 ${d-1}日目／要品質確認 ${d}日目〜／${d+1}日目から使う前に確認／使用不可・保留 ${d+2}日目〜`};
+  pageShell("原料の使用期限・呼び方","本社入荷日から数える使用期限／同じ品目の別の書き方",`${okHtml(msg)}
+  <div class="card small">本社の入荷日（まだ受け入れていない原料は本社入荷日（予定））から数えます。期限の日数を過ぎた原料を使うときは確認画面が出ます。「別の書き方」に入れた名前は同じ品目として扱い、仕入れ価格表でも1行にまとめます。</div>
+  <div class="card"><b>品目を追加</b><label class="label" style="margin-top:6px">品目名</label><input id="hqRuN" class="input" placeholder="例：ブロッコリー"><label class="label" style="margin-top:6px">使用期限（本社入荷日から何日）　空欄＝期限なし</label><input id="hqRuD" class="input" inputmode="numeric"><label class="label" style="margin-top:6px">NGサイン</label><input id="hqRuG" class="input"><label class="label" style="margin-top:6px">別の書き方（「、」で区切る）</label><input id="hqRuA" class="input" placeholder="例：ぶろっこりー、ブロッコリ"><button class="btn hqBtnRules" style="width:100%;margin-top:8px" ${H.btnAttr("hqRuleSave",[""])}>追加する</button></div>
+  ${rules.map(r=>`<div class="card"><div class="itemHead"><div><b style="font-size:18px">${esc(r.item_name)}</b>　<b>${r.limit_days?`${r.limit_days}日`:"期限なし"}</b><div class="small">${esc(lvGuide(r.limit_days))}</div>${r.aliases?.length?`<div class="small">別の書き方：${esc(r.aliases.join("、"))}</div>`:""}${r.ng_sign?`<div class="small">NGサイン：${esc(r.ng_sign)}</div>`:""}</div><div style="display:flex;gap:6px;flex-direction:column"><button class="btn btn2" ${H.btnAttr("hqRuleEdit",[r.item_name])}>変更</button><button class="btn red" ${H.btnAttr("hqRuleDelete",[r.item_name])}>削除</button></div></div></div>`).join("")}`);
+ }
+ const splitA=s=>String(s||"").split(/[、,，\s]+/).map(x=>x.trim()).filter(Boolean);
+ async function ruleSave(old,data){
+  const d=data||{name:H.h2Val("hqRuN").trim(),days:H.h2Val("hqRuD").trim(),ng:H.h2Val("hqRuG"),al:splitA(H.h2Val("hqRuA"))};
+  if(!d.name)return alert("品目名を入れてください");
+  const days=d.days===""?null:Math.round(Number(d.days));if(days!=null&&!(days>0))return alert("日数は1以上の数字で入れてください（期限なしは空欄）");
+  try{await callRpc("hq_save_item_rule_v1600",{p_old_name:old||null,p_item_name:d.name,p_limit_days:days,p_ng_sign:d.ng||null,p_aliases:d.al});rulesAt=0;return rulesPage(`${d.name}を保存しました`)}catch(e){alert(e?.message||String(e))}
+ }
+ async function ruleEdit(name){
+  const r=rules.find(x=>x.item_name===name);if(!r)return;
+  const n=prompt("品目名",r.item_name);if(n==null)return;
+  const d=prompt("使用期限（本社入荷日から何日）。空欄＝期限なし",r.limit_days==null?"":String(r.limit_days));if(d==null)return;
+  const g=prompt("NGサイン",r.ng_sign||"");if(g==null)return;
+  const a=prompt("別の書き方（「、」で区切る）",(r.aliases||[]).join("、"));if(a==null)return;
+  return ruleSave(r.item_name,{name:n.trim(),days:d.trim(),ng:g,al:splitA(a)});
+ }
+ async function ruleDelete(name){
+  if(!confirm(`${name}の設定を削除します。使用期限の表示と、呼び方のまとめがなくなります。よろしいですか？`))return;
+  try{await callRpc("hq_delete_item_rule_v1600",{p_item_name:name});rulesAt=0;return rulesPage(`${name}を削除しました`)}catch(e){alert(e?.message||String(e))}
+ }
+ Object.assign(window,{hqItemRulesPage:rulesPage,hqRuleSave:ruleSave,hqRuleEdit:ruleEdit,hqRuleDelete:ruleDelete});
+ const hubBase=hqEntryHubItems;
+ hqEntryHubItems=function(){const a=hubBase.apply(this,arguments);if(["admin","hq_worker"].includes(db?.role))a.push(["hqBtnRules","hqItemRulesPage","原料の使用期限・呼び方","期限の日数・NGサイン・別の書き方"]);return a};window.hqEntryHubItems=hqEntryHubItems;
+
+ /* --- 操作ガイド --- */
+ const G={
+  hqLimit:{title:"本社の原料の使用期限を見る",where:"入荷待ち原料・本社在庫・ロットの画面",steps:["原料のカードに「良好・要観察・優先使用・要品質確認・使用不可/保留」と、本社入荷から何日かが出ます。","本社の入荷日から数えます。まだ受け入れていない原料は、本社入荷日（予定）から数えます。","ロットの画面には、その品目のNGサイン（傷みの見分け方）が出ます。","期限の日数を過ぎた原料を使用出庫・原料出し・下処理に使うときは、確認画面が出ます。本社社員・管理者が実物を確認して「OK」を押すと使えます（確認した人を記録します）。"],check:"",caution:"下処理班・荷受け担当のアカウントでは、期限を過ぎた原料は使えません。本社社員に相談してください。"},
+  hqRules:{title:"使用期限の日数・NGサイン・別の書き方を変える（本社社員・管理者）",where:"本社ホーム →「入荷登録・品目」→「原料の使用期限・呼び方」",steps:["品目の「変更」で、日数・NGサイン・別の書き方を直します。","表にない品目は「品目を追加」で追加します。期限を付けない品目は日数を空欄にします。","「別の書き方」に入れた名前（例：胡瓜＝きゅうり）は同じ品目として扱い、仕入れ価格表でも1行にまとめます。"],check:"",caution:"最初は「原料使用期限・廃棄目安（2026.8.12更新）」の日数が入っています。"},
+  trace:{title:"トレース表を印刷する（監査用）",where:"本社のロットの画面 または 石岡のQRロットの画面 → いちばん下「トレース表を印刷」",steps:["「トレース表を印刷」を押すと、A4縦のPDFができます。","「PDFを開く・印刷」で開いて印刷します。","石岡の入荷・本社への出庫・本社の受け入れ・使用出庫・下処理（仕掛品）・廃棄が、日時の順に並びます。"],check:"いちばん上に、品目・ロットNo.・仕入先・産地・入荷日・今の残りが出ます。",caution:"誰でも印刷できます。"}
+ };
+ Object.assign(HQ_GUIDE,G);
+ for(const r of Object.keys(V195_ROLE_GUIDES)){const g=V195_ROLE_GUIDES[r];if(!g||!Array.isArray(g.sections))continue;
+  const keys=["trace"];if(r.startsWith("hq_")||r==="admin")keys.unshift("hqLimit");if(r==="hq_worker"||r==="admin")keys.push("hqRules");
+  for(const k of keys)if(!g.sections.some(s=>s&&s.title===G[k].title))g.sections.push(G[k]);}
+}catch(e){console.warn("[v1.199-c61]",e)}
 })();
 })();
 
