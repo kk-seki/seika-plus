@@ -11285,9 +11285,9 @@ window.v1115TrimmingTotals=v1115TrimmingTotals;
 v1115RenderTrimming=function(){
   v1115CaptureTrimmingForm();
   const first=v1115Trimming.lots[0],totals=v1115TrimmingTotals();
-  const lotCards=v1115Trimming.lots.map(line=>`<div class="card" style="margin:9px 0"><div class="row"><b>${esc(line.itemName)}</b><button class="btn danger" style="padding:6px 9px" ${seikaEventAttrs('click','v1115RemoveTrimLot',[line.id])}>削除</button></div><div class="small">ロット ${esc(line.lotNo||line.qrKey)}（日報の参照用。QR在庫は変更しません）</div><label class="label" style="margin-top:7px">入力方法</label><select id="trimLotMode_${line.id}" class="input" ${seikaEventAttrs('change','v1115ChangeTrimLotMode',[line.id])}><option value="qty" ${line.mode==='qty'?'selected':''} ${line.unitWeight>0?'':'disabled'}>使用数量（${esc(line.unit)}）${line.unitWeight>0?'':'／量目未設定のため選択不可'}</option><option value="weight" ${line.mode==='weight'?'selected':''}>使用重量（kg）</option></select><label class="label" style="margin-top:7px">使用原料 ${line.mode==='qty'?esc(line.unit):'kg'}</label><input id="trimLotAmount_${line.id}" class="input" inputmode="decimal" min="0" value="${esc(line.amount||'')}" data-seika-input-action="v1115RefreshTrimmingSummary" data-seika-input-args="%5B%5D" placeholder="0より大きい値">${line.mode==='qty'&&line.unitWeight>0?`<div class="small">1${esc(line.unit)} = ${fmtRounded(line.unitWeight)}kg で換算します</div>`:''}</div>`).join('');
+  const lotCards=v1115Trimming.lots.map(line=>`<div class="card" style="margin:9px 0"><div class="row"><b>${esc(line.itemName)}</b><button class="btn danger" style="padding:6px 9px" ${seikaEventAttrs('click','v1115RemoveTrimLot',[line.id])}>削除</button></div><div class="small">ロット ${esc(line.lotNo||line.qrKey)}（日報の参照用。QR在庫は変更しません）</div><input type="hidden" id="trimLotMode_${line.id}" value="weight"><label class="label" style="margin-top:7px">使用原料 重量kg</label><input id="trimLotAmount_${line.id}" class="input" type="number" step="0.01" inputmode="decimal" min="0" value="${esc(line.amount||'')}" data-seika-input-action="v1115RefreshTrimmingSummary" data-seika-input-args="%5B%5D" placeholder="例：30">${line.unitWeight>0?`<div class="small">参考：1${esc(line.unit)} = ${fmtRounded(line.unitWeight)}kg</div>`:''}</div>`).join('');
   const itemOpts=specialItems('exchange').map(it=>`<option value="${esc(it.name)}"></option>`).join('');
-  const outputCards=v1115Trimming.outputs.map((line,index)=>`<div class="card" style="margin:9px 0"><div class="row"><b>出来高 ${index+1}</b><button class="btn danger" style="padding:6px 9px" ${seikaEventAttrs('click','v1115RemoveTrimOutput',[line.id])}>削除</button></div><label class="label">日報に記録する入替品</label><input id="trimOutNormal_${line.id}" class="input" list="trimOutCandidates_${line.id}" value="${esc(specialItems('exchange').find(it=>String(it.id)===String(line.itemId||''))?.name||line.itemName||line.itemId||'')}" placeholder="入替品候補から選択、または品名を手入力"><datalist id="trimOutCandidates_${line.id}">${itemOpts}</datalist><div class="small">在庫表の入替品候補から選べます。候補にない場合は直接入力できます。</div><label class="label" style="margin-top:7px">出来高の入力方法</label><select id="trimOutMode_${line.id}" class="input" data-seika-change-action="v1115RefreshTrimmingSummary" data-seika-change-args="%5B%5D"><option value="weight" ${line.mode!=='qty'?'selected':''}>重量kgで入力</option><option value="qty" ${line.mode==='qty'?'selected':''}>数量×1個あたりの重量で入力</option></select><label class="label" style="margin-top:7px">出来高 重量kg${line.mode==='qty'?'（この方式では使いません）':''}</label><input id="trimOutWeight_${line.id}" class="input" inputmode="decimal" value="${esc(line.weight||'')}" data-seika-input-action="v1115RefreshTrimmingSummary" data-seika-input-args="%5B%5D"><div class="row" style="margin-top:7px"><div><label class="label">出来高 数量</label><input id="trimOutQty_${line.id}" class="input" inputmode="decimal" value="${esc(line.qty||'')}" data-seika-input-action="v1115RefreshTrimmingSummary" data-seika-input-args="%5B%5D"></div><div><label class="label">1個あたりの重量kg</label><input id="trimOutUnit_${line.id}" class="input" inputmode="decimal" value="${esc(line.unitWeight||'')}" data-seika-input-action="v1115RefreshTrimmingSummary" data-seika-input-args="%5B%5D"></div></div><div class="small">${line.mode==='qty'?'「出来高 数量 × 1個あたりの重量kg」で集計します。':'「出来高 重量kg」だけを集計します。数量欄は空でも構いません。'}</div></div>`).join('');
+  const outputCards=v1115Trimming.outputs.map((line,index)=>`<div class="card" style="margin:9px 0"><div class="row"><b>出来高 ${index+1}</b><button class="btn danger" style="padding:6px 9px" ${seikaEventAttrs('click','v1115RemoveTrimOutput',[line.id])}>削除</button></div><label class="label">日報に記録する入替品</label><select id="trimOutPick_${line.id}" class="input" ${seikaEventAttrs('change','c64PickOutputSel',[line.id])}>${typeof c64OutputOptionsHtml==='function'?c64OutputOptionsHtml(line):''}</select><input id="trimOutNormal_${line.id}" class="input" style="margin-top:6px" list="trimOutCandidates_${line.id}" value="${esc(specialItems('exchange').find(it=>String(it.id)===String(line.itemId||''))?.name||line.itemName||line.itemId||'')}" placeholder="候補に無いときはここに手入力" autocomplete="off"><div class="small">▼から選ぶと下の欄に入ります（候補は通常在庫表で品名に「入替品」が入っている品目）。候補に無いときは下の欄に手入力してください。</div><input type="hidden" id="trimOutMode_${line.id}" value="weight"><label class="label" style="margin-top:9px">出来高 重量kg</label><input id="trimOutWeight_${line.id}" class="input" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(line.weight||'')}" placeholder="例：21" data-seika-input-action="v1115RefreshTrimmingSummary" data-seika-input-args="%5B%5D"></div>`).join('');
   const candidates=v195TrimLotCandidates();
   const shown=Math.min(candidates.length,V195_TRIM_LIST_MAX);
   const pickerNote=!v195TrimLotsLoaded?'ロットを読み込み中です…'
@@ -11305,7 +11305,7 @@ v1115RenderTrimming=function(){
 <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0"><b>② 使用原料</b>
 <div class="row" style="margin-top:7px"><div><label class="label">品名・ロット番号</label><input id="trimLotFilterName" class="input" value="${esc(f.name||'')}" placeholder="例：キャベツ（入れるとすぐ下に候補が出ます）" autocomplete="off"></div><div><label class="label">入荷日</label><input id="trimLotFilterDate" type="date" class="input" value="${esc(f.date||'')}" ${seikaEventAttrs('change','v195ApplyTrimFilter',[])}></div></div>
 <label class="label" style="margin-top:7px">在庫</label><select id="trimLotFilterStock" class="input" ${seikaEventAttrs('change','v195ApplyTrimFilter',[])}><option value="all" ${f.stock==='all'?'selected':''}>すべて</option><option value="in" ${f.stock==='in'?'selected':''}>在庫ありのみ</option><option value="out" ${f.stock==='out'?'selected':''}>在庫なしのみ</option></select>
-<label class="label" style="margin-top:9px">候補（押すと使用原料に追加）</label>
+<label class="label" style="margin-top:9px">候補から選ぶ（選ぶと使用原料に追加）</label>
 <div id="trimLotList">${typeof v1640LotListHtml==='function'?v1640LotListHtml():''}</div></div>
 <label class="label" style="margin-top:10px">QRキーまたはロット番号で追加（読取用）</label><div class="row"><input id="trimQrKey" class="input" placeholder="読取／入力"><button class="btn blue" data-seika-click-action="v1115AddTrimLot" data-seika-click-args="%5B%5D">ロット追加</button></div></div>
 <div id="trimLotCards">${lotCards||'<div class="notice">まだ使用原料がありません。上の候補から押して選んでください。</div>'}</div>
@@ -11315,7 +11315,7 @@ v1115RenderTrimming=function(){
 <div class="card"><b>重量集計</b><div id="trimTotals" class="grid" style="margin-top:8px"><div class="box">使用原料<b>${fmtRounded(totals.input)}kg</b></div><div class="box">出来高 合計<b>${fmtRounded(totals.output)}kg</b></div><div class="box">ロス<b>${fmtRounded(totals.loss)}kg</b></div><div class="box">歩留まり<b>${fmtRounded(totals.yield)}%</b></div></div>${yieldNote}
 <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0"><b>④ 廃棄</b>
 <label class="label" style="margin-top:6px" for="trimWasteKg">廃棄した重さ（kg）</label><input id="trimWasteKg" type="number" inputmode="decimal" step="0.01" min="0" class="input" placeholder="例：3.5">
-<div class="small" id="trimWasteNote" style="margin-top:4px">最初はロス（使用原料−出来高）の重さが入ります。水分が抜けた分など、捨てていない分があるときは直してください。登録すると廃棄一覧に「トリミング廃棄」として入ります。廃棄入力で同じ分を入れないでください。</div></div>
+<div class="small" id="trimWasteNote" style="margin-top:4px">ロス（使用原料−出来高）の重さが入ります。<br>登録すると廃棄一覧に「トリミング廃棄」として入ります。<br>廃棄入力で同じ分を入れないでください。</div></div>
 <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0"><b>⑤ 確認して登録</b></div>
 <label class="label" style="margin-top:6px">メモ（任意）</label><textarea id="trimNote" class="textarea" placeholder="作業内容・特記事項"></textarea>
 <button class="btn green" style="width:100%;margin-top:12px" data-seika-click-action="v1115SaveTrimming" data-seika-click-args="%5B%5D">確認して日報を登録</button></div>`);
@@ -12725,11 +12725,8 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
         mode:'weight',amount:String(v1203Num(l.used_weight_kg)||'')};
     });
     v1115Trimming.outputs=outputs.map(o=>{
-      const qty=v1203Num(o.output_qty),unit=v1203Num(o.unit_weight_kg);
-      const qtyMode=qty>0&&unit>0;
-      return {id:v1115Uuid(),itemId:'',itemName:o.item_name||'',mode:qtyMode?'qty':'weight',
-        weight:qtyMode?'':String(v1203Num(o.output_weight_kg)||''),
-        qty:qtyMode?String(qty):'',unitWeight:qtyMode?String(unit):''};
+      return {id:v1115Uuid(),itemId:'',itemName:o.item_name||'',mode:'weight',
+        weight:String(v1203Num(o.output_weight_kg)||''),qty:'',unitWeight:''};
     });
     if(typeof v196TrimWorkDate!=='undefined')v196TrimWorkDate=j.work_date||todayKey();
     if(typeof v196TrimNote!=='undefined')v196TrimNote=j.note||'';
@@ -18420,17 +18417,17 @@ if(c56Android&&typeof window.html2canvas==="function"&&window.jspdf&&typeof wind
 const C64_LIST_MAX=30;
 let c64Waste={kg:'',touched:false},c64PendingWaste=null,c64SkipTrimOnce=false,c64Timer=0;
 function c64LotListHtml(){
- if(!v195TrimLotsLoaded)return '<div class="small">ロットを読み込み中です…</div>';
- const list=v195TrimLotCandidates(),first=v1115Trimming.lots[0];
- if(!list.length)return `<div class="small">条件に合うロットがありません。品名や入荷日を変えるか、在庫を「すべて」にしてください。</div>`;
- const rows=list.slice(0,C64_LIST_MAX).map(l=>{
-  const qty=v195TrimLotQty(l),unit=qrLotUnit(l),pack=String(l.pack_weight||'').trim(),day=String(l.received_date||'').slice(0,10);
-  const key=String(l.qr_key||l.lot_no||'');
-  return `<button type="button" class="btn btn2" style="display:block;width:100%;text-align:left;margin:6px 0 0;padding:9px 12px;line-height:1.45" ${seikaEventAttrs('click','c64PickLot',[key])}><b>${esc(l.item_name||'（品名未設定）')}</b>　<span class="small">入荷 ${esc(day?`${Number(day.slice(5,7))}/${Number(day.slice(8,10))}`:'日付なし')}</span><br><span class="small">${esc(l.lot_no||l.qr_key||'')}｜${qty>0?`残 ${esc(fmt(qty))}${esc(unit)}`:'在庫なし'}${pack?`｜量目 ${esc(pack)}`:''}${l.supplier?`｜${esc(l.supplier)}`:''}</span></button>`;
+ if(!v195TrimLotsLoaded)return '<select class="input" disabled><option>ロットを読み込み中です…</option></select>';
+ const list=v195TrimLotCandidates(),first=v1115Trimming.lots[0],shown=list.slice(0,V195_TRIM_LIST_MAX);
+ const opts=shown.map(l=>{
+  const qty=v195TrimLotQty(l),unit=qrLotUnit(l),day=String(l.received_date||'').slice(0,10);
+  const label=`${day?`${Number(day.slice(5,7))}/${Number(day.slice(8,10))}`:'日付なし'}｜${l.item_name||'（品名未設定）'}｜${l.lot_no||l.qr_key||''}｜${qty>0?`残 ${fmt(qty)}${unit}`:'在庫なし'}${l.supplier?`｜${l.supplier}`:''}`;
+  return `<option value="${esc(String(l.qr_key||l.lot_no||''))}">${esc(label)}</option>`;
  }).join('');
- const more=list.length>C64_LIST_MAX?`（新しい順に${C64_LIST_MAX}件まで表示。品名やロット番号を入れると絞り込めます）`:'';
- return `<div class="small">該当 ${list.length}件${more}${first?` ／ ${esc(first.itemName)}だけ表示中`:''}</div>${rows}`;
+ const head=list.length?`▼ 入荷日｜品名｜ロット｜在庫｜仕入先 から選ぶ（${list.length}件）`:'条件に合うロットがありません';
+ return `<select id="trimLotPicker" class="input" ${seikaEventAttrs('change','c64PickLotSel',[])}><option value="">${esc(head)}</option>${opts}</select><div class="small" style="margin-top:4px">品名・ロット番号・入荷日・在庫を入れると、▼の中身がすぐ絞り込まれます。${list.length>shown.length?`（新しい順に${shown.length}件まで）`:''}${first?` ／ ${esc(first.itemName)}だけ表示中`:''}</div>`;
 }
+function c64PickLotSel(){const sel=document.getElementById('trimLotPicker'),key=sel?sel.value:'';if(key)c64PickLot(key)}
 function c64RefreshList(){v195CaptureTrimFilter();const box=document.getElementById('trimLotList');if(box)box.innerHTML=c64LotListHtml()}
 function c64PickLot(key){
  v195CaptureTrimFilter();
@@ -18445,6 +18442,9 @@ function c64SyncWaste(){
 }
 const c64RenderBase=v1115RenderTrimming;
 v1115RenderTrimming=function(...args){
+ for(const l of v1115Trimming.lots){if(l.mode!=='weight'){const a=Number(document.getElementById(`trimLotAmount_${l.id}`)?.value||l.amount||0);l.mode='weight';l.amount=a>0&&l.unitWeight>0?String(Math.round(a*l.unitWeight*100)/100):''}}
+ if(!v1115Trimming.outputs.length)v1115Trimming.outputs.push({id:v1115Uuid(),name:'',itemId:'',itemName:'',mode:'weight',weight:''});
+ for(const o of v1115Trimming.outputs)o.mode='weight';
  const r=c64RenderBase.apply(this,args);
  try{
   const name=document.getElementById('trimLotFilterName');
@@ -18547,13 +18547,31 @@ window.wasteEntryPage=wasteEntryPage;
 try{
  if(typeof V198_GUIDE_SECTIONS!=='undefined'&&V198_GUIDE_SECTIONS.trimming){
   const g=V198_GUIDE_SECTIONS.trimming;g.title='日報を登録する';
-  g.steps=g.steps.map(x=>x.startsWith('「使用原料」でロットを追加します')?'「② 使用原料」の品名・ロット番号の欄に文字を入れると、すぐ下に候補が出ます（検索ボタンはありません）。使うロットを押すと追加されます。入荷日・在庫の有無でも絞り込めます。':x.startsWith('使用重量・ロス・歩留まりを確認し')?'重量集計で使用重量・ロス・歩留まりを確認します。':x);
+  g.steps=g.steps.map(x=>x.startsWith('「使用原料」でロットを追加します')?'「② 使用原料」の「候補から選ぶ」の▼からロットを選ぶと追加されます。品名・ロット番号・入荷日・在庫の有無を入れると、▼の中身がすぐ絞り込まれます（検索ボタンはありません）。':x.startsWith('使った数量または重量を入力します')?'使った原料の重さ（kg）を入力します。入力は重さだけです。':x.startsWith('「出来高」に入替品を追加し')?'「③ 出来高」は最初から1件出ています。▼の候補（通常在庫表で品名に「入替品」が入っている品目）から選ぶか、候補に無いときは手入力し、重さ（kg）を入力します。2種類以上できたときは「＋ 出来高（入替品）を追加」で増やします。':x.startsWith('使用重量・ロス・歩留まりを確認し')?'重量集計で使用重量・ロス・歩留まりを確認します。':x);
   const i=g.steps.findIndex(x=>x.startsWith('重量集計で'));
   g.steps.splice(i<0?g.steps.length:i+1,0,'「④ 廃棄」の「廃棄した重さ」を確かめます。最初はロス（使用原料−出来高）の重さが入っています。水分が抜けた分など、捨てていない分があるときは直します。捨てていないときは0にします。','「⑤ 確認して登録」で、必要ならメモを入れて登録します。廃棄の重さは、廃棄一覧・週次廃棄レポート・Excelに「トリミング廃棄」として自動で入ります。単価は原料ロットの仕入先を仕入れ価格表と照らし合わせて決まります。');
   g.caution='通常在庫・QR在庫・QR操作履歴は変更されません。トリミングで出た廃棄は「廃棄入力」で入れないでください（二重になります）。日報を修正・削除すると、トリミング廃棄も一緒に変わります。';
  }
 }catch(e){}
-Object.assign(window,{c64PickLot,c64RefreshList,v1640LotListHtml:c64LotListHtml});
+function c64ExchangeNames(){
+ const names=[...new Set((typeof activeItems==='function'?activeItems():[]).map(it=>String(it.name||'').trim()).filter(n=>n.includes('入替品')))];
+ const src=String(v1115Trimming.lots[0]?.itemName||'').trim();
+ return names.sort((a,b)=>(src&&b.includes(src)?1:0)-(src&&a.includes(src)?1:0)||a.localeCompare(b,'ja'));
+}
+function c64OutputOptionsHtml(line){
+ const all=c64ExchangeNames(),cur=String(line&&(line.itemName||line.itemId)||'').trim();
+ if(!all.length)return '<option value="">（通常在庫表に「入替品」が入った品目がありません）</option>';
+ return `<option value="">▼ 候補から選ぶ（${all.length}件）</option>`+all.map(n=>`<option value="${esc(n)}" ${n===cur?'selected':''}>${esc(n)}</option>`).join('');
+}
+function c64PickOutputSel(id){
+ const sel=document.getElementById(`trimOutPick_${id}`),name=sel?sel.value:'';if(!name)return;
+ const el=document.getElementById(`trimOutNormal_${id}`);if(el)el.value=name;
+ const line=v1115Trimming.outputs.find(x=>x.id===id);if(line){line.itemName=name;line.itemId=name}
+ document.getElementById(`trimOutWeight_${id}`)?.focus();
+}
+document.addEventListener('input',e=>{const m=String(e.target&&e.target.id||'').match(/^trimOutNormal_(.+)$/);if(m){const sel=document.getElementById(`trimOutPick_${m[1]}`);if(sel&&sel.value!==e.target.value.trim())sel.value=[...sel.options].some(o=>o.value===e.target.value.trim())?e.target.value.trim():''}});
+window.c64OutputOptionsHtml=c64OutputOptionsHtml;
+Object.assign(window,{c64PickLot,c64PickLotSel,c64RefreshList,c64PickOutputSel,v1640LotListHtml:c64LotListHtml});
 window.v1640LotListHtml=c64LotListHtml;
 })();
 </script>
