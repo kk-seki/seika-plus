@@ -11312,7 +11312,7 @@ v1115RenderTrimming=function(){
 <div class="card" style="margin:9px 0 0;padding:10px 14px"><b>③ 出来高</b></div>
 <button class="btn btn2" style="width:100%" data-seika-click-action="v1115AddTrimOutput" data-seika-click-args="%5B%5D">＋ 出来高（入替品）を追加</button>
 <div id="trimOutputCards">${outputCards||'<div class="notice">出来高を1件以上追加してください。</div>'}</div>
-<div class="card"><b>重量集計</b><div id="trimTotals" class="grid" style="margin-top:8px"><div class="box">使用原料<b>${fmtRounded(totals.input)}kg</b></div><div class="box">出来高 合計<b>${fmtRounded(totals.output)}kg</b></div><div class="box">ロス<b>${fmtRounded(totals.loss)}kg</b></div><div class="box">歩留まり<b>${fmtRounded(totals.yield)}%</b></div></div>${yieldNote}
+<div class="card"><b>重量集計</b><div id="trimTotals" class="grid" style="margin-top:8px"><div class="box">使用原料<b>${fmtRounded(totals.input)}kg</b></div><div class="box">出来高 合計<b>${fmtRounded(totals.output)}kg</b></div><div class="box">ロス<b>${fmtRounded(totals.loss)}kg</b></div><div class="box">歩留まり<b>${fmtRounded(totals.yield)}%</b></div></div><div id="trimYieldNote">${yieldNote}</div>
 <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0"><b>④ 廃棄</b>
 <label class="label" style="margin-top:6px" for="trimWasteKg">廃棄した重さ（kg）</label><input id="trimWasteKg" type="number" inputmode="decimal" step="0.01" min="0" class="input" placeholder="例：3.5">
 <div class="small" id="trimWasteNote" style="margin-top:4px">ロス（使用原料−出来高）の重さが入ります。<br>登録すると廃棄一覧に「トリミング廃棄」として入ります。<br>廃棄入力で同じ分を入れないでください。</div></div>
@@ -18458,9 +18458,11 @@ v1115RenderTrimming=function(...args){
 };
 window.v1115RenderTrimming=v1115RenderTrimming;
 const c64SummaryBase=v1115RefreshTrimmingSummary;
-v1115RefreshTrimmingSummary=function(...args){const r=c64SummaryBase.apply(this,args);try{c64SyncWaste()}catch(e){}return r};
+function c64YieldNoteHtml(){const t=v1115TrimmingTotals();return t.input<=0?'<div class="small" style="color:#b45309;margin-top:6px">使用原料が未入力のため歩留まりは計算できません。上で使用原料のロットを追加し、使用量を入力してください。</div>':(t.output>t.input+0.011?'<div class="small" style="color:#0f766e;margin-top:6px">歩留まりが100%を超えています。10kg入りの原料に10kg以上入っていた場合などに起こります。実測どおりの数字のまま登録できます。</div>':'')}
+function c64SyncYieldNote(){const box=document.getElementById('trimYieldNote');if(box){const h=c64YieldNoteHtml();if(box.innerHTML!==h)box.innerHTML=h}}
+v1115RefreshTrimmingSummary=function(...args){const r=c64SummaryBase.apply(this,args);try{c64SyncWaste();c64SyncYieldNote()}catch(e){}return r};
 window.v1115RefreshTrimmingSummary=v1115RefreshTrimmingSummary;
-document.addEventListener('input',e=>{const id=String(e.target&&e.target.id||'');if(/^trim(LotAmount|OutWeight|OutQty|OutUnit)_/.test(id))setTimeout(c64SyncWaste,0)});
+document.addEventListener('input',e=>{const id=String(e.target&&e.target.id||'');if(/^trim(LotAmount|OutWeight|OutQty|OutUnit)_/.test(id))setTimeout(()=>{c64SyncWaste();c64SyncYieldNote()},0)});
 document.addEventListener('change',e=>{const id=String(e.target&&e.target.id||'');if(/^trim(LotMode|OutMode)_/.test(id))setTimeout(c64SyncWaste,0)});
 const c64ResetBase=v1115TrimmingReset;
 v1115TrimmingReset=function(...args){c64Waste={kg:'',touched:false};return c64ResetBase.apply(this,args)};
@@ -18549,8 +18551,8 @@ try{
   const g=V198_GUIDE_SECTIONS.trimming;g.title='日報を登録する';
   g.steps=g.steps.map(x=>x.startsWith('「使用原料」でロットを追加します')?'「② 使用原料」の「候補から選ぶ」の▼からロットを選ぶと追加されます。品名・ロット番号・入荷日・在庫の有無を入れると、▼の中身がすぐ絞り込まれます（検索ボタンはありません）。':x.startsWith('使った数量または重量を入力します')?'使った原料の重さ（kg）を入力します。入力は重さだけです。':x.startsWith('「出来高」に入替品を追加し')?'「③ 出来高」は最初から1件出ています。▼の候補（通常在庫表で品名に「入替品」が入っている品目）から選ぶか、候補に無いときは手入力し、重さ（kg）を入力します。2種類以上できたときは「＋ 出来高（入替品）を追加」で増やします。':x.startsWith('使用重量・ロス・歩留まりを確認し')?'重量集計で使用重量・ロス・歩留まりを確認します。':x);
   const i=g.steps.findIndex(x=>x.startsWith('重量集計で'));
-  g.steps.splice(i<0?g.steps.length:i+1,0,'「④ 廃棄」の「廃棄した重さ」を確かめます。最初はロス（使用原料−出来高）の重さが入っています。水分が抜けた分など、捨てていない分があるときは直します。捨てていないときは0にします。','「⑤ 確認して登録」で、必要ならメモを入れて登録します。廃棄の重さは、廃棄一覧・週次廃棄レポート・Excelに「トリミング廃棄」として自動で入ります。単価は原料ロットの仕入先を仕入れ価格表と照らし合わせて決まります。');
-  g.caution='通常在庫・QR在庫・QR操作履歴は変更されません。トリミングで出た廃棄は「廃棄入力」で入れないでください（二重になります）。日報を修正・削除すると、トリミング廃棄も一緒に変わります。';
+  g.steps.splice(i<0?g.steps.length:i+1,0,'「④ 廃棄」の「廃棄した重さ」を確かめます。ロス（使用原料−出来高）の重さが入ります。','「⑤ 確認して登録」で、必要ならメモを入れて登録します。登録すると廃棄一覧（週次廃棄レポート・Excelも）に「トリミング廃棄」として入ります。単価は原料ロットの仕入先を仕入れ価格表と照らし合わせて決まります。');
+  g.caution='通常在庫・QR在庫・QR操作履歴は変更されません。廃棄入力で同じ分を入れないでください（二重になります）。日報を修正・削除すると、トリミング廃棄も一緒に変わります。';
  }
 }catch(e){}
 function c64ExchangeNames(){
