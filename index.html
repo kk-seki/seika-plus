@@ -11315,7 +11315,7 @@ v1115RenderTrimming=function(){
 <div class="card"><b>重量集計</b><div id="trimTotals" class="grid" style="margin-top:8px"><div class="box">使用原料<b>${fmtRounded(totals.input)}kg</b></div><div class="box">出来高 合計<b>${fmtRounded(totals.output)}kg</b></div><div class="box">ロス<b>${fmtRounded(totals.loss)}kg</b></div><div class="box">歩留まり<b>${fmtRounded(totals.yield)}%</b></div></div>${yieldNote}
 <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0"><b>④ 廃棄</b>
 <label class="label" style="margin-top:6px" for="trimWasteKg">廃棄した重さ（kg）</label><input id="trimWasteKg" type="number" inputmode="decimal" step="0.01" min="0" class="input" placeholder="例：3.5">
-<div class="small" id="trimWasteNote" style="margin-top:4px">最初はロス（使用原料−出来高）の重さが入ります。水分が抜けた分など、捨てていない分があるときは直してください。登録すると廃棄一覧に「トリミング廃棄」として入ります。廃棄入力で同じ分を入れないでください。</div></div>
+<div class="small" id="trimWasteNote" style="margin-top:4px">ロス（使用原料−出来高）の重さが入ります。<br>登録すると廃棄一覧に「トリミング廃棄」として入ります。<br>廃棄入力で同じ分を入れないでください。</div></div>
 <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0"><b>⑤ 確認して登録</b></div>
 <label class="label" style="margin-top:6px">メモ（任意）</label><textarea id="trimNote" class="textarea" placeholder="作業内容・特記事項"></textarea>
 <button class="btn green" style="width:100%;margin-top:12px" data-seika-click-action="v1115SaveTrimming" data-seika-click-args="%5B%5D">確認して日報を登録</button></div>`);
