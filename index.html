@@ -11287,7 +11287,7 @@ v1115RenderTrimming=function(){
   const first=v1115Trimming.lots[0],totals=v1115TrimmingTotals();
   const lotCards=v1115Trimming.lots.map(line=>`<div class="card" style="margin:9px 0"><div class="row"><b>${esc(line.itemName)}</b><button class="btn danger" style="padding:6px 9px" ${seikaEventAttrs('click','v1115RemoveTrimLot',[line.id])}>削除</button></div><div class="small">ロット ${esc(line.lotNo||line.qrKey)}（日報の参照用。QR在庫は変更しません）</div><input type="hidden" id="trimLotMode_${line.id}" value="weight"><label class="label" style="margin-top:7px">使用原料 重量kg</label><input id="trimLotAmount_${line.id}" class="input" type="number" step="0.01" inputmode="decimal" min="0" value="${esc(line.amount||'')}" data-seika-input-action="v1115RefreshTrimmingSummary" data-seika-input-args="%5B%5D" placeholder="例：30">${line.unitWeight>0?`<div class="small">参考：1${esc(line.unit)} = ${fmtRounded(line.unitWeight)}kg</div>`:''}</div>`).join('');
   const itemOpts=specialItems('exchange').map(it=>`<option value="${esc(it.name)}"></option>`).join('');
-  const outputCards=v1115Trimming.outputs.map((line,index)=>`<div class="card" style="margin:9px 0"><div class="row"><b>出来高 ${index+1}</b><button class="btn danger" style="padding:6px 9px" ${seikaEventAttrs('click','v1115RemoveTrimOutput',[line.id])}>削除</button></div><label class="label">日報に記録する入替品</label><select id="trimOutPick_${line.id}" class="input" ${seikaEventAttrs('change','c64PickOutputSel',[line.id])}>${typeof c64OutputOptionsHtml==='function'?c64OutputOptionsHtml(line):''}</select><input id="trimOutNormal_${line.id}" class="input" style="margin-top:6px" list="trimOutCandidates_${line.id}" value="${esc(specialItems('exchange').find(it=>String(it.id)===String(line.itemId||''))?.name||line.itemName||line.itemId||'')}" placeholder="候補に無いときはここに手入力" autocomplete="off"><div class="small">▼から選ぶと下の欄に入ります（候補は通常在庫表で品名に「入替品」が入っている品目）。候補に無いときは下の欄に手入力してください。</div><input type="hidden" id="trimOutMode_${line.id}" value="weight"><label class="label" style="margin-top:9px">出来高 重量kg</label><input id="trimOutWeight_${line.id}" class="input" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(line.weight||'')}" placeholder="例：21" data-seika-input-action="v1115RefreshTrimmingSummary" data-seika-input-args="%5B%5D"></div>`).join('');
+  const outputCards=v1115Trimming.outputs.map((line,index)=>`<div class="card" style="margin:9px 0"><div class="row"><b>出来高 ${index+1}</b><button class="btn danger" style="padding:6px 9px" ${seikaEventAttrs('click','v1115RemoveTrimOutput',[line.id])}>削除</button></div><label class="label">日報に記録する入替品</label><select id="trimOutPick_${line.id}" class="input" ${seikaEventAttrs('change','c64PickOutputSel',[line.id])}>${typeof c64OutputOptionsHtml==='function'?c64OutputOptionsHtml(line):''}</select><input id="trimOutNormal_${line.id}" class="input" style="margin-top:6px" list="trimOutCandidates_${line.id}" value="${esc(specialItems('exchange').find(it=>String(it.id)===String(line.itemId||''))?.name||line.itemName||line.itemId||'')}" placeholder="候補に無いときはここに手入力" autocomplete="off"><div class="small">▼から選ぶと下の欄に入ります（候補は「入替品登録」で登録した品目）。候補に無いときは下の欄に手入力してください。</div><input type="hidden" id="trimOutMode_${line.id}" value="weight"><label class="label" style="margin-top:9px">出来高 重量kg</label><input id="trimOutWeight_${line.id}" class="input" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(line.weight||'')}" placeholder="例：21" data-seika-input-action="v1115RefreshTrimmingSummary" data-seika-input-args="%5B%5D"></div>`).join('');
   const candidates=v195TrimLotCandidates();
   const shown=Math.min(candidates.length,V195_TRIM_LIST_MAX);
   const pickerNote=!v195TrimLotsLoaded?'ロットを読み込み中です…'
@@ -18549,20 +18549,27 @@ window.wasteEntryPage=wasteEntryPage;
 try{
  if(typeof V198_GUIDE_SECTIONS!=='undefined'&&V198_GUIDE_SECTIONS.trimming){
   const g=V198_GUIDE_SECTIONS.trimming;g.title='日報を登録する';
-  g.steps=g.steps.map(x=>x.startsWith('「使用原料」でロットを追加します')?'「② 使用原料」の「候補から選ぶ」の▼からロットを選ぶと追加されます。品名・ロット番号・入荷日・在庫の有無を入れると、▼の中身がすぐ絞り込まれます（検索ボタンはありません）。':x.startsWith('使った数量または重量を入力します')?'使った原料の重さ（kg）を入力します。入力は重さだけです。':x.startsWith('「出来高」に入替品を追加し')?'「③ 出来高」は最初から1件出ています。▼の候補（通常在庫表で品名に「入替品」が入っている品目）から選ぶか、候補に無いときは手入力し、重さ（kg）を入力します。2種類以上できたときは「＋ 出来高（入替品）を追加」で増やします。':x.startsWith('使用重量・ロス・歩留まりを確認し')?'重量集計で使用重量・ロス・歩留まりを確認します。':x);
+  g.steps=g.steps.map(x=>x.startsWith('「使用原料」でロットを追加します')?'「② 使用原料」の「候補から選ぶ」の▼からロットを選ぶと追加されます。品名・ロット番号・入荷日・在庫の有無を入れると、▼の中身がすぐ絞り込まれます（検索ボタンはありません）。':x.startsWith('使った数量または重量を入力します')?'使った原料の重さ（kg）を入力します。入力は重さだけです。':x.startsWith('「出来高」に入替品を追加し')?'「③ 出来高」は最初から1件出ています。▼の候補（製造・歩留まりの「入替品登録」で登録した品目）から選ぶか、候補に無いときは手入力し、重さ（kg）を入力します。2種類以上できたときは「＋ 出来高（入替品）を追加」で増やします。':x.startsWith('使用重量・ロス・歩留まりを確認し')?'重量集計で使用重量・ロス・歩留まりを確認します。':x);
   const i=g.steps.findIndex(x=>x.startsWith('重量集計で'));
   g.steps.splice(i<0?g.steps.length:i+1,0,'「④ 廃棄」の「廃棄した重さ」を確かめます。ロス（使用原料−出来高）の重さが入ります。','「⑤ 確認して登録」で、必要ならメモを入れて登録します。登録すると廃棄一覧（週次廃棄レポート・Excelも）に「トリミング廃棄」として入ります。単価は原料ロットの仕入先を仕入れ価格表と照らし合わせて決まります。');
   g.caution='通常在庫・QR在庫・QR操作履歴は変更されません。廃棄入力で同じ分を入れないでください（二重になります）。日報を修正・削除すると、トリミング廃棄も一緒に変わります。';
  }
 }catch(e){}
+let c68Cands=null,c68CandsLoading=null;
+async function c68LoadCands(force){
+ if(c68Cands&&!force)return c68Cands;
+ if(!c68CandsLoading)c68CandsLoading=(async()=>{try{const a=await callRpc('list_trim_output_candidates_v1680',{p_include_hidden:false});c68Cands=Array.isArray(a&&a.rows)?a.rows:[]}catch(e){console.warn('[入替品の候補]',e);c68Cands=c68Cands||[]}finally{c68CandsLoading=null}return c68Cands})();
+ return c68CandsLoading;
+}
+function c68RefreshOutputSelects(){for(const o of v1115Trimming.outputs){const sel=document.getElementById(`trimOutPick_${o.id}`);if(!sel)continue;const cur=document.getElementById(`trimOutNormal_${o.id}`)?.value||'';sel.innerHTML=c64OutputOptionsHtml({...o,itemName:cur})}}
 function c64ExchangeNames(){
- const names=[...new Set((typeof activeItems==='function'?activeItems():[]).map(it=>String(it.name||'').trim()).filter(n=>n.includes('入替品')))];
- const src=String(v1115Trimming.lots[0]?.itemName||'').trim();
- return names.sort((a,b)=>(src&&b.includes(src)?1:0)-(src&&a.includes(src)?1:0)||a.localeCompare(b,'ja'));
+ if(!c68Cands){c68LoadCands().then(c68RefreshOutputSelects);return null}
+ return [...new Set(c68Cands.filter(c=>c.active!==false).map(c=>String(c.name||'').trim()).filter(Boolean))];
 }
 function c64OutputOptionsHtml(line){
  const all=c64ExchangeNames(),cur=String(line&&(line.itemName||line.itemId)||'').trim();
- if(!all.length)return '<option value="">（通常在庫表に「入替品」が入った品目がありません）</option>';
+ if(all===null)return '<option value="">候補を読み込み中です…</option>';
+ if(!all.length)return '<option value="">（候補がありません。製造・歩留まりの「入替品登録」で登録してください）</option>';
  return `<option value="">▼ 候補から選ぶ（${all.length}件）</option>`+all.map(n=>`<option value="${esc(n)}" ${n===cur?'selected':''}>${esc(n)}</option>`).join('');
 }
 function c64PickOutputSel(id){
@@ -18572,9 +18579,80 @@ function c64PickOutputSel(id){
  document.getElementById(`trimOutWeight_${id}`)?.focus();
 }
 document.addEventListener('input',e=>{const m=String(e.target&&e.target.id||'').match(/^trimOutNormal_(.+)$/);if(m){const sel=document.getElementById(`trimOutPick_${m[1]}`);if(sel&&sel.value!==e.target.value.trim())sel.value=[...sel.options].some(o=>o.value===e.target.value.trim())?e.target.value.trim():''}});
-window.c64OutputOptionsHtml=c64OutputOptionsHtml;
+window.c64OutputOptionsHtml=c64OutputOptionsHtml;window.c68ResetCands=()=>{c68Cands=null};
 Object.assign(window,{c64PickLot,c64PickLotSel,c64RefreshList,c64PickOutputSel,v1640LotListHtml:c64LotListHtml});
 window.v1640LotListHtml=c64LotListHtml;
+})();
+</script>
+<script>
+/* ===== v1.199-c68 入替品登録（日報登録の出来高の候補を登録・並び替え・候補から外す） ===== */
+(function(){
+let c68Rows=[],c68Loaded=false,c68Err='';
+const canEdit=()=>typeof v1115CanTrimmingEdit==='function'?v1115CanTrimmingEdit():false;
+async function c68Fetch(){
+ try{const a=await callRpc('list_trim_output_candidates_v1680',{p_include_hidden:true});if(!a||a.ok===false)throw new Error(a&&a.message||'読み込めませんでした');c68Rows=Array.isArray(a.rows)?a.rows:[];c68Err=''}
+ catch(e){c68Err=e&&e.message||String(e)}
+ c68Loaded=true;
+}
+function c68Render(){
+ if(currentScreen!=='c68ExchangeRegPage')return;
+ const edit=canEdit(),act=c68Rows.filter(r=>r.active!==false),hid=c68Rows.filter(r=>r.active===false);
+ const row=(r,i,list)=>`<div class="card" style="margin:8px 0;padding:10px 12px"><div class="small">${r.active===false?'候補から外しています':`${i+1}番目`}</div>
+${edit?`<input id="c68Name_${esc(r.id)}" class="input" value="${esc(r.name)}" autocomplete="off">
+<div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap">
+<button class="btn" style="padding:6px 10px" ${seikaEventAttrs('click','c68Save',[r.id])}>名前を保存</button>
+${r.active===false?`<button class="btn" style="padding:6px 10px" ${seikaEventAttrs('click','c68SetActive',[r.id,true])}>候補に戻す</button>`:`<button class="btn" style="padding:6px 10px" ${i===0?'disabled':''} ${seikaEventAttrs('click','c68Move',[r.id,-1])}>↑ 上へ</button><button class="btn" style="padding:6px 10px" ${i===list.length-1?'disabled':''} ${seikaEventAttrs('click','c68Move',[r.id,1])}>↓ 下へ</button><button class="btn" style="padding:6px 10px" ${seikaEventAttrs('click','c68SetActive',[r.id,false])}>候補から外す</button>`}
+</div>`:`<b>${esc(r.name)}</b>`}</div>`;
+ pageShell('入替品登録','日報登録の出来高（入替品）の候補',`
+<div class="notice"><b>ここで登録した品目が、日報登録の「③ 出来高」の▼に候補として出ます。</b><div class="small">上から順に▼に並びます。「候補から外す」と▼には出なくなりますが、消えないので「候補に戻す」で戻せます。在庫は変わりません。</div></div>
+${c68Err?`<div class="warn">候補を読み込めませんでした。${esc(c68Err)}<br>SQL（db/026）が未実行の可能性があります。</div>`:''}
+${edit?`<div class="card"><b>新しい候補を追加</b><label class="label" style="margin-top:6px">名前</label><input id="c68NewName" class="input" placeholder="例：白菜 15kg/入替品" autocomplete="off"><button class="btn green" style="width:100%;margin-top:8px" ${seikaEventAttrs('click','c68Add',[])}>追加する</button></div>`:'<div class="small">候補の登録は管理者・青果社員だけができます。</div>'}
+<div class="card" style="padding:10px 14px"><b>候補（${act.length}件）</b></div>
+${c68Loaded?(act.length?act.map((r,i)=>row(r,i,act)).join(''):'<div class="small">候補がありません。</div>'):'<div class="small">読み込み中です…</div>'}
+${hid.length?`<div class="card" style="padding:10px 14px;margin-top:14px"><b>候補から外した品目（${hid.length}件）</b></div>${hid.map((r,i)=>row(r,i,hid)).join('')}`:''}`);
+}
+async function c68ExchangeRegPage(){
+ setScreen('c68ExchangeRegPage',[]);c68Loaded=false;c68Render();
+ await c68Fetch();c68Render();
+}
+async function c68Call(name,args){
+ const a=await callRpc(name,args);
+ if(!a||a.ok===false){alert(a&&a.message||'保存できませんでした');return false}
+ if(window.c68ResetCands)window.c68ResetCands();
+ await c68Fetch();c68Render();return true;
+}
+async function c68Add(){const el=document.getElementById('c68NewName'),v=String(el&&el.value||'').trim();if(!v)return alert('名前を入力してください');await c68Call('save_trim_output_candidate_v1680',{p_id:null,p_name:v,p_active:true})}
+async function c68Save(id){const r=c68Rows.find(x=>String(x.id)===String(id));const v=String(document.getElementById(`c68Name_${id}`)?.value||'').trim();if(!v)return alert('名前を入力してください');if(r&&v===r.name)return;if(!confirm(`名前を「${v}」に変えます。\n\nこれまでに登録した日報の名前は変わりません。`))return;await c68Call('save_trim_output_candidate_v1680',{p_id:id,p_name:v,p_active:r?r.active!==false:true})}
+async function c68SetActive(id,on){const r=c68Rows.find(x=>String(x.id)===String(id));if(!r)return;if(!on&&!confirm(`「${r.name}」を候補から外します。\n\n日報登録の▼に出なくなります（あとで戻せます）。`))return;await c68Call('save_trim_output_candidate_v1680',{p_id:id,p_name:r.name,p_active:!!on})}
+async function c68Move(id,dir){await c68Call('move_trim_output_candidate_v1680',{p_id:id,p_dir:Number(dir)})}
+
+const prodBase=v1200ProductionHome;
+v1200ProductionHome=function(...args){
+ const r=prodBase.apply(this,args);
+ try{const box=document.querySelector('.homePrimary');if(box&&!box.querySelector('.homeBtnExchangeReg'))box.insertAdjacentHTML('beforeend',`<button class="btn homeBtnExchangeReg" ${seikaEventAttrs('click','c68ExchangeRegPage',[])}>入替品登録<br><span style="font-size:15px;font-weight:800">出来高（入替品）の候補</span></button>`)}catch(e){}
+ return r;
+};
+window.v1200ProductionHome=v1200ProductionHome;
+const trimBase=trimmingPage;
+trimmingPage=function(...args){if(window.c68ResetCands)window.c68ResetCands();return trimBase.apply(this,args)};
+window.trimmingPage=trimmingPage;
+
+const st=document.createElement('style');
+st.textContent='.homePrimary .btn.homeBtnExchangeReg,.viewerHome .btn.homeBtnExchangeReg{background:linear-gradient(90deg,#86198f 0%,#c026d3 48%,#f0abfc 100%) !important;color:#fff !important;border-color:transparent !important}';
+document.head.appendChild(st);
+
+try{
+ const sec={title:'入替品を登録する（日報の出来高の候補）',where:'ホーム → 製造・歩留まり → 入替品登録',
+  steps:['「新しい候補を追加」に名前を入れて「追加する」を押します。日報登録の「③ 出来高」の▼に出るようになります。',
+   '名前を直すときは、欄を書き換えて「名前を保存」を押します。これまでに登録した日報の名前は変わりません。',
+   '「↑ 上へ」「↓ 下へ」で▼に出る順番を変えます。',
+   '使わなくなった品目は「候補から外す」を押します。消えないので、下の「候補から外した品目」から「候補に戻す」で戻せます。'],
+  check:'日報登録を開き直し、「③ 出来高」の▼に候補が出るか確かめます。',
+  caution:'登録・変更できるのは管理者・青果社員です。在庫は変わりません。'};
+ if(typeof V198_GUIDE_SECTIONS!=='undefined')V198_GUIDE_SECTIONS.c68ExchangeReg=sec;
+ if(typeof V195_ROLE_GUIDES!=='undefined')for(const role of ['admin','worker']){const g=V195_ROLE_GUIDES[role];if(!g||!Array.isArray(g.sections)||g.sections.some(x=>x.title===sec.title))continue;const i=g.sections.findIndex(x=>x.title==='日報を登録する');g.sections.splice(i<0?g.sections.length:i+1,0,sec)}
+}catch(e){}
+Object.assign(window,{c68ExchangeRegPage,c68Add,c68Save,c68SetActive,c68Move});
 })();
 </script>
 </body>
