@@ -17231,7 +17231,7 @@ async function h2EditMaster(id){
 function h2ToggleMaster(id){const m=(X.masterCache||[]).find(x=>x.id===id);if(!m)return;return h2SaveMaster(id,{item:m.item_name,name:m.name,kg:Number(m.default_pack_kg),days:m.expiry_days,active:!m.active})}
 
 /* --- スタッフQR（登録・印刷・作業名・作業場所） --- */
-function staffTabs(cur){const t=(k,act,l)=>`<button class="btn ${cur===k?"hqBtnStaff":"btn2"}" ${btnAttr(act,[])}>${l}</button>`;return `<div class="card h2Tabs">${t("reg","hqStaffPage","スタッフ登録")}${t("print","hqStaffPrintPage","QRの印刷")}${t("tasks","hqTaskPlacePage","作業名・作業場所")}${t("time","hqWorkTimePage","作業時間")}</div>`}
+function staffTabs(cur){const t=(k,act,l)=>`<button class="btn ${cur===k?"hqBtnStaff":"btn2"}" ${btnAttr(act,[])}>${l}</button>`;return `<div class="card h2Tabs">${t("reg","hqStaffPage","スタッフ登録")}${t("print","hqStaffPrintPage","QRの印刷")}${t("tasks","hqTaskPlacePage","作業名・作業場所")}${t("time","hqWorkTimePage","作業時間")}${t("cmp","hqWorkComparePage","個人の比較")}</div>`}
 async function hqStaffPage(msg=""){
  if(!h2CanBoss())return hqHome();setScreen("hqStaffPage",[msg]);pageShell("スタッフQR","スタッフ登録",h2Loading());
  let staff=[],teams=[];try{[staff,teams]=await Promise.all([h2Staff(),h2Teams()])}catch(e){return pageShell("スタッフQR","エラー",`<div class="err">${esc(h2Err(e))}</div><div class="notice">019のSQLが未実行の可能性があります。</div>`)}
@@ -17288,12 +17288,14 @@ async function h2PrintOps(){
 async function hqTaskPlacePage(msg=""){
  if(!h2CanBoss())return hqHome();setScreen("hqTaskPlacePage",[msg]);
  let tasks=[],places=[];try{[tasks,places]=await Promise.all([h2Tasks(true),h2Places(true)])}catch(e){return pageShell("スタッフQR","エラー",`<div class="err">${esc(h2Err(e))}</div>`)}
- const row=(name,active,act,fixed)=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><b>${esc(name)}${active?"":' <span class="badge unset">非表示</span>'}</b>${fixed?'<span class="small">（変えられません）</span>':`<button class="btn ${active?"btn2":"green"}" ${btnAttr(act,[name,!active])}>${active?"非表示にする":"表示する"}</button>`}</div>`;
+ const row=(name,active,act,fixed)=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><b>${esc(name)}${active?"":' <span class="badge unset">非表示</span>'}</b>${fixed?'<span class="small">（変えられません）</span>':`<div style="display:flex;gap:6px"><button class="btn ${active?"btn2":"green"}" ${btnAttr(act,[name,!active])}>${active?"非表示にする":"表示する"}</button><button class="btn red" ${btnAttr(act==="h2SaveTask"?"h2DeleteTask":"h2DeletePlace",[name])}>削除</button></div>`}</div>`;
  pageShell("スタッフQR","作業名・作業場所",`${okHtml(msg)}${staffTabs("tasks")}
  <div class="card"><b>作業名（下処理以外の作業）</b><div class="small">下処理・清掃のほかに、作業時間を記録したい作業を追加します（例：袋詰め、仕分け）。</div><div class="row" style="margin-top:6px"><input id="h2TkN" class="input" placeholder="例：袋詰め"><button class="btn hqBtnStaff" ${btnAttr("h2SaveTask",["",true])}>追加</button></div>${tasks.map(t=>row(t.name,t.active,"h2SaveTask",t.kind!=="作業")).join("")}</div>
  <div class="card"><b>作業場所</b><div class="small">作業を始めるときに選ぶ場所です。</div><div class="row" style="margin-top:6px"><input id="h2PlN" class="input" placeholder="例：下処理室③"><button class="btn hqBtnStaff" ${btnAttr("h2SavePlace",["",true])}>追加</button></div>${places.map(p=>row(p.name,p.active,"h2SavePlace",false)).join("")}</div>`);
 }
 async function h2SaveTask(name,active){name=name||h2Val("h2TkN").trim();if(!name)return alert("作業名を入れてください");try{await r2("hq_save_task_v1500",{p_name:name,p_active:active});return hqTaskPlacePage("保存しました")}catch(e){alert(h2Err(e))}}
+async function h2DeleteTask(name){if(!confirm(`作業名「${name}」を削除します。\n\n作業を始める画面に出なくなります。これまでの作業時間の記録はそのまま残ります。`))return;try{await r2("hq_delete_task_v1700",{p_name:name});return hqTaskPlacePage(`「${name}」を削除しました`)}catch(e){alert(h2Err(e))}}
+async function h2DeletePlace(name){if(!confirm(`作業場所「${name}」を削除します。\n\n作業を始める画面に出なくなります。これまでの作業の記録の場所名はそのまま残ります。`))return;try{await r2("hq_delete_place_v1700",{p_name:name});return hqTaskPlacePage(`「${name}」を削除しました`)}catch(e){alert(h2Err(e))}}
 async function h2SavePlace(name,active){name=name||h2Val("h2PlN").trim();if(!name)return alert("作業場所を入れてください");try{await r2("hq_save_place_v1500",{p_name:name,p_active:active});return hqTaskPlacePage("保存しました")}catch(e){alert(h2Err(e))}}
 
 /* --- 作業時間（人×時間）と作業人数 --- */
@@ -17326,8 +17328,43 @@ async function hqWorkTimePage(month=""){
  }catch(e){h2Set("h2WtBody",`<div class="err">${esc(h2Err(e))}</div>`)}
 }
 async function h2ExcelWorkTime(month){return X.excelOut("worktime",month)}
-window.h2MakePdfC69=h2MakePdf;window.h2QrC69=h2Qr;Object.assign(window,{hqPrepCheckPage,h2CkFilter,h2ToggleStage2,hqPrepConfirmPage,h2ConfirmPrep,h2CancelPrep,hqPrepMasterPage,h2SaveMaster,h2EditMaster,h2ToggleMaster,hqStaffPage,h2TeamChanged,h2SaveStaff,h2EditStaff,h2SaveStaffEdit,h2DeleteStaff,hqStaffPrintPage,h2PrintBoard,h2PrintOps,hqTaskPlacePage,h2SaveTask,h2SavePlace,hqWorkTimePage,h2ExcelWorkTime});
-Object.assign(X,{workTimeData,workTimeSummary,GROUPS});
+async function workRangeData(from,to){
+ const works=await h2Works(`select=*&work_date=gte.${from}&work_date=lte.${to}&status=neq.取消&order=work_date.asc&limit=5000`);
+ const mem=await h2Members(works.map(w=>w.id));
+ return{works,mem};
+}
+function workCompare(works,mem){
+ const wm=new Map(works.map(w=>[w.id,w])),per=new Map(),prod=new Map(),workMin=new Map();
+ for(const m of mem){if(m.phase==="清掃")continue;workMin.set(m.work_id,(workMin.get(m.work_id)||0)+mins2(m.start_at,m.end_at))}
+ for(const m of mem){const w=wm.get(m.work_id);if(!w||m.phase==="清掃")continue;const min=mins2(m.start_at,m.end_at);
+  const p=per.get(m.staff_id)||{name:m.staff_name,team:m.team||"",prep:0,other:0,days:new Set()};if(w.kind==="下処理")p.prep+=min;else p.other+=min;p.days.add(w.work_date);per.set(m.staff_id,p);
+  if(w.kind!=="下処理"||w.confirm_status!=="確定"||!(Number(w.yield_kg)>0))continue;
+  const tot=workMin.get(w.id)||0;if(!tot)continue;const name=w.product_name||"（名前なし）";
+  const g=prod.get(name)||new Map();const q=g.get(m.staff_id)||{name:m.staff_name,team:m.team||"",min:0,kg:0,works:new Set()};
+  q.min+=min;q.kg+=Number(w.yield_kg)*min/tot;q.works.add(w.id);g.set(m.staff_id,q);prod.set(name,g);
+ }
+ return{per,prod};
+}
+const kgh=q=>q.min>0?Math.round(q.kg/(q.min/60)*10)/10:0;
+async function hqWorkComparePage(from="",to=""){
+ if(!h2CanBoss())return hqHome();
+ const today=ymdKey(new Date());from=from||today.slice(0,8)+"01";to=to||today;if(from>to){const t=from;from=to;to=t}
+ setScreen("hqWorkComparePage",[from,to]);
+ pageShell("作業時間","個人の比較（本社社員・管理者）",`${staffTabs("cmp")}<div class="card"><div class="row"><div><label class="label">開始日</label><input type="date" class="input" value="${esc(from)}" ${seikaEventAttrs("change","h2CmpFrom",[{__seikaValue:true},to])}></div><div><label class="label">終了日</label><input type="date" class="input" value="${esc(to)}" ${seikaEventAttrs("change","h2CmpTo",[from,{__seikaValue:true}])}></div></div><div class="small">清掃の時間は入れずに比べます。</div></div><div id="h2CmpBody">${h2Loading()}</div>`);
+ try{
+  const{works,mem}=await workRangeData(from,to);const{per,prod}=workCompare(works,mem);
+  const ps=[...per.values()].sort((a,b)=>(b.prep+b.other)-(a.prep+a.other));
+  const max=Math.max(1,...ps.map(p=>p.prep+p.other));
+  const bar=(v,c)=>`<div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-top:2px"><div style="height:8px;width:${Math.round(v/max*100)}%;background:${c}"></div></div>`;
+  h2Set("h2CmpBody",`<div class="card" style="overflow-x:auto"><b>人ごとの作業時間</b><table class="h2Tbl"><tr><th>名前</th><th>班</th><th>日数</th><th>下処理</th><th>ほかの作業</th><th>合計</th><th>1日平均</th></tr>${ps.map(p=>{const t=p.prep+p.other;return `<tr><td>${esc(p.name)}${bar(t,"#2563eb")}</td><td>${esc(p.team)}</td><td>${p.days.size}</td><td>${hm2(p.prep)}</td><td>${hm2(p.other)}</td><td><b>${hm2(t)}</b></td><td>${hm2(Math.round(t/Math.max(1,p.days.size)))}</td></tr>`}).join("")||'<tr><td colspan="7">記録がありません</td></tr>'}</table></div>
+  <div class="card"><b>下処理ごとの速さ（1時間あたりの出来高）</b><div class="small">確定した下処理だけで計算します。何人かで作業したときは、出来高を一人ひとりの作業時間の割合で分けています。回数が少ない人の数字は参考にしてください。</div></div>
+  ${[...prod.entries()].sort((a,b)=>a[0].localeCompare(b[0],"ja")).map(([name,g])=>{const qs=[...g.values()].sort((a,b)=>kgh(b)-kgh(a));const top=Math.max(0.1,...qs.map(kgh));return `<div class="card" style="overflow-x:auto"><b>${esc(name)}</b><table class="h2Tbl"><tr><th>名前</th><th>回数</th><th>作業時間</th><th>出来高（分けた分）</th><th>1時間あたり</th></tr>${qs.map(q=>`<tr><td>${esc(q.name)}<div class="small">${esc(q.team)}</div></td><td>${q.works.size}</td><td>${hm2(q.min)}</td><td>${(Math.round(q.kg*10)/10).toLocaleString()}kg</td><td><b>${kgh(q).toLocaleString()}kg</b><div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-top:2px"><div style="height:8px;width:${Math.round(kgh(q)/top*100)}%;background:#16a34a"></div></div></td></tr>`).join("")}</table></div>`}).join("")||'<div class="card small">この期間に確定した下処理がありません。</div>'}`);
+ }catch(e){h2Set("h2CmpBody",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+function h2CmpFrom(v,to){return hqWorkComparePage(v,to)}
+function h2CmpTo(from,v){return hqWorkComparePage(from,v)}
+window.h2MakePdfC69=h2MakePdf;window.h2QrC69=h2Qr;Object.assign(window,{hqPrepCheckPage,h2CkFilter,h2ToggleStage2,hqPrepConfirmPage,h2ConfirmPrep,h2CancelPrep,hqPrepMasterPage,h2SaveMaster,h2EditMaster,h2ToggleMaster,hqStaffPage,h2TeamChanged,h2SaveStaff,h2EditStaff,h2SaveStaffEdit,h2DeleteStaff,hqStaffPrintPage,h2PrintBoard,h2PrintOps,hqTaskPlacePage,h2SaveTask,h2SavePlace,h2DeleteTask,h2DeletePlace,hqWorkTimePage,h2ExcelWorkTime,hqWorkComparePage,h2CmpFrom,h2CmpTo});
+Object.assign(X,{workTimeData,workTimeSummary,workCompare,kgh,GROUPS});
 })();
 
 /* ===== 在庫入力（原料・仕掛品）／在庫表／使用数量／棚卸し ===== */
@@ -17669,6 +17706,10 @@ async function excelOut(kind,month,outWb){
    sheet(wb,"人ごと",[["名前","班","日数","作業（分）","清掃（分）","合計（分）","合計（時間）"]].concat([...per.values()].map(p=>[p.name,p.team,p.days.size,p.work,p.clean,p.work+p.clean,Math.round((p.work+p.clean)/6)/10])));
    sheet(wb,"日ごとの作業人数",[["日付","人数","人×時間（分）"]].concat([...perDay.entries()].sort().map(([d,v])=>[d,v.people.size,v.min])));
    sheet(wb,"作業ごと",[["作業","回数","人数（のべ）","人×時間（分）"]].concat([...perTask.entries()].map(([k,v])=>[k,v.count.size,v.people.size,v.min])));
+   if(h2CanBoss()){const{per:cp,prod}=X.workCompare(works,mem);
+    sheet(wb,"個人の比較（時間）",[["名前","班","日数","下処理（分）","ほかの作業（分）","合計（分）","合計（時間）","1日平均（分）"]].concat([...cp.values()].map(p=>{const t=p.prep+p.other;return[p.name,p.team,p.days.size,p.prep,p.other,t,Math.round(t/6)/10,Math.round(t/Math.max(1,p.days.size))]})));
+    const rows=[["下処理（仕掛品）","名前","班","回数","作業時間（分）","出来高（分けた分・kg）","1時間あたり（kg）"]];for(const[name,g]of prod)for(const q of g.values())rows.push([name,q.name,q.team,q.works.size,q.min,Math.round(q.kg*10)/10,X.kgh(q)]);
+    sheet(wb,"個人の比較（下処理）",rows)}
    sheet(wb,"記録",[["作業日","作業","仕掛品","作業場所","名前","班","作業／清掃","開始","終了","分","終わり方","修正した人"]].concat(mem.map(m=>{const w=wm.get(m.work_id)||{};return[w.work_date||"",w.task_name||"",w.product_name||"",w.place||"",m.staff_name,m.team||"",m.phase,new Date(m.start_at).toLocaleString("ja-JP"),m.end_at?new Date(m.end_at).toLocaleString("ja-JP"):"（終わっていない）",mins2(m.start_at,m.end_at),m.end_reason||"",m.fixed_by_name||""]})));
   }
   if(outWb)return title;
@@ -17824,8 +17865,8 @@ try{
   stage2:{title:"第2段階の在庫反映をオンにする（管理者・実用開始の日）",where:"本社ホーム →「下処理の確認」→ いちばん上",steps:["説明・練習のあいだは「オフ」のままにします（確定しても原料の在庫は減らず、使用出庫が使えます）。","実用を始める日に「オンにする（実用開始）」を押します。","オンにすると、使用出庫のボタンが消え、下処理の確定で原料の在庫が減ります。"],check:"「第2段階の在庫反映：オン（実用中）」と出ます。",caution:"オンにする前に、練習で作った下処理は取り消しておくと、集計がきれいです。"},
   master:{title:"下処理マスタ（仕掛品）を登録する",where:"本社ホーム →「下処理マスタ」",steps:["原料の品目を入れます（名前を入れると候補が出ます。候補にない名前もそのまま入れられます）。","仕掛品の名前・初期入れ数kg・使用期限の日数（ふつうは2日）を入れて「追加する」を押します。","使わなくなったら「使わない」を押します（削除はしません）。"],check:"パートさんの下処理で、その原料を読んだときに候補に出ます。",caution:"初期入れ数kgは、在庫入力で仕掛品を選んだときの入れ数になります。"},
   staff:{title:"スタッフを登録・削除する（スタッフQR）",where:"本社ホーム →「スタッフQR」→「スタッフ登録」",steps:["入社したとき：班名を選び、名前を入れて「登録する」を押します（グループは班に合わせて自動で選ばれます）。","グループや班を変えるとき：名前の横の「変更」を押します。","退職したとき：「削除」を押します。","「QRの印刷」で、グループごとの一覧ボードと操作用QRを印刷します。"],check:"登録するとスタッフQRができます。",caution:"削除しても、過去の作業時間は名前つきで残ります。登録・削除・グループ変更のあとは、一覧ボードを印刷し直してください。"},
-  tasks:{title:"作業名・作業場所を増やす",where:"スタッフQR →「作業名・作業場所」",steps:["作業名（下処理以外の作業）を入れて「追加」を押します。","作業場所を入れて「追加」を押します。","使わなくなったものは「非表示にする」を押します。"],check:"作業を始める画面のボタンに出ます。",caution:""},
-  worktime:{title:"作業時間を見る・読み忘れを直す",where:"スタッフQR →「作業時間」／ 作業の画面",steps:["月を選ぶと、人ごと・日ごとの人数・作業ごとの人×時間が出ます。","読み忘れは、作業の画面の「時刻を直す」「読み忘れた人を追加する」で直します。","「この月の作業時間をExcelにする」で月次のExcelを作ります。"],check:"",caution:"時給はアプリに持ちません。荷受けは対象外です。"},
+  tasks:{title:"作業名・作業場所を増やす",where:"スタッフQR →「作業名・作業場所」",steps:["作業名（下処理以外の作業）を入れて「追加」を押します。","作業場所を入れて「追加」を押します。","使わなくなったものは「非表示にする」を押します（あとで「表示する」で戻せます）。","いらないものは「削除」を押します。これまでの作業の記録に書かれた名前はそのまま残ります。"],check:"作業を始める画面のボタンに出ます。",caution:""},
+  worktime:{title:"作業時間を見る・読み忘れを直す",where:"スタッフQR →「作業時間」／ 作業の画面",steps:["月を選ぶと、人ごと・日ごとの人数・作業ごとの人×時間が出ます。","読み忘れは、作業の画面の「時刻を直す」「読み忘れた人を追加する」で直します。","「この月の作業時間をExcelにする」で月次のExcelを作ります。本社社員・管理者が作ると「個人の比較」のシートも入ります。","「個人の比較」で開始日と終了日を選ぶと、人ごとの作業時間（下処理・ほかの作業・合計・1日平均）と、下処理ごとの1時間あたりの出来高kgを、人ごとに並べて比べられます（本社社員・管理者だけ）。"],check:"",caution:"時給はアプリに持ちません。荷受けは対象外です。個人の比較には清掃の時間を入れません。1時間あたりの出来高は確定した下処理だけで計算し、何人かで作業したときは作業時間の割合で分けます。"},
   stockInput:{title:"在庫入力（原料・仕掛品）",where:"本社ホーム → 在庫管理 →「在庫入力」",steps:["日付を確かめます（ふだんは今日）。","上の「原料」「仕掛品」で切り替えます。","1行に「入れ数kg × ケース数」を入れます。入れ数がちがう箱は「＋ 入れ数を追加」で行を増やします。","マスタに無い仕掛品は「マスタに無い仕掛品を手入力」で入れます。","「保存する」を押します。"],check:"在庫表に、原料・仕掛品として出ます。",caution:"同じ日に入れ直すと上書きです。全部の行を空にして保存すると、その日の入力を消します。手入力の仕掛品はマスタに追加されません。"},
   waste:{title:"廃棄一覧・原料出しロス・原料廃棄",where:"本社ホーム →「廃棄一覧」／ 在庫管理 →「原料出しロスの入力・廃棄一覧」",steps:["原料出しロス：「原料出しロスを入力」で日付・品目・kgを入れます（在庫は減りません）。","原料廃棄：原料のQRを読み、ロットの画面の「廃棄」で数量を入れます（在庫が減ります）。","下処理ロスは、下処理の確定で自動で入ります。","月を選ぶと、区分別・品目別の合計（金額つき）が出ます。"],check:"",caution:"金額は、作業日の週の市場価格（同じ品目の平均）×kgです。"},
   rawout:{title:"原料出し（原料のまま出荷）",where:"QR読み取り → ロットの画面",steps:["原料のQRを読みます。","「原料出し（原料のまま出荷）」に数量（ケース・大きい容器はkg）を入れて「出庫する」を押します。"],check:"このロットの履歴に「出庫 → 原料出し」が残ります。",caution:"在庫反映がオンになると、下処理への使用出庫はなくなり、出庫は原料出しだけになります。"},

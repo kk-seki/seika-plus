@@ -235,7 +235,7 @@ create table if not exists public.hq_places_v1500 (
   sort_order integer not null default 0,
   active boolean not null default true
 );
-insert into public.hq_places_v1500(name, sort_order) values ('下処理室①',1),('下処理室②',2),('手切場',3) on conflict (name) do nothing;
+insert into public.hq_places_v1500(name, sort_order) values ('下処理室①',1),('下処理室②',2) on conflict (name) do nothing;
 
 create table if not exists public.hq_tasks_v1500 (
   name text primary key,
