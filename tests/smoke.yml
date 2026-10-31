@@ -1,0 +1,34 @@
+name: 自動チェック
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: プログラムの書き間違いがないか
+        run: |
+          node -e "const s=require('fs').readFileSync('index.html','utf8');const re=/<script>([\s\S]*?)<\/script>/g;let m,bad=0,n=0;while((m=re.exec(s))){n++;try{new Function(m[1])}catch(e){bad++;console.log('NG:',e.message)}}console.log(n+'個のうち、書き間違い '+bad);process.exit(bad?1:0)"
+          node -e "new Function(require('fs').readFileSync('sw.js','utf8'))"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 準備
+        run: |
+          pip install playwright==1.48.0
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+      - name: 架空のデータで主な画面を開く
+        run: |
+          python3 -m http.server 8765 >/dev/null 2>&1 &
+          sleep 2
+          python3 tests/smoke.py
