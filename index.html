@@ -10454,8 +10454,8 @@ function v188RowHtml(session,line,section,editable){
   const unit=esc(line.unit||''),diffText=diff===null?'未入力':`${diff>0?'+':''}${fmt(diff)} ${unit}`;
   const diffColor=diff===null?'#6b7280':diff<0?'#dc2626':diff>0?'#ea580c':'#16a34a';
   const pack=section==='qr'?v187QrPackText(line):v187NormalPackText(line);
-  return `<div class="box" style="margin:9px 0;${included?'':'opacity:.55'}"><div class="itemHead"><div><b>${esc(line.itemName||'')}</b><div class="small">${esc(line.group||line.lotNo||line.qrKey||'')}${pack?` / ${esc(pack)}`:''}${line.receivedDate?` / 入荷 ${esc(line.receivedDate)}`:''}</div></div><span class="badge ${diff===null?'unset':diff?'excess':'normal'}" style="color:${diffColor}">${esc(diffText)}</span></div>
-<div class="row" style="margin-top:8px"><div><label class="label">月末帳簿（固定）</label><div class="input" style="background:#f3f4f6">${fmt(book)} ${unit}</div></div><div><label class="label">実数</label><input id="v188_qty_${esc(key)}" class="input" inputmode="decimal" value="${esc(entry.actualQty??'')}" ${editable?'':'disabled'}></div></div>
+  return `<div class="box" style="margin:9px 0;${included?'':'opacity:.55'}"><div class="itemHead"><div><b>${esc(line.itemName||'')}</b><div class="small">${esc(line.group||line.lotNo||line.qrKey||'')}${pack?` / ${esc(pack)}`:''}${line.receivedDate?` / 入荷 ${esc(line.receivedDate)}`:''}</div></div><span class="badge ${diff===null?'unset':diff?'excess':'normal'}" style="color:${diffColor}">${esc(diffText)}</span></div>${section==='qr'&&!v188Confirmed(session)?'<div class="small" style="margin-top:6px">確定のときに、最新の出庫を含めて帳簿を計算し直します。最後に入力した実数が月末の在庫になります。</div>':''}
+<div class="row" style="margin-top:8px"><div><label class="label">${section==='qr'?'月末帳簿（開始時）':'月末帳簿（固定）'}</label><div class="input" style="background:#f3f4f6">${fmt(book)} ${unit}</div></div><div><label class="label">実数</label><input id="v188_qty_${esc(key)}" class="input" inputmode="decimal" value="${esc(entry.actualQty??'')}" ${editable?'':'disabled'}></div></div>
 <label class="label" style="margin-top:8px">差異理由</label><input id="v188_reason_${esc(key)}" class="input" list="v188ReasonList" maxlength="120" value="${esc(entry.reason||'')}" placeholder="${diff?'差異がある場合は理由を入力':'任意'}" ${editable?'':'disabled'}>
 <label class="label" style="margin-top:8px">備考</label><input id="v188_memo_${esc(key)}" class="input" maxlength="200" value="${esc(entry.memo||'')}" ${editable?'':'disabled'}>
 <div class="mini" style="margin-top:8px"><label class="switch"><input id="v188_inc_${esc(key)}" type="checkbox" ${included?'checked':''} ${editable?'':'disabled'}> 棚卸し対象</label>${section==='qr'?`<label class="switch"><input id="v188_chk_${esc(key)}" type="checkbox" ${entry.checked?'checked':''} ${editable?'':'disabled'}> ロット確認済み</label>`:''}</div></div>`;
@@ -10488,12 +10488,33 @@ function v188HistoryPage(id){
 }
 
 /* 確定：差異がある行だけを、対象月末日の「棚卸し調整」として在庫履歴へ反映します。 */
-function v188PendingRows(session){
+async function v188QrBooksNow(session){
+  const lines=v188SectionLines(session,'qr'),books={};if(!lines.length)return books;
+  const {lots,moves}=await v199LoadQrExcelData(),byKey=new Map((lots||[]).map(lot=>[String(lot.qr_key||'').trim(),lot])),graded=[];
+  for(const line of lines){
+    const lot=byKey.get(String(line.qrKey||'').trim());if(!lot)continue;
+    if(line.grade){graded.push({line,lot});continue}
+    const snapshot=v1101LotSnapshotAtDayEnd(lot,v199QrLotMoves(lot,moves),session.asOfKey);
+    books[String(line.lineId)]=yen(Number(snapshot?.qty||0));
+  }
+  if(graded.length){
+    await v1310LoadGrades(true);
+    const gradeMoves=await v1310GradeMovesAfter([...new Set(graded.map(row=>String(row.lot.id)))],session.asOfKey);
+    for(const {line,lot} of graded){
+      const list=v1310GradeMap.get(String(lot.id));
+      if(!list)throw new Error(`QRロット ${line.lotNo||line.qrKey} の規格を読み込めませんでした。通信状況を確認してから、もう一度確定してください。`);
+      books[String(line.lineId)]=yen(Number(v1310GradeQtyAt(list,gradeMoves,lot.id)[line.grade]||0));
+    }
+  }
+  return books;
+}
+function v188PendingRows(session,qrBooks=null){
   const rows=[];
   for(const section of ['normal','qr'])for(const line of v188SectionLines(session,section)){
     if(!v188Included(session,line.lineId))continue;
     const actual=v188Actual(session,line.lineId);if(actual===null)continue;
-    const book=v188BookQty(session,line),diff=yen(actual-book);if(!diff)continue;
+    const fresh=section==='qr'&&qrBooks?qrBooks[String(line.lineId)]:undefined;
+    const book=fresh===undefined?v188BookQty(session,line):fresh,diff=yen(actual-book);if(!diff)continue;
     rows.push({section,line,actual,book,diff,entry:v188Entry(session,line.lineId)});
   }
   return rows;
@@ -10506,14 +10527,19 @@ async function v188Confirm(id){
   if(stateVersion===null)return alert('棚卸し確定には競合防止RPCが必要です。同期状態を確認してください。');
   const stats=v188Stats(session,'qr');
   if(stats.unchecked&&!confirm(`QRロットに未確認が ${stats.unchecked}件あります。\nこのまま確定しますか？`))return;
-  const alreadyConfirmed=v188Confirmed(session),rows=v188PendingRows(session);
+  let qrBooks;
+  v161ShowProcessing('最新の出庫を含めて、QRロットの月末の帳簿を計算しています');
+  try{qrBooks=await v188QrBooksNow(session)}catch(error){return alert(`QRロットの帳簿を計算できませんでした。\n${v161ErrorText(error)}`)}finally{v161HideProcessing()}
+  const qrRecalc=v188SectionLines(session,'qr').filter(line=>qrBooks[String(line.lineId)]!==undefined&&qrBooks[String(line.lineId)]!==v188BookQty(session,line)).length;
+  const qrNote=v188SectionLines(session,'qr').length?`\n\nQRロットは、最新の出庫を含めて月末の帳簿を計算し直し、最後に入力した実数を月末の在庫にします。${qrRecalc?`\n（開始時の帳簿から変わった行：${qrRecalc}件）`:''}`:'';
+  const alreadyConfirmed=v188Confirmed(session),rows=v188PendingRows(session,qrBooks);
   if(!rows.length&&alreadyConfirmed)return alert('追加で反映する差異はありません。');
   const missing=v188Stats(session,'normal').missing+v188Stats(session,'qr').missing;
   if(missing&&!confirm(`実数が未入力の行が ${missing}件あります。\nこのまま確定しますか？`))return;
   const noReason=rows.filter(row=>!String(row.entry.reason||'').trim()).length;
   if(noReason&&!confirm(`差異理由が未入力の行が ${noReason}件あります。\nこのまま確定しますか？`))return;
   if(!confirm(rows.length
-    ?`${v188MonthLabel(session.targetMonth)}末（基準日${session.asOfKey}）の棚卸しを確定します。\n\n差異 ${rows.length}件を、対象月末日の「棚卸し調整」として在庫履歴へ反映します。\n差異がない品目・対象外の品目は履歴を作りません。\n\n実行しますか？`
+    ?`${v188MonthLabel(session.targetMonth)}末（基準日${session.asOfKey}）の棚卸しを確定します。\n\n差異 ${rows.length}件を、対象月末日の「棚卸し調整」として在庫履歴へ反映します。\n差異がない品目・対象外の品目は履歴を作りません。${qrNote}\n\n実行しますか？`
     :`${v188MonthLabel(session.targetMonth)}末（基準日${session.asOfKey}）の棚卸しを、差異なしで確定します。\n\n帳簿と実数が一致しているため、在庫履歴は作りません。\n棚卸しの実施記録として確定し、Excelを出力できるようになります。\n\n実行しますか？`))return;
   v161ShowProcessing('未同期データを確認し、差異を反映しています');
   const beforeDb=JSON.parse(JSON.stringify(db)),beforeVersion=stateVersion;
@@ -10521,7 +10547,7 @@ async function v188Confirm(id){
     const backup=v188CopySession(session);
     await v186ProtectPending();await loadCloud();
     session=v188Resolve(id,backup);if(!session||!v188Session(session))throw new Error('棚卸しが見つかりません。');
-    const targets=v188PendingRows(session);
+    const targets=v188PendingRows(session,await v188QrBooksNow(session));
     if(!targets.length&&v188Confirmed(session))throw new Error('追加で反映する差異はありません。');
     const at=v188AsOfIso(session.asOfKey),operation=`v188_${session.id}_${newId()}`,sequence=(Array.isArray(session.v188Confirmations)?session.v188Confirmations.length:0)+1;
     let qrApplied=0;
@@ -10601,11 +10627,11 @@ ${['room2','room3'].map(room=>{const blocking=v188BlockingSession(room);return b
 function v188Guide(){
   setScreen('inventoryCountGuidePage');if(!v177Allowed())return home();
   pageShell('月末棚卸しの使い方','管理者・青果社員のみ / v1.199',
-    `<div class="card notice"><b>1. 対象月を選んで開始</b><div class="small">対象月と冷蔵庫を選ぶと、その月の月末時点（当月は本日時点）の通常・片岡・その他・QR在庫が帳簿在庫として固定されます。開始後の入庫・出庫・調整では変わりません。</div></div>
+    `<div class="card notice"><b>1. 対象月を選んで開始</b><div class="small">対象月と冷蔵庫を選ぶと、その月の月末時点（当月は本日時点）の通常・片岡・その他・QR在庫が帳簿在庫として固定されます。開始後の入庫・出庫・調整では変わりません（QRロットだけは、確定のときに最新の出庫を含めて計算し直します）。</div></div>
 <div class="card"><b>2. 記入票を印刷して現物確認</b><div class="small">記入票には月末時点の帳簿在庫、量目・入数、仕入先が入ります。A4横です。</div></div>
 <div class="card"><b>3. 実数を入れる</b><div class="small">いつもの通常在庫入力・QR出庫・QR在庫調整で入力し、棚卸し画面の「現在の在庫を実数へ取り込む」で反映します。行ごとの手入力・修正もできます。</div></div>
 <div class="card"><b>4. 差異理由・対象品目・QR確認状態</b><div class="small">差異がある行には理由を入力します。棚卸し対象から外す品目はチェックを外します。QRはロットごとに確認済みにできます。変更はすべて編集履歴に残ります。</div></div>
-<div class="card"><b>5. 確定</b><div class="small">差異がある行だけを、対象月末日付の「棚卸し調整」として在庫履歴へ反映します。差異なし・対象外は履歴を作りません。帳簿と実数が全部一致している場合も「差異なしで棚卸しを確定」で確定でき、その場合は在庫履歴を作らず実施記録として残ります。確定後も管理者は編集でき、「差異を追加反映」で変更分だけを追加します。</div></div>
+<div class="card"><b>5. 確定</b><div class="small">差異がある行だけを、対象月末日付の「棚卸し調整」として在庫履歴へ反映します。QRロットは、確定のときに最新の出庫を含めて月末の帳簿を計算し直すため、開始したあとに出庫した分は二重に引かれず、最後に入力した実数がそのまま月末の在庫になります。差異なし・対象外は履歴を作りません。帳簿と実数が全部一致している場合も「差異なしで棚卸しを確定」で確定でき、その場合は在庫履歴を作らず実施記録として残ります。確定後も管理者は編集でき、「差異を追加反映」で変更分だけを追加します。</div></div>
 <div class="card"><b>6. Excel</b><div class="small">確定後にExcelを出力できます。単価欄へ入力すると金額と合計が自動計算されます。</div></div>
 <button class="btn btn2" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','inventoryCountHome',[])}>棚卸しモードへ戻る</button>`);
 }
