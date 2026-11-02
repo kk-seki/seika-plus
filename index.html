@@ -5657,7 +5657,7 @@ check:"ロット履歴に出庫先・数量・担当者が表示されること�
 steps:["廃棄は数量と必須理由を入力し、処理後残数を確認して登録します。","直前の出庫・廃棄・調整を間違えた場合は「直前操作を取り消す」を使います。","数量が実物と違う場合は「実数調整」で実際に残っている数量を入力し、差分と理由を確認して登録します。","品名・入庫日・仕入先・産地・規格・保管場所などの訂正は「ロット編集」を使います。"],
 check:"取消・調整・訂正の履歴が残り、上部が保存済みになることを確認します。",caution:"QRキー・ロット番号は変更できません。QRロット本体の完全削除は停止しています。"},{title:"廃棄・QRの月次Excelを作る",where:"メニュー → 月次Excel・履歴管理",
 steps:["前月以前の対象月を選び、廃棄またはQRのExcelを作成します。","対象月・件数・内容を確認してデスクネッツ文書管理の該当する履歴フォルダへ保管します。","作成後は「管理者の保存確認待ち」と表示されるため、管理者へ保存完了を伝えます。"],
-check:"Excel作成済みになり、管理者が保存確認を記録した後は「文書管理への保管確認済み」と表示されます。",caution:"DB履歴の削除と保存済み記録は管理者だけです。3か月経過前、または保存未確認の月は削除されません。"},{title:"通常廃棄を入力する",
+check:"Excel作成済みになり、管理者が保存確認を記録した後は「文書管理への保管確認済み」と表示されます。保管確認済み・DB削除済みの月は「月次処理履歴を表示」を押すと見られます。",caution:"DB履歴の削除と保存済み記録は管理者だけです。3か月経過前、または保存未確認の月は削除されません。"},{title:"通常廃棄を入力する",
 where:"ホーム → 廃棄入力",steps:["日付・品名・数量kgを入力します。","廃棄理由を選び、「その他」の場合は詳細を入力します。","必要に応じて産地・仕入先・備考を入力します。","確認後に保存し、そのまま次の廃棄を続けて入力します。"],
 check:"廃棄一覧に表示され、未同期件数が0になることを確認します。",caution:"青果社員は廃棄の入力・修正・削除とExcel出力ができますが、単価入力はできません。"},{title:"棚卸しを入力して提出する",where:"ホーム → 棚卸しモード",
 steps:["冷蔵庫を選んで棚卸しを開始します。","通常品目・その他品目の実数をすべて入力します。","QRロットも1件ずつ確認し、実数を入力します。","未入力がないことと差異を確認します。","管理者確認へ提出します。"],check:"状態が「確認待ち」になったことを確認します。",
@@ -5813,6 +5813,9 @@ alert("QR在庫Excelは管理者・青果社員・事務員のみ利用できま
 }const v199QrHomeCore=qrHome;qrHome=async function(msg=""){await v199QrHomeCore(msg);const actions=document.querySelector(".homePrimary")
 ;if(v1100CanQrExcel()&&actions&&!document.getElementById("v199QrExcelButtonHome"))actions.insertAdjacentHTML("beforeend",'<button id="v199QrExcelButtonHome" class="btn homeBtnReport" data-seika-click-action="v199QrExcelPage" data-seika-click-args="%5B%5D">QR在庫 Excel出力</button>')
 };
+/* ===== v1.199-c75 済みの月は「月次処理履歴を表示」に折りたたむ ===== */
+function c75ArchiveDone(a){const st=String(a?.status||'');return (st==='deleted'||(st==='excel_saved'&&!(a?.purge_eligible&&canAdmin())))}
+function c75ArchiveList(rows,card){if(!rows.length)return '<div class="notice" style="margin-top:12px">対象履歴はありません。</div>';const open=rows.filter(a=>!c75ArchiveDone(a)),done=rows.filter(c75ArchiveDone);return `${open.length?open.map(card).join(''):'<div class="notice" style="margin-top:12px">対応が必要な月はありません。</div>'}${done.length?`<details style="margin-top:12px"><summary class="btn btn2" style="display:block;cursor:pointer">月次処理履歴を表示</summary>${done.map(card).join('')}</details>`:''}`}
 /* ===== v1.101 廃棄・QR 月次Excel保存管理 ===== */let v1101Archives={waste:[],qr:[],trimming:[]};function v1101MonthDate(key){
 return`${String(key||"").slice(0,7)}-01`}function v1101ArchiveStatusLabel(st){
 return st==="deleted"?"DB削除済み":st==="excel_saved"?"文書管理への保管確認済み":st==="excel_created"?"Excel作成済み":"未処理"}function v1101CanModule(module){
@@ -5908,14 +5911,14 @@ const key=String(a.target_month||"").slice(0,7),saved=a.status==="excel_saved",d
 ;return`<div class="box" style="margin:10px 0;${deleted?"opacity:.72":""}"><div class="itemHead"><div><b>${monthLabel(v1101MonthDate(key))}</b><div class="small">評価：${Number(a.row_count||0)}件 / 写真：${Number(a.photo_count||0)}枚${a.excel_created_at?`<br>作成：${dt(a.excel_created_at)}`:""}${a.excel_saved_at?`<br>保存確認：${dt(a.excel_saved_at)} / ${esc(a.excel_saved_by_name||"")}`:""}</div></div><span class="badge ${deleted||saved?"normal":created?"excess":"unset"}">${deleting?"削除処理中":v1101ArchiveStatusLabel(a.status)}</span></div>${!deleted?`<button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1102DownloadQualityExcel',[key])}>写真付きExcelを作成してダウンロード</button>${created&&!saved&&canAdmin()?`<label class="switch" style="margin-top:10px"><input id="v1102QualitySaved_${key}" type="checkbox"> Excelをデスクネッツの「QR在庫履歴」へ保管しました</label><button class="btn green" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1102ConfirmQualitySaved',[key])}>Excel保存済みとして記録</button>`:created&&!saved?'<div class="notice">管理者の保存確認待ちです。</div>':""}${a.purge_eligible&&canAdmin()?`<button class="btn danger" style="width:100%;margin-top:10px" ${seikaEventAttrs('click','v1102PurgeQuality',[key])}>3か月経過データと写真を削除</button>`:""}`:""}</div>`
 }function v1102QualityArchiveSection(){if(!["admin","worker","clerk"].includes(db.role))return""
 ;const rows=v1102QualityArchives.filter(x=>String(x.target_month||"").slice(0,7)<monthInputValue(new Date)).slice(0,36)
-;return`<section class="card"><h2 style="margin-top:0">QR品質評価履歴</h2><div class="small">品質評価と写真を月ごとに1つのExcelへ出力します。写真は各評価の行へ最大3枚埋め込みます。品質評価と写真のみ、Excel保存確認後に3か月保持で整理します。QRロット・QR操作履歴・在庫数量は残ります。</div>${v1101DesknetPath("QR在庫履歴")}<div class="box" style="margin-top:12px"><b>月を選んで写真付きExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="v1102QualityMonth" class="input" type="month" max="${previousMonthKey()}" value="${previousMonthKey()}"></div><div><button class="btn blue" ${seikaEventAttrs('click','seikaSelectedQualityMonth',[])}>選択月をExcel出力</button></div></div></div>${rows.length?rows.map(v1102QualityArchiveCard).join(""):'<div class="notice" style="margin-top:12px">対象履歴はありません。</div>'}</section>`
+;return`<section class="card"><h2 style="margin-top:0">QR品質評価履歴</h2><div class="small">品質評価と写真を月ごとに1つのExcelへ出力します。写真は各評価の行へ最大3枚埋め込みます。品質評価と写真のみ、Excel保存確認後に3か月保持で整理します。QRロット・QR操作履歴・在庫数量は残ります。</div>${v1101DesknetPath("QR在庫履歴")}<div class="box" style="margin-top:12px"><b>月を選んで写真付きExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="v1102QualityMonth" class="input" type="month" max="${previousMonthKey().slice(0,7)}" value="${previousMonthKey().slice(0,7)}"></div><div><button class="btn blue" ${seikaEventAttrs('click','seikaSelectedQualityMonth',[])}>選択月をExcel出力</button></div></div></div>${c75ArchiveList(rows,v1102QualityArchiveCard)}</section>`
 }async function v1101ArchivePage(msg=""){setScreen("v1101ArchivePage",[msg])
 ;const modules=["qr","waste","trimming"].filter(v1101CanModule),qualityAllowed=["admin","worker","clerk"].includes(db.role);try{
 await Promise.all([...modules.map(v1101LoadArchives),...qualityAllowed?[v1102LoadQualityArchives()]:[]])}catch(e){
 return pageShell("月次Excel・履歴管理","設定が必要です",`<div class="err">${esc(e.message||e)}<div class="small">Supabaseでv1.101 SQLを実行してください。</div></div>`)}
 const names={qr:"QR在庫履歴",waste:"廃棄履歴",trimming:"歩留まり・仕入価格履歴"},folders={qr:"QR在庫履歴",waste:"廃棄履歴",trimming:"歩留まり・仕入価格履歴"},sections=modules.map(module=>{
 const rows=v1101ArchiveRows(module),prev=monthInputValue(new Date),visible=rows.filter(x=>String(x.target_month||"").slice(0,7)<prev).slice(0,36)
-;return`<section class="card"><h2 style="margin-top:0">${names[module]}</h2><div class="small">前月以前の月ごとにExcel出力・文書管理への保管確認・3か月経過後のDB整理を管理します。${module==="qr"?"QRロット本体は削除せず、操作履歴だけを整理します。":""}</div>${v1101DesknetPath(folders[module])}<div class="box" style="margin-top:12px"><b>月を選んでExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="v1101Month_${module}" class="input" type="month" max="${previousMonthKey()}" value="${previousMonthKey()}"></div><div><button class="btn blue" ${seikaEventAttrs('click','v1101DownloadSelected',[module])}>選択月をExcel出力</button></div></div></div>${visible.length?visible.map(a=>v1101ArchiveCard(module,a)).join(""):'<div class="notice" style="margin-top:12px">対象履歴はありません。</div>'}</section>`
+;return`<section class="card"><h2 style="margin-top:0">${names[module]}</h2><div class="small">前月以前の月ごとにExcel出力・文書管理への保管確認・3か月経過後のDB整理を管理します。${module==="qr"?"QRロット本体は削除せず、操作履歴だけを整理します。":""}</div>${v1101DesknetPath(folders[module])}<div class="box" style="margin-top:12px"><b>月を選んでExcel出力</b><div class="row" style="margin-top:10px"><div><label class="label">出力する月</label><input id="v1101Month_${module}" class="input" type="month" max="${previousMonthKey().slice(0,7)}" value="${previousMonthKey().slice(0,7)}"></div><div><button class="btn blue" ${seikaEventAttrs('click','v1101DownloadSelected',[module])}>選択月をExcel出力</button></div></div></div>${c75ArchiveList(visible,a=>v1101ArchiveCard(module,a))}</section>`
 }).join("")
 ;pageShell("月次Excel・履歴管理","在庫表・QR・廃棄・品質評価・歩留まりを同じ画面で出力・保管・整理",`${okHtml(msg)}<div class="notice"><b>月次処理の順番</b><div class="small">Excel出力 → デスクネッツ文書管理の履歴別フォルダへ保管 → 管理者が保存済み記録 → 対象月から保持期間後に管理者がDB整理します（品質評価・写真を含め、すべて3か月）。削除条件はSupabase側でも再確認します。</div></div>${v1101InventoryArchiveSection()}${sections}${v1102QualityArchiveSection()}`)
 }const v1101LegacyMonthlyArchivePage=monthlyArchivePage,v1101AccountMenuCore=accountMenu;monthlyArchivePage=function(msg=""){
@@ -10924,12 +10927,12 @@ function v193BarRow(label,value,max,color){
 }
 function v193ReportHtml(d){
   const diffText=d.prev>0?`${d.diff>=0?'+':''}${Math.round(d.diff/d.prev*100)}%`:'—',
-  diffSub=d.prev>0?`前の週 ${v193Money(d.prev)}円`:'前の週のデータなし',
+  diffSub=d.prev>0?`その前の週 ${v193Money(d.prev)}円`:'その前の週のデータなし',
   diffColor=d.prev>0&&d.diff<0?'#1b5e20':'#c62828',
   topMax=d.top.length?d.top[0].amount:0,
   weekMax=d.weeks.reduce((a,w)=>Math.max(a,w.amount),0),
   head=d.top[0];
-  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>今週の廃棄レポート</title>
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>先週の廃棄レポート</title>
 <style>
 @page{size:A4 portrait;margin:12mm}
 *{box-sizing:border-box}
@@ -10963,16 +10966,16 @@ body{margin:0;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-se
 .ft .org{font-size:9.5px;color:#333;font-weight:400;margin-top:4px}
 </style></head><body>${V188_PRINT_BAR}
 <div class="sheet">
-<div class="hd"><div><h1>今週の廃棄レポート</h1><div class="sub">${esc(d.startLabel)} 〜 ${esc(d.endLabel)}</div></div>
+<div class="hd"><div><h1>先週の廃棄レポート</h1><div class="sub">${esc(d.startLabel)} 〜 ${esc(d.endLabel)}</div></div>
 <div class="goal">今期の目標<br>残業を減らす／廃棄を減らす</div></div>
 <div class="kpis">
-<div class="kpi" style="border-color:#c62828"><div class="cap" style="color:#b71c1c">今週の廃棄金額</div><div class="big" style="color:#c62828">${v193Money(d.cur)}円</div><div class="sub">${d.count}件</div></div>
-<div class="kpi" style="border-color:${diffColor}"><div class="cap" style="color:${diffColor}">前の週とくらべて</div><div class="big" style="color:${diffColor}">${esc(diffText)}</div><div class="sub">${esc(diffSub)}</div></div>
+<div class="kpi" style="border-color:#c62828"><div class="cap" style="color:#b71c1c">先週の廃棄金額</div><div class="big" style="color:#c62828">${v193Money(d.cur)}円</div><div class="sub">${d.count}件</div></div>
+<div class="kpi" style="border-color:${diffColor}"><div class="cap" style="color:${diffColor}">その前の週とくらべて</div><div class="big" style="color:${diffColor}">${esc(diffText)}</div><div class="sub">${esc(diffSub)}</div></div>
 <div class="kpi" style="border-color:#0f3d6e"><div class="cap" style="color:#0b2e57">期首からの累計</div><div class="big" style="color:#0f3d6e">${v193Money(d.cum)}円</div><div class="sub">${esc(d.fiscalFull)}〜${esc(d.endLabel)}</div></div>
 </div>
-<div class="panel"><h2>今週の多い品目（金額）</h2>${d.top.length?d.top.map(x=>v193BarRow(x.name,x.amount,topMax,'#c62828')).join(''):'<div class="sub">この週の廃棄はありません。</div>'}</div>
+<div class="panel"><h2>先週の多い品目（金額）</h2>${d.top.length?d.top.map(x=>v193BarRow(x.name,x.amount,topMax,'#c62828')).join(''):'<div class="sub">この週の廃棄はありません。</div>'}</div>
 <div class="panel"><h2>週ごとの推移（金額）</h2>${d.weeks.length?d.weeks.map(w=>v193BarRow(w.label+'の週',w.amount,weekMax,'#1b5e20')).join(''):''}</div>
-${head?`<div class="lead">今週いちばん多かったのは ${esc(head.name)}。${v193Money(head.amount)}円${head.qty>0?`（${head.qty.toFixed(1)}kg）`:''}を捨てています。</div>`:''}
+${head?`<div class="lead">先週いちばん多かったのは ${esc(head.name)}。${v193Money(head.amount)}円${head.qty>0?`（${head.qty.toFixed(1)}kg）`:''}を捨てています。</div>`:''}
 <div class="theme"><div class="cap">今週のテーマ</div><div class="name">${esc(d.theme)}</div><ul>${d.actions.map(a=>`<li>${esc(a)}</li>`).join('')}</ul></div>
 <div class="memo"><h2>気づいたこと・やりにくいこと（記入欄）</h2><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>
 <div class="ft">気づいたこと・やりにくいことがあれば、社員に伝えてください。<div class="org">石岡青果センター</div></div>
@@ -11544,7 +11547,7 @@ const V198_GUIDE_SECTIONS={
   check:"廃棄単価とトリミングの原料費は、この価格を①市場価格 ②契約価格 ③同一品目の平均 の順で採用します。市場価格は、廃棄した日の週（トリミングは原料の入荷日の週）の価格だけを使います。価格を保存・変更・持ち越しすると、その週の廃棄とトリミング日報の金額が自動で計算し直されます（手で直した単価・Excel出力済みも含む）。",
   caution:"その週の市場価格が未入力だと「未入力」になり、金額が出ません。「前の週」「次の週」ボタンや日付で週を選び、さかのぼって・先の週も登録できます。うまく反映されないときは「この週の価格を廃棄・トリミングに反映」を押します。"},
  weekly:{title:"週次廃棄レポートを作る",where:"ホーム → 週次廃棄レポート",
-  steps:["対象の週を選びます。",
+  steps:["対象の週を選びます。最初は先週（月〜日曜）が入っています。翌週の月曜日に先週分を印刷して現場へ共有します。",
    "テーマを選ぶと、朝礼で伝える3つの行動が自動で入ります。必要なら書き換えます。",
    "廃棄の金額・数量と、期首からの累計を確認します。",
    "「印刷」を押してA4で出力し、朝礼で配ります。"],
