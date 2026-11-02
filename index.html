@@ -16081,15 +16081,18 @@ async function hqPendingPage(msg=""){
   document.getElementById("hqList").innerHTML=rows.length?`<div class="small" style="margin:4px 0 10px">${rows.length}件。出庫日・発注分ごとにまとめています。届いた原料のQRを読み取るか「開く」を押して、品質評価と確定をしてください。</div>`+hqGroupedHtml(rows,l=>hqLotCard(l)):'<div class="notice">入荷待ちの原料はありません。</div>';
  }catch(e){document.getElementById("hqList").innerHTML=`<div class="err">${esc(hqErr(e))}</div>`}
 }
-async function hqStockPage(filter=""){
- setScreen("hqStockPage",[filter]);
- pageShell("本社在庫","確定済みの原料だけが入ります",`<div class="card"><input id="hqStockFilter" class="input" placeholder="品名・ロット番号・仕入先で絞り込み" value="${esc(filter)}" ${seikaEventAttrs("change","hqStockPage",[{__seikaValue:true}])}></div><div id="hqList"><div class="notice">読み込んでいます…</div></div>`);
+async function hqStockPage(filter="",stock="在庫あり"){
+ stock=["在庫あり","在庫なし","すべて"].includes(stock)?stock:"在庫あり";setScreen("hqStockPage",[filter,stock]);
+ const tabs=["在庫あり","在庫なし","すべて"].map(x=>`<button class="filterBtn ${x===stock?"on":""}" ${seikaEventAttrs("click","hqStockPage",[filter,x])}>${x}</button>`).join("");
+ pageShell("本社在庫","確定済みの原料だけが入ります",`<div class="card"><div class="filterBtns">${tabs}</div>${stock!=="在庫あり"?'<div class="small" style="margin-top:6px">在庫なしは、最近30日に動きがあったロットだけ出ます。間違えた出庫は、ロットを開いて「このロットの履歴」から取り消せます。</div>':""}<input id="hqStockFilter" class="input" style="margin-top:8px" placeholder="品名・ロット番号・仕入先で絞り込み" value="${esc(filter)}" ${seikaEventAttrs("change","hqStockPage",[{__seikaValue:true},stock])}></div><div id="hqList"><div class="notice">読み込んでいます…</div></div>`);
  try{
-  let rows=await hqLots("select=*&status=eq.在庫あり&order=item_name.asc,hq_received_date.asc&limit=1000");await hqLoadLimits();
+  const since=new Date(Date.now()-30*864e5).toISOString();
+  const q=x=>hqLots(x==="在庫あり"?"select=*&status=eq.在庫あり&order=item_name.asc,hq_received_date.asc&limit=1000":`select=*&status=eq.在庫なし&updated_at=gte.${encodeURIComponent(since)}&order=updated_at.desc&limit=500`);
+  let rows=stock==="すべて"?[...await q("在庫あり"),...await q("在庫なし")]:await q(stock);await hqLoadLimits();
   const f=filter.trim();if(f)rows=rows.filter(l=>[l.item_name,l.lot_no,l.supplier,l.origin].some(x=>String(x||"").includes(f)));
-  const sum={};rows.forEach(l=>{const k=l.item_name+"|"+l.unit;sum[k]=(sum[k]||0)+Number(l.current_qty||0)});
+  const sum={};rows.filter(l=>l.status==="在庫あり").forEach(l=>{const k=l.item_name+"|"+l.unit;sum[k]=(sum[k]||0)+Number(l.current_qty||0)});
   const total=Object.entries(sum).map(([k,v])=>{const[n,u]=k.split("|");return `<tr><td>${esc(n)}</td><td style="text-align:right"><b>${hqQty(v)}</b> ${esc(u)}</td></tr>`}).join("");
-  document.getElementById("hqList").innerHTML=rows.length?`<div class="card"><b>品目ごとの合計</b><table class="weeklyTable" style="width:100%;margin-top:8px">${total}</table></div>`+rows.map(l=>hqLotCard(l)).join(""):'<div class="notice">本社の在庫はありません。</div>';
+  document.getElementById("hqList").innerHTML=rows.length?(total?`<div class="card"><b>品目ごとの合計</b><table class="weeklyTable" style="width:100%;margin-top:8px">${total}</table></div>`:"")+rows.map(l=>hqLotCard(l)).join(""):`<div class="notice">${stock==="在庫あり"?"本社の在庫はありません。":"該当するロットはありません。"}</div>`;
  }catch(e){document.getElementById("hqList").innerHTML=`<div class="err">${esc(hqErr(e))}</div>`}
 }
 async function hqOutPage(filter=""){
@@ -16405,7 +16408,7 @@ async function hqHistoryPage(month=""){
  pageShell("入出庫履歴","本社の受け入れ確定・出庫・実数調整・取消",`<div class="card"><label class="label">月</label><input id="hqMonth" type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqHistoryPage",[{__seikaValue:true}])}><button class="btn hqBtnExcel" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","hqExcel",[month])}>この月のExcelを作る</button></div><div id="hqList"><div class="notice">読み込んでいます…</div></div>`);
  try{
   const rows=await hqMonthMoves(month);
-  document.getElementById("hqList").innerHTML=rows.map(m=>`<div class="card" style="padding:10px 14px"><b>${esc(m.movement_type)}</b> ${esc(m.item_name||"")} ${hqQty(m.qty)}${esc(m.unit||"")}${m.destination?` → ${esc(m.destination)}`:""}${m.cancelled_at?' <span class="badge unset">取消済み</span>':""}<div class="small">${esc(m.lot_no||"")} / ${esc(m.user_name||"")} / ${esc(new Date(m.occurred_at).toLocaleString("ja-JP"))}${m.reason?` / ${esc(m.reason)}`:""}</div></div>`).join("")||'<div class="notice">この月の履歴はありません。</div>';
+  document.getElementById("hqList").innerHTML=rows.map(m=>`<div class="card" style="padding:10px 14px"><b>${esc(m.movement_type)}</b> ${esc(m.item_name||"")} ${hqQty(m.qty)}${esc(m.unit||"")}${m.destination?` → ${esc(m.destination)}`:""}${m.cancelled_at?' <span class="badge unset">取消済み</span>':""}<div class="small">${esc(m.lot_no||"")} / ${esc(m.user_name||"")} / ${esc(new Date(m.occurred_at).toLocaleString("ja-JP"))}${m.reason?` / ${esc(m.reason)}`:""}</div>${m.lot_no?`<button class="btn btn2" style="margin-top:6px;min-height:40px" ${seikaEventAttrs("click","hqLotPage",[m.lot_no])}>${hqCanCancelOut(m)?"このロットを開く（出庫の取り消し）":"このロットを開く"}</button>`:""}</div>`).join("")||'<div class="notice">この月の履歴はありません。</div>';
  }catch(e){document.getElementById("hqList").innerHTML=`<div class="err">${esc(hqErr(e))}</div>`}
 }
 async function hqMonthMoves(month){
@@ -16581,10 +16584,10 @@ window.userAdminPage=userAdminPage;
 /* ---- 操作ガイド ---- */
 const HQ_GUIDE={
  switch:{title:"石岡と本社の画面を切り替える",where:"ホーム → いちばん上",steps:["ホームの「本社の画面へ」「石岡の画面へ」を押します。","本社社員・本社事務で石岡の画面を開いたときは、在庫を見るだけです。","石岡のアカウントで本社の画面を開いたときも、見るだけです（管理者を除く）。"],check:"ホームの上に「いまの画面」が出ます。",caution:"荷受け担当者・下処理班のアカウントは本社の画面だけで、切り替えはありません。切り替えはこの端末とこのアカウントだけに残ります。"},
- hqReceive:{title:"本社で受け入れる（品質評価と確定）",where:"本社ホーム → 入荷待ち原料 または QR読み取り（受け入れ・出庫）",steps:["届いた原料の「本社移動用」の貼り紙のQRを読み取ります。読めないときはロット番号を入力します。","入荷待ち原料は、出庫日と当日発注分／翌日発注分ごとにまとまって出ます。カードの黄色い帯で、便（例：原料便（12時着）・翌日便）と出庫した人を確認できます。","届いた数量を確認します。予定と違うときは実際の数量に直します。","品質評価（良好・要確認・不良）を選びます。要確認・不良は気になった点を選び、写真を1枚以上付けます。","「確定して本社の在庫にする」を押します。"],check:"確定すると「本社在庫」に入ります。確定するまでは本社の在庫に入りません。数量が予定と違うと「差異あり」と表示されます。",caution:"要確認・不良は社員に伝えてください。石岡から出庫を取り消した原料は、入荷待ちから自動で消えます。確定を間違えたときは、本社社員がロットの画面の「受け入れ確定を取り消す」で入荷待ちに戻せます（出庫がある場合は先に出庫を取り消します）。"},
- hqOut:{title:"使うときに出庫する",where:"本社ホーム → 在庫管理 → 使用出庫（QR読み取りからも出庫できます）",steps:["QRを読み取るか、一覧から原料を選びます（古い順に並んでいます）。","出庫先（下処理・原料出し）を選びます。","出庫する数量を入れます（小数も入れられます）。全部使うときは「全部」を押します。","「出庫する」を押すと、本社の在庫から数量が引かれます。"],check:"ロットの画面の「このロットの履歴」に出庫が残ります。",caution:"網コンテナ・鉄コンテナ・パレテーナはkg、それ以外はケースで数えます。出庫を間違えたときは、履歴の「この出庫を取り消す」を押すと在庫が元に戻ります。出庫した本人はその日のうち、本社社員はいつでも取り消せます。"},
+ hqReceive:{title:"本社で受け入れる（品質評価と確定）",where:"本社ホーム → 入荷待ち原料 または QR読み取り（受け入れ・出庫）",steps:["届いた原料の「本社移動用」の貼り紙のQRを読み取ります。読めないときはロット番号を入力します。","入荷待ち原料は、出庫日と当日発注分／翌日発注分ごとにまとまって出ます。カードの黄色い帯で、便（例：原料便（12時着）・翌日便）と出庫した人を確認できます。","届いた数量を確認します。予定と違うときは実際の数量に直します。","品質評価（良好・要確認・不良）を選びます。要確認・不良は気になった点を選び、写真を1枚以上付けます。","「確定して本社の在庫にする」を押します。"],check:"確定すると「本社在庫」に入ります。確定するまでは本社の在庫に入りません。数量が予定と違うと「差異あり」と表示されます。本社入荷日は、受け入れが遅れて後日まとめて確定しても、石岡で出庫したときに決めた本社入荷日のままです（在庫表もその日に入ったものとして数えます）。",caution:"要確認・不良は社員に伝えてください。石岡から出庫を取り消した原料は、入荷待ちから自動で消えます。確定を間違えたときは、本社社員がロットの画面の「受け入れ確定を取り消す」で入荷待ちに戻せます（出庫がある場合は先に出庫を取り消します）。"},
+ hqOut:{title:"使うときに出庫する",where:"本社ホーム → 在庫管理 → 使用出庫（QR読み取りからも出庫できます）",steps:["QRを読み取るか、一覧から原料を選びます（古い順に並んでいます）。","出庫先（下処理・原料出し）を選びます。","出庫する数量を入れます（小数も入れられます）。全部使うときは「全部」を押します。","「出庫する」を押すと、本社の在庫から数量が引かれます。"],check:"ロットの画面の「このロットの履歴」に出庫が残ります。間違えた出庫は、その出庫の「この出庫を取り消す」で取り消せます（本社社員・管理者。下処理班は自分がその日に出した分だけ）。使い切ったロットは「本社在庫」の「在庫なし」か「入出庫履歴」の「このロットを開く」から開きます。",caution:"網コンテナ・鉄コンテナ・パレテーナはkg、それ以外はケースで数えます。出庫を間違えたときは、履歴の「この出庫を取り消す」を押すと在庫が元に戻ります。出庫した本人はその日のうち、本社社員はいつでも取り消せます。"},
  hqDirect:{title:"本社に直接届いた原料を登録する",where:"本社ホーム → 入荷登録・品目 → 本社直接入荷",steps:["品目・荷姿・数量・量目・仕入先・産地・単協名・入荷日を入れます。","「登録して品質評価へ進む」を押します。","品質評価をして「確定して本社の在庫にする」を押します。","続けて出る画面で、パレットのケース数（大型容器は基数）と印刷枚数を入れて、貼り紙を印刷します。"],check:"確定すると本社在庫に入ります。",caution:"品目がないときは、本社社員が「入荷登録・品目」→「品目の追加・変更」で追加します。"},
- hqStock:{title:"本社の在庫と履歴を見る・Excelを作る",where:"本社ホーム → 在庫管理 → 本社在庫／入出庫履歴",steps:["「本社在庫」で品目ごとの合計とロットを見ます。","「入出庫履歴」で月を選ぶと、受け入れ確定・出庫・実数調整が並びます。","「この月のExcelを作る」で、現在の本社在庫・月の入出庫履歴・通常在庫・在庫表をExcelにします。"],check:"数量が合わないときは、本社社員がロットの画面の「実数調整」で直します。",caution:"実数調整には理由が必要です。"},
+ hqStock:{title:"本社の在庫と履歴を見る・Excelを作る",where:"本社ホーム → 在庫管理 → 本社在庫／入出庫履歴",steps:["「本社在庫」で品目ごとの合計とロットを見ます。上の「在庫あり／在庫なし／すべて」で切り替えると、使い切ったロット（最近30日に動きがあったもの）も探せます。","「入出庫履歴」で月を選ぶと、受け入れ確定・出庫・実数調整が並びます。各行の「このロットを開く」で、そのロットの画面へ進めます。","「この月のExcelを作る」で、現在の本社在庫・月の入出庫履歴・通常在庫・在庫表をExcelにします。"],check:"数量が合わないときは、本社社員がロットの画面の「実数調整」で直します。",caution:"実数調整には理由が必要です。"},
  hqItems:{title:"本社の品目を追加する",where:"本社ホーム → 入荷登録・品目 → 品目の追加・変更",steps:["上のタブで「QR品目」か「通常在庫の品目」を選びます。","QR品目：品目名・ふだんの単位・量目を入れて「追加する」を押します。","通常在庫の品目：品目名と1ケースのkgを入れて「追加する」を押します。通常在庫入力の画面の下の「通常在庫の品目を追加」からも追加できます。","使わなくなった品目は「表示しない」にします。"],check:"QR品目は本社直接入荷に、通常在庫の品目は通常在庫入力に出てきます。同じ名前をQR品目と通常在庫の品目の両方には登録できません。",caution:"加工用玉葱・皮むき人参(国産)・皮むき人参(中国)・皮むきじゃが芋は最初から入っています（保管目安は入荷日＋3日）。"},
  hqNormal:{title:"通常在庫を入力する（QRで管理しない品目）",where:"本社ホーム → 在庫管理 → 通常在庫入力",steps:["日付を確かめます（ふだんは今日）。","品目ごとにケース数とバラ（kg）を入れます。合計kgが自動で出ます。","「保存する」を押します。同じ日にもう一度保存すると上書きします。","品目がないときは、画面の下の「通常在庫の品目を追加」で追加します（本社社員・管理者）。"],check:"在庫表に、その日の数が出ます。",caution:"ケースもバラも空にして保存すると、その日の入力を消します。入力できるのは本社社員と荷受け担当者です。"},
  hqTable:{title:"在庫表を見る（QR品目＋通常在庫）",where:"本社ホーム → 在庫管理 → 在庫表",steps:["最後の日と日数（7・14・31日）を選びます。「◀ 前」「次 ▶」で期間を動かせます。","QR品目と通常在庫の品目が1つの表に並び、日ごとのkgといちばん下に合計kgが出ます。"],check:"QR品目はその日の終わりの在庫、通常在庫はその日に入力した数です（入力がない日は「—」）。",caution:"量目が分からないQRのロットは「kg不明」として別に出ます。月ごとのExcelにも「通常在庫」「在庫表」のシートが入ります。"},
