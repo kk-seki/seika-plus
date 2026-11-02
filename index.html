@@ -16091,8 +16091,8 @@ async function hqStockPage(filter="",stock="在庫あり"){
   let rows=stock==="すべて"?[...await q("在庫あり"),...await q("在庫なし")]:await q(stock);await hqLoadLimits();
   const f=filter.trim();if(f)rows=rows.filter(l=>[l.item_name,l.lot_no,l.supplier,l.origin].some(x=>String(x||"").includes(f)));
   const sum={};rows.filter(l=>l.status==="在庫あり").forEach(l=>{const k=l.item_name+"|"+l.unit;sum[k]=(sum[k]||0)+Number(l.current_qty||0)});
-  const total=Object.entries(sum).map(([k,v])=>{const[n,u]=k.split("|");return `<tr><td>${esc(n)}</td><td style="text-align:right"><b>${hqQty(v)}</b> ${esc(u)}</td></tr>`}).join("");
-  document.getElementById("hqList").innerHTML=rows.length?(total?`<div class="card"><b>品目ごとの合計</b><table class="weeklyTable" style="width:100%;margin-top:8px">${total}</table></div>`:"")+rows.map(l=>hqLotCard(l)).join(""):`<div class="notice">${stock==="在庫あり"?"本社の在庫はありません。":"該当するロットはありません。"}</div>`;
+  const total=Object.entries(sum).map(([k,v])=>{const[n,u]=k.split("|");return `<tr><td style="padding:8px 4px;border-bottom:1px solid #e2e8f0">${esc(n)}</td><td style="padding:8px 4px;border-bottom:1px solid #e2e8f0;text-align:right;white-space:nowrap"><b>${hqQty(v)}</b> ${esc(u)}</td></tr>`}).join("");
+  document.getElementById("hqList").innerHTML=rows.length?(total?`<div class="card"><b>品目ごとの合計</b><table style="width:100%;margin-top:8px;border-collapse:collapse;font-size:15px">${total}</table></div>`:"")+rows.map(l=>hqLotCard(l)).join(""):`<div class="notice">${stock==="在庫あり"?"本社の在庫はありません。":"該当するロットはありません。"}</div>`;
  }catch(e){document.getElementById("hqList").innerHTML=`<div class="err">${esc(hqErr(e))}</div>`}
 }
 async function hqOutPage(filter=""){
@@ -16395,11 +16395,18 @@ async function hqTablePage(end="",span=7){
  const from=hqAddDays(end,1-span);
  pageShell("在庫表","本社のQR品目と通常在庫を合わせた在庫（kg）",`<div class="card"><div class="row"><div><label class="label">最後の日</label><input type="date" class="input" max="${hqToday()}" value="${esc(end)}" ${seikaEventAttrs("change","hqTablePage",[{__seikaValue:true},span])}></div><div><label class="label">日数</label><select class="input" ${seikaEventAttrs("change","hqTablePage",[end,{__seikaValue:true}])}>${[7,14,31].map(n=>`<option value="${n}" ${n===span?"selected":""}>${n}日</option>`).join("")}</select></div></div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn2" style="flex:1" ${seikaEventAttrs("click","hqTablePage",[hqAddDays(end,-span),span])}>◀ 前</button><button class="btn btn2" style="flex:1" ${end>=hqToday()?"disabled":""} ${seikaEventAttrs("click","hqTablePage",[hqAddDays(end,span)>hqToday()?hqToday():hqAddDays(end,span),span])}>次 ▶</button></div></div><div id="hqTbl"><div class="notice">集計中…</div></div>`);
  let data;try{data=await hqTableData(from,end)}catch(e){document.getElementById("hqTbl").innerHTML=`<div class="err">${esc(hqErr(e))}</div><div class="notice">017のSQLが未実行の可能性があります。</div>`;return}
- const rows=data?.rows||[];const dates=rows[0]?.values?.map(v=>v.date)||[];
+ const all=data?.rows||[];const dates=all[0]?.values?.map(v=>v.date)||[];
+ const kindOf=r=>r._kind||(r.kind==="QR"?"QR":"原料");
+ const zero=r=>r.values.every(v=>(v.kg==null||Number(v.kg)===0)&&!Number(v.unknown_qty||0));
+ const rows=all.filter(r=>!zero(r)),hidden=all.length-rows.length;
  const tot=dates.map((_,i)=>rows.reduce((s,r)=>s+(r.values[i].kg==null?0:Number(r.values[i].kg)),0));
- const cell=(r,v)=>{if(r.kind==="通常"){return v.kg==null?'<span style="color:#94a3b8">—</span>':`<b>${hqKg(v.kg)}</b>`}const u=Number(v.unknown_qty||0);return `<b>${hqKg(v.kg)}</b>${u?`<div class="small" style="color:#b45309">＋${hqQty(u)}（kg不明）</div>`:""}`};
- const th='style="padding:6px 8px;border-bottom:2px solid #cbd5e1;white-space:nowrap;position:sticky;top:0;background:#f8fafc"',td='style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;white-space:nowrap"';
- document.getElementById("hqTbl").innerHTML=rows.length?`<div class="card" style="padding:8px;overflow-x:auto"><table style="border-collapse:collapse;font-size:14px;min-width:100%"><tr><th ${th} style="position:sticky;left:0;background:#f8fafc;padding:6px 8px;border-bottom:2px solid #cbd5e1;text-align:left">品目</th>${dates.map(d=>`<th ${th}>${esc(d.slice(5).replace("-","/"))}</th>`).join("")}</tr>${rows.map(r=>`<tr><td style="position:sticky;left:0;background:#fff;padding:6px 8px;border-bottom:1px solid #e2e8f0;white-space:nowrap">${esc(r.item_name)} <span class="badge ${r.kind==="QR"?"normal":"unset"}">${r.kind==="QR"?"QR":"通常"}</span></td>${r.values.map(v=>`<td ${td}>${cell(r,v)}</td>`).join("")}</tr>`).join("")}<tr><td style="position:sticky;left:0;background:#eef2ff;padding:6px 8px;font-weight:800">合計kg</td>${tot.map(t=>`<td ${td} style="background:#eef2ff;padding:6px 8px;text-align:right;font-weight:800;white-space:nowrap">${hqKg(Math.round(t*10)/10)}</td>`).join("")}</tr></table></div><div class="small">QR品目：その日の終わりの在庫（取り消した出庫・受け入れは数えません）。通常在庫：その日に入力した数（入力がない日は「—」）。量目が分からないQRのロットは「kg不明」として別に出します。</div>`:'<div class="notice">品目がありません。</div>';
+ const cell=(r,v)=>{if(r.kind==="通常"){return v.kg==null?'<span style="color:#94a3b8">—</span>':`<span class="stockVal">${hqKg(v.kg)}</span>`}const u=Number(v.unknown_qty||0);return `<span class="stockVal">${hqKg(v.kg)}</span>${u?`<div class="small" style="color:#b45309">＋${hqQty(u)}（kg不明）</div>`:""}`};
+ const badge={QR:'<span class="badge normal">QR</span>',原料:'<span class="badge warn">原料</span>',仕掛品:'<span class="badge danger">仕掛品</span>'};
+ const today=hqToday(),wd="日月火水木金土";
+ const head=`<thead><tr><th>品目名</th>${dates.map(d=>`<th class="${d===today?"today":""}">${Number(d.slice(5,7))}/${Number(d.slice(8,10))}<br>${wd[new Date(d+"T00:00:00").getDay()]}</th>`).join("")}</tr></thead>`;
+ const sec=["QR","原料","仕掛品"].map(k=>{const rs=rows.filter(r=>kindOf(r)===k);if(!rs.length)return "";return `<tr><td class="weekSection" colspan="${dates.length+1}"><span style="position:sticky;left:8px;font-weight:800">${k==="QR"?"QR品目":k}（${rs.length}品目）</span></td></tr>`+rs.map(r=>`<tr><td>${esc(r.item_name)}<br>${badge[k]}</td>${r.values.map(v=>`<td class="${v.date===today?"today":""}">${cell(r,v)}</td>`).join("")}</tr>`).join("")}).join("");
+ const foot=`<tr><td><b>合計kg</b></td>${tot.map((t,i)=>`<td class="${dates[i]===today?"today":""}"><span class="stockVal">${hqKg(Math.round(t*10)/10)}</span></td>`).join("")}</tr>`;
+ document.getElementById("hqTbl").innerHTML=rows.length?`<div class="card"><div class="weeklyWrap" style="margin-top:0"><table class="weeklyTable">${head}<tbody>${sec}${foot}</tbody></table></div>${hidden?`<div class="small" style="margin-top:8px">期間中ずっと在庫0の品目${hidden}件は表示していません。</div>`:""}</div><div class="small">QR品目：その日の終わりの在庫（取り消した出庫・受け入れは数えません）。通常在庫：その日に入力した数（入力がない日は「—」）。量目が分からないQRのロットは「kg不明」として別に出します。</div>`:`<div class="notice">${hidden?"期間中に在庫がある品目はありません。":"品目がありません。"}</div>`;
 }
 
 /* ---- 履歴・Excel ---- */
@@ -16590,7 +16597,7 @@ const HQ_GUIDE={
  hqStock:{title:"本社の在庫と履歴を見る・Excelを作る",where:"本社ホーム → 在庫管理 → 本社在庫／入出庫履歴",steps:["「本社在庫」で品目ごとの合計とロットを見ます。上の「在庫あり／在庫なし／すべて」で切り替えると、使い切ったロット（最近30日に動きがあったもの）も探せます。","「入出庫履歴」で月を選ぶと、受け入れ確定・出庫・実数調整が並びます。各行の「このロットを開く」で、そのロットの画面へ進めます。","「この月のExcelを作る」で、現在の本社在庫・月の入出庫履歴・通常在庫・在庫表をExcelにします。"],check:"数量が合わないときは、本社社員がロットの画面の「実数調整」で直します。",caution:"実数調整には理由が必要です。"},
  hqItems:{title:"本社の品目を追加する",where:"本社ホーム → 入荷登録・品目 → 品目の追加・変更",steps:["上のタブで「QR品目」か「通常在庫の品目」を選びます。","QR品目：品目名・ふだんの単位・量目を入れて「追加する」を押します。","通常在庫の品目：品目名と1ケースのkgを入れて「追加する」を押します。通常在庫入力の画面の下の「通常在庫の品目を追加」からも追加できます。","使わなくなった品目は「表示しない」にします。"],check:"QR品目は本社直接入荷に、通常在庫の品目は通常在庫入力に出てきます。同じ名前をQR品目と通常在庫の品目の両方には登録できません。",caution:"加工用玉葱・皮むき人参(国産)・皮むき人参(中国)・皮むきじゃが芋は最初から入っています（保管目安は入荷日＋3日）。"},
  hqNormal:{title:"通常在庫を入力する（QRで管理しない品目）",where:"本社ホーム → 在庫管理 → 通常在庫入力",steps:["日付を確かめます（ふだんは今日）。","品目ごとにケース数とバラ（kg）を入れます。合計kgが自動で出ます。","「保存する」を押します。同じ日にもう一度保存すると上書きします。","品目がないときは、画面の下の「通常在庫の品目を追加」で追加します（本社社員・管理者）。"],check:"在庫表に、その日の数が出ます。",caution:"ケースもバラも空にして保存すると、その日の入力を消します。入力できるのは本社社員と荷受け担当者です。"},
- hqTable:{title:"在庫表を見る（QR品目＋通常在庫）",where:"本社ホーム → 在庫管理 → 在庫表",steps:["最後の日と日数（7・14・31日）を選びます。「◀ 前」「次 ▶」で期間を動かせます。","QR品目と通常在庫の品目が1つの表に並び、日ごとのkgといちばん下に合計kgが出ます。"],check:"QR品目はその日の終わりの在庫、通常在庫はその日に入力した数です（入力がない日は「—」）。",caution:"量目が分からないQRのロットは「kg不明」として別に出ます。月ごとのExcelにも「通常在庫」「在庫表」のシートが入ります。"},
+ hqTable:{title:"在庫表を見る（QR品目＋通常在庫）",where:"本社ホーム → 在庫管理 → 在庫表",steps:["最後の日と日数（7・14・31日）を選びます。「◀ 前」「次 ▶」で期間を動かせます。","石岡の在庫表と同じ形で、「QR品目」「原料」「仕掛品」の見出しごとに品目が並び、日ごとのkgといちばん下に合計kgが出ます。今日の列には色が付きます。","品目名の列は左に固定されているので、横に動かしても品目名が見えます。期間中ずっと在庫0の品目は表示せず、表の下に件数だけ出ます。"],check:"QR品目はその日の終わりの在庫、通常在庫はその日に入力した数です（入力がない日は「—」）。",caution:"量目が分からないQRのロットは「kg不明」として別に出ます。月ごとのExcelにも「通常在庫」「在庫表」のシートが入ります。"},
  hqPrint:{title:"本社移動用の貼り紙を印刷する（石岡）",where:"QR出庫で出庫先「本社」 → 登録後に自動で印刷画面へ（あとで印刷するときはホーム「本社へ移動中の原料・本社移動用の紙」）",steps:["いつもどおりQR出庫で、出庫先に「本社」を選んで出庫します。","登録すると、本社移動用の貼り紙の印刷画面へ自動で切り替わります。すぐ印刷しないときは、そのまま別の画面へ進めます。","ケースのものは「1パレットのケース数」を入れます。パレット枚数とパレットごとのケース数が自動で出ます（直せます）。","網コンテナ・鉄コンテナ・パレテーナは、送る分の実測合計kgと基数を入れます。1基あたりkgは自動で出ます。1基に1枚ずつ貼り、紙には1基あたりkgと実測合計・基数の両方が出ます。印刷すると本社の入荷待ちの数量が実測に変わります（石岡の在庫は出庫した数のまま）。","1パレット（1基）あたりの印刷枚数を入れて「印刷する」を押します。A4横のPDFができます。","画面の上に出る「PDFを開く・印刷」を押し、共有からEpson iPrintなどを選んで印刷します（いつものQR貼り紙と同じ）。","印刷し直すときは、ホームのいちばん上「本社へ移動中の原料・本社移動用の紙」から印刷します。まだ印刷していない原料には赤い「未印刷」が付き、画面の上に未印刷の件数が出ます。"],check:"出庫した時点で、本社の「入荷待ち原料」に「移動中」として出ます。本社でこの紙のQRを読むと、その原料が開きます。",caution:"パレットごとのケース数の合計が出庫数と合わないと印刷できません。大型容器は実測合計kgを基数で割った重さが1基あたりkgになります。本社への便の名前・到着時間は、管理者が「本社へ移動中の原料・本社移動用の紙」の画面の「本社への便の設定」から変えられます。出庫を取り消すと、本社の移動中も取消になります。"},
  hqUsers:{title:"本社のアカウントを登録する（管理者）",where:"メニュー → ユーザー登録・管理",steps:["「本社の初期アカウントをまとめて登録」を押します。","ユーザーIDを確認し、初期パスワードを入れて「まとめて登録する」を押します。","1人ずつ登録・変更するときは、権限で本社社員・本社事務・本社 荷受け担当者・本社 下処理班を選びます。","みんなで使うアカウントは「初回ログイン時にパスワード変更を求める」を外します。"],check:"一覧に本社の権限で表示されます。",caution:"パスワードはアプリに保存されません。本人へ直接伝えてください。"}
 };
@@ -17497,9 +17504,7 @@ hqTablePage=async function(...a){
  try{
   const box=document.getElementById("hqTbl");if(!box)return r;
   const sub=document.querySelector(".head .sub");if(sub)sub.textContent="本社のQR品目・原料・仕掛品の在庫（kg）";
-  const rows=X.lastTable?.rows||[];let k=0;
-  box.querySelectorAll("table tr").forEach((tr,i)=>{if(!i)return;const rr=rows[k];const b=tr.querySelector("td .badge");if(!rr||!b)return;k++;if(rr.kind==="原料"){b.textContent="原料";b.className="badge warn"}else if(rr.kind==="仕掛品"){b.textContent="仕掛品";b.className="badge danger"}});
-  const note=box.querySelector(".small");if(note)note.textContent="QR品目：その日の終わりの在庫（取り消した出庫・受け入れは数えません。下処理の確定で減らした分・廃棄も引きます）。原料・仕掛品：その日に在庫入力した数（入力がない日は「—」）。量目が分からないQRのロットは「kg不明」として別に出します。";
+  const note=box.querySelector(":scope > .small");if(note)note.textContent="QR品目：その日の終わりの在庫（取り消した出庫・受け入れは数えません。下処理の確定で減らした分・廃棄も引きます）。原料・仕掛品：その日に在庫入力した数（入力がない日は「—」）。量目が分からないQRのロットは「kg不明」として別に出します。";
  }catch(e){}
  return r;
 };
@@ -17928,7 +17933,7 @@ try{
  };
  Object.assign(HQ_GUIDE,G);
  HQ_GUIDE.hqNormal=G.stockInput;
- HQ_GUIDE.hqTable={...HQ_GUIDE.hqTable,title:"在庫表を見る（QR品目＋原料＋仕掛品）",steps:["最後の日と日数（7・14・31日）を選びます。「◀ 前」「次 ▶」で期間を動かせます。","QR品目・原料・仕掛品が1つの表に並び、日ごとのkgといちばん下に合計kgが出ます。"],check:"QR品目はその日の終わりの在庫、原料・仕掛品はその日に在庫入力した数です（入力がない日は「—」）。"};
+ HQ_GUIDE.hqTable={...HQ_GUIDE.hqTable,title:"在庫表を見る（QR品目＋原料＋仕掛品）",steps:["最後の日と日数（7・14・31日）を選びます。「◀ 前」「次 ▶」で期間を動かせます。","石岡の在庫表と同じ形で、「QR品目」「原料」「仕掛品」の見出しごとに品目が並び、日ごとのkgといちばん下に合計kgが出ます。今日の列には色が付きます。","品目名の列は左に固定されているので、横に動かしても品目名が見えます。期間中ずっと在庫0の品目は表示せず、表の下に件数だけ出ます。"],check:"QR品目はその日の終わりの在庫、原料・仕掛品はその日に在庫入力した数です（入力がない日は「—」）。"};
  const R={
   hq_prep:{name:"本社 下処理班",intro:"下処理と作業時間の記録をします。お金の数字は出ません。",keys:["prepStart","prepEnd","prepJoin","prepOther"]},
   hq_worker:{name:"本社社員",intro:"受け入れ・確定、下処理の確認と確定、在庫入力、棚卸し、マスタ・スタッフの登録、集計とExcelができます。",keys:["switch","hqReceive","prepCheck","stockInput","rawout","waste","take","usage","quality","yield","price","master","workDelete","staff","tasks","worktime","excel","hqDirect","hqStock","hqTable","hqItems","prepStart","prepEnd","hqOut"]},
