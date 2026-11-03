@@ -16206,6 +16206,7 @@ async function hqShowPhotos(lotId){
   const l=(await hqLots(`select=photo_paths&id=eq.${lotId}`))[0];const urls=[];
   for(const p of l?.photo_paths||[]){const enc=p.split("/").map(encodeURIComponent).join("/");const r=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${HQ_BUCKET}/${enc}`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+authToken(),"Content-Type":"application/json"},body:JSON.stringify({expiresIn:300})});if(r.ok){const a=await r.json();urls.push(SUPABASE_URL+"/storage/v1"+(a.signedURL||a.signedUrl))}}
   box.innerHTML=urls.map(u=>`<img src="${esc(u)}" style="width:100%;margin-top:8px;border-radius:10px">`).join("")||'<div class="small">写真を開けませんでした。</div>';
+  box.querySelectorAll("img").forEach(im=>im.addEventListener("error",()=>{const d=document.createElement("div");d.className="small";d.style.cssText="color:#b91c1c;font-weight:700;margin-top:8px";d.textContent="この写真は保存されていません。品質評価一覧の「写真を追加」から登録し直してください。";im.replaceWith(d)}));
  }catch(e){box.innerHTML=`<div class="err">${esc(hqErr(e))}</div>`}
 }
 
@@ -17698,7 +17699,7 @@ async function hqQualityPage(month="",only="all",msg=""){
  if(!h2CanReport()&&!roleIs(["hq_receiver"]))return hqHome();month=h2Month(month);setScreen("hqQualityPage",[month,only,msg]);
  pageShell("品質評価一覧","本社で評価した原料（直接入荷・石岡からの受け入れ）",`${okHtml(msg)}<div class="card"><label class="label">本社入荷の月</label><input type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqQualityPage",[{__seikaValue:true},only])}>
  <div class="h2Tabs" style="margin-top:8px">${[["all","すべて"],["need","要確認・不良"],["wait","確認待ち"]].map(([k,l])=>`<button class="btn ${only===k?"hqBtnQuality":"btn2"}" ${btnAttr("hqQualityPage",[month,k])}>${l}</button>`).join("")}</div>
- ${h2CanReport()?`<button class="btn hqBtnExcelOut" style="width:100%;margin-top:8px" ${btnAttr("h2ExcelQuality",[month])}>この月の品質評価をExcelにする</button>`:""}</div><div id="h2QBody">${h2Loading()}</div>`);
+ ${h2CanReport()?`<button class="btn hqBtnExcelOut" style="width:100%;margin-top:8px" ${btnAttr("h2ExcelQuality",[month])}>この月の品質評価をExcelにする</button>`:""}</div><div id="h2QBody">${h2Loading()}</div><input id="h2QAddInput" type="file" accept="image/*" multiple style="display:none" ${seikaEventAttrs("change","h2QAddPhotosRun",[])}>`);
  try{
   let rows=await qualityData(month);let dis=new Set();
   if(roleIs(["admin","hq_worker"])&&authProfile?.id){try{(await sel2("hq_quality_dismiss_v1500",`select=lot_id&user_id=eq.${authProfile.id}&limit=5000`)).forEach(d=>dis.add(d.lot_id))}catch(e){}}
@@ -17707,9 +17708,19 @@ async function hqQualityPage(month="",only="all",msg=""){
   h2Set("h2QBody",`<div class="small" style="margin:4px 0 8px">${rows.length}件。要確認・不良は写真1枚以上が必須です。担当の仕入れ担当者が「確認済み」にします（担当がいないときは管理者）。管理者・本社社員は「確認しました」で自分のお知らせを消せます。</div>`+rows.map(l=>{
    const canCheck=l.grade!=="good"&&!l.quality_checked_at&&((roleIs(["buyer"])&&l.purchase_staff_profile_id===me)||(roleIs(["admin"])&&(!l.purchase_staff_profile_id||l.purchase_staff_profile_id===me)));
    const canDis=l.grade!=="good"&&roleIs(["admin","hq_worker"])&&!dis.has(l.id);
-   return `<div class="card" style="padding:10px 14px"><div class="itemHead"><div><b>${esc(l.item_name)}</b> ${hqGradeBadge(l.grade)} <span class="badge ${l.source_kind==="石岡から"?"normal":"warn"}">${l.source_kind==="石岡から"?"石岡からの受け入れ":"直接入荷"}</span><div class="small">${esc(l.hq_received_date||"")} ／ ${esc(l.supplier||"-")}${l.cooperative_name?` ／ ${esc(l.cooperative_name)}`:""} ／ 写真 ${(l.photo_paths||[]).length}枚 ／ 評価：${esc(l.evaluated_by_name||"")}</div>${(l.issues||[]).length||l.quality_memo?`<div class="small">${esc((l.issues||[]).join("・"))} ${esc(l.quality_memo||"")}</div>`:""}<div class="small"><b>${esc(qState(l))}</b>${l.quality_checked_at?`（${esc(l.quality_checked_by_name||"")} ${dt2(l.quality_checked_at)}）`:""}${dis.has(l.id)?" ／ お知らせ確認済み":""}</div></div></div>
-   <div class="row" style="margin-top:6px">${(l.photo_paths||[]).length?`<button class="btn btn2" ${btnAttr("h2QPhotos",[l.id])}>写真</button>`:""}<button class="btn btn2" ${btnAttr("hqLotPage",[l.qr_key])}>ロット</button>${canCheck?`<button class="btn hqBtnQuality" ${btnAttr("h2QCheck",[l.id,month,only])}>確認済みにする</button>`:""}${canDis?`<button class="btn btn2" ${btnAttr("h2QDismiss",[l.id,month,only])}>確認しました</button>`:""}</div><div id="hqPhotoView_${esc(l.id)}"></div></div>`}).join(""));
+   const canAdd=l.grade!=="good"&&roleIs(["admin","hq_worker","hq_receiver"]);
+   return `<div class="card" style="padding:10px 14px"><div class="itemHead"><div><b>${esc(l.item_name)}</b> ${hqGradeBadge(l.grade)} <span class="badge ${l.source_kind==="石岡から"?"normal":"warn"}">${l.source_kind==="石岡から"?"石岡からの受け入れ":"直接入荷"}</span><div class="small">${esc(l.hq_received_date||"")} ／ ${esc(l.supplier||"-")}${l.cooperative_name?` ／ ${esc(l.cooperative_name)}`:""} ／ 写真 ${(l.photo_paths||[]).length}枚 ／ 評価：${esc(l.evaluated_by_name||"")}</div>${(l.issues||[]).length||l.quality_memo?`<div class="small">${esc((l.issues||[]).join("・"))} ${esc(l.quality_memo||"")}</div>`:""}<div class="small"><b>${esc(qState(l))}</b>${l.quality_checked_at?`（${esc(l.quality_checked_by_name||"")} ${dt2(l.quality_checked_at)}）`:""}${dis.has(l.id)?" ／ お知らせ確認済み":""}</div>${l.grade!=="good"&&!(l.photo_paths||[]).length?`<div class="small" style="color:#b91c1c;font-weight:700">写真が保存されていません。${canAdd?"「写真を追加」から登録し直してください。":""}</div>`:""}</div></div>
+   <div class="row" style="margin-top:6px">${(l.photo_paths||[]).length?`<button class="btn btn2" ${btnAttr("h2QPhotos",[l.id])}>写真</button>`:""}${canAdd&&(l.photo_paths||[]).length<5?`<button class="btn btn2" ${btnAttr("h2QAddPhotos",[l.id,month,only])}>写真を追加</button>`:""}<button class="btn btn2" ${btnAttr("hqLotPage",[l.qr_key])}>ロット</button>${canCheck?`<button class="btn hqBtnQuality" ${btnAttr("h2QCheck",[l.id,month,only])}>確認済みにする</button>`:""}${canDis?`<button class="btn btn2" ${btnAttr("h2QDismiss",[l.id,month,only])}>確認しました</button>`:""}</div><div id="hqPhotoView_${esc(l.id)}"></div></div>`}).join(""));
  }catch(e){h2Set("h2QBody",`<div class="err">${esc(h2Err(e))}</div>`)}
+}
+let h2QAddTarget=null;
+function h2QAddPhotos(id,m,o){h2QAddTarget={id,m,o};const i=document.getElementById("h2QAddInput");if(i){i.value="";i.click()}}
+async function h2QAddPhotosRun(){
+ const input=document.getElementById("h2QAddInput"),files=[...(input?.files||[])],t=h2QAddTarget;if(input)input.value="";if(!files.length||!t)return;
+ v161ShowProcessing("写真を保存しています");
+ try{const paths=[];for(const f of files){const p=await v1102CompressPhoto(f);paths.push(await hqUpload(t.id,p.blob));if(p.preview)URL.revokeObjectURL(p.preview)}
+  await r2("hq_add_quality_photos_v1199c80",{p_lot_id:t.id,p_photo_paths:paths});v161HideProcessing();return hqQualityPage(t.m,t.o,`写真を${paths.length}枚追加しました`)}
+ catch(e){v161HideProcessing();alert(h2Err(e))}
 }
 async function h2QPhotos(id){document.getElementById("hqPhotoView")?.removeAttribute("id");const b=document.getElementById("hqPhotoView_"+id);if(!b)return;b.id="hqPhotoView";await hqShowPhotos(id);b.id="hqPhotoView_"+id}
 async function h2QCheck(id,m,o){try{await r2("hq_quality_check_v1500",{p_lot_id:id});return hqQualityPage(m,o,"確認済みにしました")}catch(e){alert(h2Err(e))}}
@@ -17778,7 +17789,7 @@ function h2ExcelOut(k,m){return excelOut(k,m)}
 function h2ExcelWaste(m){return excelOut("waste",m)}
 function h2ExcelYield(m){return excelOut("yield",m)}
 function h2ExcelQuality(m){return excelOut("quality",m)}
-Object.assign(window,{hqWastePage,h2SaveRawLoss,h2CancelWaste,h2Dispose,hqPricePage,hqYieldPage,hqQualityPage,h2QPhotos,h2QCheck,h2QDismiss,hqExcelPage,h2ExcelOut,h2ExcelWaste,h2ExcelYield,h2ExcelQuality});
+Object.assign(window,{h2QAddPhotos,h2QAddPhotosRun,hqWastePage,h2SaveRawLoss,h2CancelWaste,h2Dispose,hqPricePage,hqYieldPage,hqQualityPage,h2QPhotos,h2QCheck,h2QDismiss,hqExcelPage,h2ExcelOut,h2ExcelWaste,h2ExcelYield,h2ExcelQuality});
 })();
 
 /* ===== つなぎ込み（ホーム・在庫管理・ロット画面・戻る・石岡ホームのお知らせ） ===== */
@@ -17926,7 +17937,7 @@ try{
   yield:{title:"歩留まり管理（製造日報・平均・推移）",where:"本社ホーム →「歩留まり管理」",steps:["月を選びます。","「製造日報」で日ごとの下処理、「品目・仕掛品の平均」で月の平均、「年度の推移」で9月〜8月の月ごとの歩留まり率を見ます。"],check:"確定した下処理だけが入ります。",caution:"歩留まり率＝出来高÷（出来高＋廃棄）。歩留まり原価＝単価×（出来高＋廃棄）÷出来高。"},
   usage:{title:"品目別使用数量を見る",where:"在庫管理 →「品目別使用数量」",steps:["月を選びます。","品目を押すと、日ごとの使用数量（前日の在庫＋入荷−その日の在庫）と、廃棄・原料のまま出荷の内訳が出ます。"],check:"",caution:"平均は在庫を入力した日（稼働日）で割っています。仕掛品は対象外です。"},
   take:{title:"棚卸しをする",where:"在庫管理 →「棚卸し」",steps:["棚卸しの日を選び「確認表を作る」を押します。","「確認表を印刷」で印刷し、実物を数えます。","数えた数を入れて「途中保存」。全部入れたら「確定する」を押します。","「結果を印刷」で差の入った結果を印刷します。"],check:"QRの原料はロットごとに「実数調整（棚卸し）」、原料・仕掛品はその日の在庫入力になります。",caution:"実数が空欄の行は変えません。"},
-  quality:{title:"本社の品質評価一覧",where:"本社ホーム →「品質評価一覧」",steps:["月を選び、「要確認・不良」「確認待ち」で絞り込みます。","担当の仕入れ担当者は「確認済みにする」を押します（担当がいないときは管理者）。","管理者・本社社員は「確認しました」で自分のお知らせを消します。"],check:"",caution:"要確認・不良は写真1枚以上が必須です。"},
+  quality:{title:"本社の品質評価一覧",where:"本社ホーム →「品質評価一覧」",steps:["月を選び、「要確認・不良」「確認待ち」で絞り込みます。","担当の仕入れ担当者は「確認済みにする」を押します（担当がいないときは管理者）。","管理者・本社社員は「確認しました」で自分のお知らせを消します。","写真を付け忘れたときや「写真が保存されていません」と出たときは、「写真を追加」から写真を撮るか選びます（管理者・本社社員・荷受け担当。1件5枚まで）。"],check:"「写真」を押すと、登録した写真が見られます。",caution:"要確認・不良は写真1枚以上が必須です。"},
   excel:{title:"Excelを作る",where:"本社ホーム →「Excel出力」",steps:["月を選びます。","作りたいもののボタンを押します（在庫・在庫入力・在庫表・廃棄・歩留まり・使用数量・品質評価・作業時間）。"],check:"ファイル名は「本社_歩留まり_2026年10月.xlsx」のようになります。",caution:""},
   diff:{title:"本社で数が違ったときのお知らせ（石岡）",where:"石岡のホームのいちばん上",steps:["本社で受け入れた数が、石岡で予定した数と違うと、お知らせが出ます。","内容を見て「確認しました」を押すと消えます。"],check:"",caution:"石岡の在庫は自動では直しません。必要なら実数調整をします。"},
   viewHq:{title:"本社の画面を見る（見るだけ）",where:"ホーム →「本社の画面へ」",steps:["本社の在庫・品質評価・歩留まり・廃棄・仕入れ価格表・作業時間を見られます。","「Excel出力」で月ごとのExcelを作れます。"],check:"",caution:"入力はできません。"}
