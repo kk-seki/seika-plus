@@ -16166,7 +16166,7 @@ async function hqDoReceive(lotId,key){
  if(!confirm(`${HQ_GRADE[grade]}・${hqQty(qty)} で確定します。確定すると本社の在庫になります。よろしいですか？`))return;
  hqBusy=true;const btn=document.getElementById("hqRecvBtn");if(btn){btn.disabled=true;btn.textContent="保存中…"}
  try{
-  const paths=[];if(grade!=="good")for(const p of hqPhotos)paths.push(await hqUpload(lotId,p));
+  const paths=[];if(grade!=="good")for(const p of hqPhotos)paths.push(await hqUpload(lotId,p.blob));
   await hqRpc("hq_receive_v1400",{p_operation_id:newId(),p_lot_id:lotId,p_qty:qty,p_grade:grade,p_issues:grade==="good"?[]:issues,p_quality_memo:document.getElementById("hqRecvMemo")?.value||null,p_photo_paths:paths});
   hqBusy=false;hqPhotos=[];
   const direct=(await hqLots(`select=source_kind&id=eq.${lotId}`).catch(()=>[]))[0]?.source_kind==="本社直接入荷";
