@@ -19355,20 +19355,52 @@ function c84Build(items,date){
   t.lines.set(lk,g);
  }
  const order=c84RunOrder(),dOrder=["埼玉","深谷","本社"];
- return [...map.values()].map(t=>({...t,lines:[...t.lines.values()]})).sort((a,b)=>dOrder.indexOf(a.dest)-dOrder.indexOf(b.dest)||((order.indexOf(a.run)+99)%99)-((order.indexOf(b.run)+99)%99));
+ return [...map.values()].map(t=>c89Sort({...t,lines:[...t.lines.values()]})).sort((a,b)=>dOrder.indexOf(a.dest)-dOrder.indexOf(b.dest)||((order.indexOf(a.run)+99)%99)-((order.indexOf(b.run)+99)%99));
 }
 function c84Qr(payload){const q=qrcode(0,"M");q.addData(String(payload));q.make();return q.createDataURL(4,1)}
 function c84Unit(u){return /^(ケース|ｃｓ|cs)$/i.test(String(u||"").trim())?"cs":String(u||"")}
 function c84Title(t){return t.dest==="本社"?`本社工場　${t.run}`:t.dest}
 function c84Cells(g){return{pack:g.big?`${c84Num(g.count)}基`:g.pack,qty:g.big?(g.kgOk&&g.kg>0?c84Num(g.kg):""):c84Num(g.qty),unit:g.big?"kg":c84Unit(g.unit),received:c84Md(g.received)}}
-const C89_TODAY=10,C89_FWD=11,C89_ROWS=12,C89_MINBLANK=2;
+const C89_PER=15,C89_KEEP=2;
+const C89_ORDER={
+ "埼玉":[["さつま芋","さつま"],["南瓜"],["キャベツ"],["白菜"],["カット大根","大根"],["人参"],["胡瓜"],["ピーマン"],["赤パプリカ"],["黄パプリカ"],["長葱"],["水菜"],["小松菜"],["茄子"],["青梗菜","チンゲン菜"],["ゴーヤ"],["小葱"],["牛蒡","ごぼう"],["ニラ"],["大葉"]],
+ "深谷":[["レタス"],["キャベツ"],["紫キャベツ"],["水菜"],["胡瓜"],["小松菜"],["小葱"],["ミニトマト"],["サニーレタス","サニー"],["カット大根","大根"],["葉付大根"],["長葱"],["トマト"],["人参"],["グリーンリーフ","リーフ"],["蓮根","レンコン","れんこん"],["大葉"]]
+};
+function c89Norm(v){return String(v||"").replace(/[（(][^）)]*[）)]/g,"").replace(/[\s　]/g,"").trim()}
+function c89Rank(dest,item){
+ const list=C89_ORDER[dest];if(!list)return 999;const n=c89Norm(item);let best=999,len=0;
+ list.forEach((al,i)=>al.forEach(a=>{const x=c89Norm(a);if(n===x){if(len<1000){best=i;len=1000}}else if(len<1000&&(n.startsWith(x)||x.startsWith(n))&&x.length>len){best=i;len=x.length}}));
+ return best;
+}
+function c89Sort(t){if(!C89_ORDER[t.dest])return t;const r=g=>c89Rank(t.dest,g.item);
+ t.lines.sort((a,b)=>(a.fwd?1:0)-(b.fwd?1:0)||r(a)-r(b)||(r(a)===999?String(a.item).localeCompare(String(b.item),"ja"):0)||String(a.received||"").localeCompare(String(b.received||""))||String(a.party||"").localeCompare(String(b.party||""),"ja"));return t}
+function c89Blank(n,keep){return Array.from({length:Math.max(0,n)},(_,k)=>({blank:true,keep:k<keep}))}
 function c89Pages(t){
- const today=t.lines.filter(g=>!g.fwd),fwd=t.lines.filter(g=>g.fwd),pages=[];
- for(let i=0;i<today.length;i+=C89_TODAY){const ent=today.slice(i,i+C89_TODAY).map(g=>({g}));const n=Math.max(C89_MINBLANK,C89_ROWS-ent.length);for(let k=0;k<n;k++)ent.push({blank:true,keep:k<C89_MINBLANK});pages.push(ent)}
- const head=`【${c84Md(c84Add(t.date,1))}　納品分　先送り】`;
- for(let i=0;i<fwd.length;i+=C89_FWD)pages.push([{head:head+(i?"（続き）":"")},...fwd.slice(i,i+C89_FWD).map(g=>({g}))]);
- if(!pages.length)pages.push(Array.from({length:C89_ROWS},(_,k)=>({blank:true,keep:k<C89_MINBLANK})));
+ const today=t.lines.filter(g=>!g.fwd),fwd=t.lines.filter(g=>g.fwd),head=`【${c84Md(c84Add(t.date,1))}　納品分　先送り】`;
+ const total=today.length+C89_KEEP+(fwd.length?fwd.length+1:0);
+ if(total<=C89_PER){
+  const ent=today.length||!fwd.length?[...today.map(g=>({g})),...c89Blank(C89_KEEP,C89_KEEP)]:[];
+  if(fwd.length)ent.push({head},...fwd.map(g=>({g})));
+  if(!today.length&&fwd.length)ent.push(...c89Blank(C89_KEEP,C89_KEEP));
+  ent.push(...c89Blank(C89_PER-ent.length,0));return [ent];
+ }
+ const pages=[],cap=C89_PER-C89_KEEP;
+ for(let i=0;i<today.length;i+=cap){const ent=[...today.slice(i,i+cap).map(g=>({g})),...c89Blank(C89_KEEP,C89_KEEP)];ent.push(...c89Blank(C89_PER-ent.length,0));pages.push(ent)}
+ for(let i=0;i<fwd.length;i+=C89_PER-1){const ent=[{head:head+(i?"（続き）":"")},...fwd.slice(i,i+C89_PER-1).map(g=>({g}))];ent.push(...c89Blank(C89_PER-ent.length,0));pages.push(ent)}
  return pages;
+}
+function c89HqPages(t){const cap=C89_PER-C89_KEEP,ls=t.lines,pages=[];
+ for(let i=0;i<Math.max(ls.length,1);i+=cap){const ent=[...ls.slice(i,i+cap).map(g=>({g})),...c89Blank(C89_KEEP,C89_KEEP)];ent.push(...c89Blank(C89_PER-ent.length,0));pages.push(ent)}return pages}
+function c89HqHtml(t,ent,pi,pn){
+ const rows=ent.map(e=>{if(e.blank)return `<tr class="b${e.keep?" keep":""}">${"<td></td>".repeat(8)}</tr>`;const g=e.g,c=c84Cells(g);
+  let img="";if(g.qr_key){try{img=`<img src="${c84Qr(location.origin+location.pathname+"?qr="+encodeURIComponent(g.qr_key))}">`}catch(_){}}
+  return `<tr class="r"><td class="nm">${esc(g.item)}</td><td class="c">${esc(c.pack)}</td><td class="n">${esc(c.qty)}</td><td class="c u">${esc(c.unit)}</td><td class="og">${esc(g.origin||"")}${g.party?`<br><span>${esc(g.party)}</span>`:""}</td><td class="c">${esc(c.received)}</td><td></td><td class="q">${img}</td></tr>`}).join("");
+ const last=pi===pn-1;
+ return `<div class="half"><div class="hqtop"><div class="hqttl">納　品　書</div><span class="pg">${pn>1?`${pi+1} / ${pn}`:""}</span></div>
+ <div class="top"><div><div class="dt" style="font-size:18px">${esc(c84Jp(t.date))}</div><div class="run" style="font-size:24px">${esc(t.run)}</div><div class="to">${esc(C84_TO[t.dest])}　御中</div></div><div class="from"><b>${esc(C84_FROM)}</b><div>${C84_ADDR}</div></div></div>
+ <table><colgroup><col style="width:22%"><col style="width:9%"><col style="width:10%"><col style="width:5%"><col style="width:18%"><col style="width:8%"><col style="width:19%"><col style="width:9%"></colgroup>
+ <tr class="th"><td>品　　名</td><td>入　数</td><td colspan="2">数　量</td><td>産地（単協）</td><td>入荷日</td><td>備　考</td><td>QR</td></tr>${rows}</table>
+ ${last?`<div class="foot">上記の通り納品致しました</div>`:""}</div>`;
 }
 function c84Pages(t){
  if(t.dest!=="本社")return c89Pages(t);
@@ -19399,6 +19431,7 @@ const C84_CSS=`.c84Page{width:1122px;height:794px;padding:22px 24px;background:#
 .c84Page tr.th td{text-align:center;font-weight:800;height:24px;background:#f1f5f9}.c84Page tr.r td{height:calc(44px*var(--k,1))}.c84Page tr.b td{height:calc(34px*var(--k,1))}
 .c84Page td.nm{white-space:normal;line-height:1.15;font-weight:700;font-size:calc(12px*var(--f,1))}.c84Page td.c{text-align:center}.c84Page td.n{text-align:right;font-weight:800;font-size:calc(14px*var(--f,1))}.c84Page td.u{font-size:11px}
 .c84Page td.hd{font-weight:900;font-size:13px}.c84Page td.q{text-align:center;padding:0}.c84Page td.q img{width:calc(42px*var(--k,1));height:calc(42px*var(--k,1));display:block;margin:auto;image-rendering:pixelated}
+.c84Page .hqtop{position:relative;text-align:center}.c84Page .hqttl{display:inline-block;font-size:26px;font-weight:900;border:2px solid #000;border-radius:8px;padding:2px 28px;letter-spacing:4px}.c84Page .hqtop .pg{position:absolute;right:0;bottom:4px;font-size:12px;font-weight:700}.c84Page td.og{white-space:normal;line-height:1.15;text-align:center;font-size:calc(12px*var(--f,1))}.c84Page td.og span{font-size:calc(11px*var(--f,1))}
 .c84Page .foot{margin-top:6px;font-size:13px;font-weight:700;padding-left:20px}`;
 function c87Fit(pg){
  const hs=[...pg.querySelectorAll(".half")],over=()=>{const r=pg.getBoundingClientRect(),z=r.height/794||1,lim=r.bottom-20*z;return hs.some(h=>[...h.children].some(c=>c.getBoundingClientRect().bottom>lim))};
@@ -19407,7 +19440,7 @@ function c87Fit(pg){
  for(let k=.95;over()&&k>=.5;k-=.05){pg.style.setProperty("--k",k.toFixed(2));pg.style.setProperty("--f",Math.max(.78,k).toFixed(2))}
 }
 function c87FitAll(root){(root||document).querySelectorAll(".c84Page").forEach(c87Fit)}
-function c84TicketPages(t){const ps=c84Pages(t);return ps.map((ent,i)=>`<div class="c84Page hqPdfPage">${c84Half(t,ent,i===ps.length-1,i,ps.length,"nou")}${c84Half(t,ent,i===ps.length-1,i,ps.length,"sei")}</div>`)}
+function c84TicketPages(t){if(t.dest==="本社"){const hp=c89HqPages(t);return hp.map((ent,i)=>`<div class="c84Page hqPdfPage c89hq">${c89HqHtml(t,ent,i,hp.length)}</div>`)}const ps=c84Pages(t);return ps.map((ent,i)=>`<div class="c84Page hqPdfPage">${c84Half(t,ent,i===ps.length-1,i,ps.length,"nou")}${c84Half(t,ent,i===ps.length-1,i,ps.length,"sei")}</div>`)}
 async function c84Pdf(idx){
  if(c84Busy)return;const box=document.getElementById("c84Status");const list=idx==null?c84Tickets:[c84Tickets[idx]].filter(Boolean);if(!list.length)return;
  const say=(h,c="notice")=>{if(box)box.innerHTML=`<div class="${c}">${h}</div>`};
@@ -19528,7 +19561,9 @@ try{
    "埼玉・深谷へ網コンテナ・鉄コンテナ・パレテーナを出庫するときは、総重量（kg）を必ず入れます。単発のQR出庫は画面の「総重量（kg）」欄、連続出庫・まとめ出庫は出庫のときに出る入力欄に入れます。入れた重さは伝票だけに使い、石岡の在庫の重さは変わりません。",
    "ロットの量目と違う入数で出すとき（例：白菜を12kgで出す）は、QR出庫の画面の「入数（量目と違うときだけ）」に入れます（埼玉・深谷のとき）。",
    "本社工場の伝票は、本社入荷日（予定）が伝票の日付と同じ分を載せます。「翌日分先送り」で出した分も、本社に着く日の伝票に普通の行として入ります（「先送り」の欄は出ません）。",
-   "埼玉・深谷の伝票は、当日分と先送り分を別の用紙に分けます。1枚に入るのは、当日分が10行（下に手書き用の空欄が2行以上つきます）、先送り分が11行です。それより多いときは、自動で2枚目に続きます。",
+   "埼玉・深谷の伝票は、品目・先送りの見出し・手書き用の2行を合わせて15行までなら1枚に入ります（当日分 → 手書き用2行 → 先送り分の順）。15行を超えるときだけ、当日分と先送り分の用紙を分けます。当日分だけで超えるときは2枚目に続きます。",
+   "埼玉・深谷の伝票の品目は、いつもの納品書と同じ順番に並びます（同じ品目は入荷日の古い順。リストにない品目は最後に品名順）。",
+   "本社工場の伝票は、原料発注書に近い形の「納品書」1枚です（請求書はつきません）。品名・入数・数量・産地（単協）・入荷日・備考（手書き用）・QRが入り、手書き用の2行を含めて15行までは1枚、超えるときだけ2枚目に続きます。",
    "品名が長くて行が高くなったときは、印刷の用紙に収まるように、手書き用の2行を残して空欄の行を減らし、それでも入らないときは文字と行を少し小さくします。",
    "出庫したあとで総重量や入数を入れる・直すときは、伝票の画面の「総重量・入数を入れる・直す」を開いてボタンを押します（管理者・青果社員）。",
    "同じロットを何回かに分けて出庫したときは1行にまとめます。先送り分は「【○/○ 納品分 先送り】」の下にまとめます。",
