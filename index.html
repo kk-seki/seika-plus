@@ -19348,8 +19348,8 @@ function c84Build(items,date){
   const tk=x.dest==="本社"?`本社|${hqRun}`:x.dest;
   let t=map.get(tk);
   if(!t){t={key:tk,dest:x.dest,run:hqRun,runTime:x.runTime,date,lines:new Map};map.set(tk,t)}
-  const fwd=x.timing==="翌日分先送り"||x.timing==="日曜積込分・先送り",lk=`${fwd?1:0}|${x.date}|${x.lotKey}|${x.big?"":x.pack}`,party=x.coop||x.supplier||"";
-  const g=t.lines.get(lk)||{fwd,ship:x.date,sun:C84_SUN.includes(x.timing),item:x.item,coop:x.coop,party,name:party?`${x.item}　${party}`:x.item,mv:[],origin:x.origin,received:x.received,pack:x.pack,big:x.big,count:0,kg:0,kgOk:true,qty:0,unit:x.unit,qr_key:x.qr_key,lot_no:x.lot_no};
+  const fwd=x.dest!=="本社"&&(x.timing==="翌日分先送り"||x.timing==="日曜積込分・先送り"),lk=`${fwd?1:0}|${x.date}|${x.lotKey}|${x.big?"":x.pack}`,party=x.coop||x.supplier||"";
+  const g=t.lines.get(lk)||{fwd,ship:x.date,sun:C84_SUN.includes(x.timing),item:x.item,coop:x.coop,party,name:party?`${x.item}　${party}`:x.item,mv:[],hq:x.dest==="本社",day:x.day,origin:x.origin,received:x.received,pack:x.pack,big:x.big,count:0,kg:0,kgOk:true,qty:0,unit:x.unit,qr_key:x.qr_key,lot_no:x.lot_no};
   g.mv.push({id:x.id,qty:x.qty,count:x.count,kg:x.kg,kgSet:x.kgSet,pack:x.pack,unit:x.unit});
   g.qty+=x.qty;if(x.big){g.count+=x.count||0;if(x.kg===null||!Number.isFinite(x.kg))g.kgOk=false;else g.kg+=x.kg}
   t.lines.set(lk,g);
@@ -19385,11 +19385,18 @@ const C84_CSS=`.c84Page{width:1122px;height:794px;padding:22px 24px;background:#
 .c84Page .run{font-size:20px;font-weight:900;margin-top:4px}
 .c84Page .top{display:flex;justify-content:space-between;gap:8px;margin:4px 0 6px}.c84Page .to{font-size:15px;font-weight:800;border-bottom:1.5px solid #000;padding-bottom:2px}.c84Page .dt{font-size:14px;font-weight:700;margin-top:6px}
 .c84Page .from{font-size:10px;line-height:1.35;text-align:left}.c84Page .from b{font-size:12.5px}
-.c84Page table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.5px}.c84Page td{border:1px solid #000;padding:1px 3px;vertical-align:middle;overflow:hidden;white-space:nowrap}
-.c84Page tr.th td{text-align:center;font-weight:800;height:24px;background:#f1f5f9}.c84Page tr.r td{height:44px}.c84Page tr.b td{height:34px}
-.c84Page td.nm{white-space:normal;line-height:1.15;font-weight:700;font-size:12px}.c84Page td.c{text-align:center}.c84Page td.n{text-align:right;font-weight:800;font-size:14px}.c84Page td.u{font-size:11px}
-.c84Page td.hd{font-weight:900;font-size:13px}.c84Page td.q{text-align:center;padding:0}.c84Page td.q img{width:42px;height:42px;display:block;margin:auto;image-rendering:pixelated}
+.c84Page table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:calc(12.5px*var(--f,1))}.c84Page td{border:1px solid #000;padding:1px 3px;vertical-align:middle;overflow:hidden;white-space:nowrap}
+.c84Page tr.th td{text-align:center;font-weight:800;height:24px;background:#f1f5f9}.c84Page tr.r td{height:calc(44px*var(--k,1))}.c84Page tr.b td{height:calc(34px*var(--k,1))}
+.c84Page td.nm{white-space:normal;line-height:1.15;font-weight:700;font-size:calc(12px*var(--f,1))}.c84Page td.c{text-align:center}.c84Page td.n{text-align:right;font-weight:800;font-size:calc(14px*var(--f,1))}.c84Page td.u{font-size:11px}
+.c84Page td.hd{font-weight:900;font-size:13px}.c84Page td.q{text-align:center;padding:0}.c84Page td.q img{width:calc(42px*var(--k,1));height:calc(42px*var(--k,1));display:block;margin:auto;image-rendering:pixelated}
 .c84Page .foot{margin-top:6px;font-size:13px;font-weight:700;padding-left:20px}`;
+function c87Fit(pg){
+ const hs=[...pg.querySelectorAll(".half")],over=()=>{const r=pg.getBoundingClientRect(),z=r.height/794||1,lim=r.bottom-20*z;return hs.some(h=>[...h.children].some(c=>c.getBoundingClientRect().bottom>lim))};
+ pg.style.removeProperty("--k");pg.style.removeProperty("--f");
+ while(over()){const bs=hs.map(h=>[...h.querySelectorAll("tr.b")].pop()).filter(Boolean);if(!bs.length)break;bs.forEach(b=>b.remove())}
+ for(let k=.95;over()&&k>=.5;k-=.05){pg.style.setProperty("--k",k.toFixed(2));pg.style.setProperty("--f",Math.max(.78,k).toFixed(2))}
+}
+function c87FitAll(root){(root||document).querySelectorAll(".c84Page").forEach(c87Fit)}
 function c84TicketPages(t){const ps=c84Pages(t);return ps.map((ent,i)=>`<div class="c84Page hqPdfPage">${c84Half(t,ent,i===ps.length-1,i,ps.length,"nou")}${c84Half(t,ent,i===ps.length-1,i,ps.length,"sei")}</div>`)}
 async function c84Pdf(idx){
  if(c84Busy)return;const box=document.getElementById("c84Status");const list=idx==null?c84Tickets:[c84Tickets[idx]].filter(Boolean);if(!list.length)return;
@@ -19401,7 +19408,7 @@ async function c84Pdf(idx){
   root=document.createElement("div");root.setAttribute("aria-hidden","true");root.style.cssText="position:fixed;left:-20000px;top:0;width:1122px;background:#fff;pointer-events:none";
   root.innerHTML=`<style>${C84_CSS}</style>`+list.flatMap(c84TicketPages).join("");document.body.appendChild(root);
   if(document.fonts&&document.fonts.ready)await document.fonts.ready;if(typeof qrWaitForPosterImages==="function")await qrWaitForPosterImages(root);
-  const{jsPDF}=window.jspdf,doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4",compress:true});const pg=[...root.querySelectorAll(".c84Page")];
+  const{jsPDF}=window.jspdf,doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4",compress:true});c87FitAll(root);const pg=[...root.querySelectorAll(".c84Page")];
   for(let i=0;i<pg.length;i++){const c=await window.html2canvas(pg[i],{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false,width:1122,height:794,windowWidth:1122,windowHeight:794});if(i)doc.addPage("a4","landscape");doc.addImage(c.toDataURL("image/png"),"PNG",0,0,297,210,undefined,"FAST")}
   const blob=doc.output("blob");if(!blob||!blob.size)throw new Error("PDFの作成に失敗しました。");
   const name=`伝票_${c84Date}_${idx==null?"すべて":c84Title(list[0]).replace(/[\s（）()]+/g,"_")}.pdf`;c84Url=URL.createObjectURL(blob);
@@ -19409,7 +19416,7 @@ async function c84Pdf(idx){
  }catch(e){say(`PDFを作成できませんでした。${esc(e?.message||String(e))}`,"err")}
  finally{if(root)root.remove();c84Busy=false}
 }
-function c84Kind(g){return g.sun?(g.fwd?"日曜積込分・先送り":"日曜積込分"):(g.fwd?"先送り":"当日分")}
+function c84Kind(g){if(g.hq)return g.day||"";return g.sun?(g.fwd?"日曜積込分・先送り":"日曜積込分"):(g.fwd?"先送り":"当日分")}
 function c84Aoa(t){
  const a=[["伝票",c84Title(t)],["宛先",C84_TO[t.dest]],["伝票の日付",t.date],[],["品名","入数","数量","単位","産地","入荷日","単協・仕入先","出庫日","区分","ロットNo."]];
  const put=g=>{const c=c84Cells(g);a.push([g.name,c.pack,c.qty===""?"":Number(String(c.qty).replace(/,/g,"")),c.unit,g.origin,g.received||"",g.party,g.ship,c84Kind(g),g.lot_no])};
@@ -19483,10 +19490,11 @@ async function c84SlipPage(date){
  <div class="small" style="margin-top:6px">この日付の伝票に載る出庫（取消したものを除く）を集めます。<br>・埼玉・深谷：前の日の出庫。月曜日の伝票には、土曜日に「日曜積込分」で出庫した分も入ります（土曜日の「日曜積込分」は日曜日の伝票には入りません）。<br>・本社工場：本社入荷日（予定）がこの日の出庫。便ごとに1枚です。本社直接入荷（石岡経由）は載りません。</div></div>
  ${c84Tickets.length?`<div class="card"><button class="btn homeBtnSlip" style="width:100%" ${seikaEventAttrs("click","c84Pdf",[null])}>すべての伝票を印刷（PDF・${c84Tickets.length}件）</button><button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c84Excel",[])}>この日の伝票をExcelで出力</button><div id="c84Status" style="margin-top:8px"></div></div>${cards}`:`<div class="notice">この日付の埼玉・深谷・本社工場の伝票に載る出庫はありません。</div>`}
  <div class="card"><b>月の伝票の一覧（Excel）</b><div class="small">選んだ月の伝票（伝票の日付で集計）の中身を1つの表にまとめて出力します（事務所での確認用）。</div><input id="c84Month" type="month" class="input" style="margin-top:6px" value="${esc(c84Date.slice(0,7))}"><button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c84MonthExcel",[])}>月の一覧をExcelで出力</button><div id="c84MonthStatus" style="margin-top:8px"></div></div>`);
+ c87FitAll(document);
 }
 
 function c84DateChanged(){const v=document.getElementById("c84Date")?.value;if(v)return c84SlipPage(v)}
-Object.assign(window,{c86EditKg,c86EditPack,c84SlipPage,c84DateChanged,c84Pdf,c84Excel,c84MonthExcel,c84Build,c84Collect,c84Title,c84TicketPages,C84_CSS});
+Object.assign(window,{c87FitAll,c86EditKg,c86EditPack,c84SlipPage,c84DateChanged,c84Pdf,c84Excel,c84MonthExcel,c84Build,c84Collect,c84Title,c84TicketPages,C84_CSS});
 const st=document.createElement("style");st.textContent='.homeBtnSlip{background:linear-gradient(90deg,#4a044e 0%,#a21caf 52%,#f0abfc 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.3) !important;border-color:transparent !important;}';document.head.appendChild(st);
 const base=qrHome;
 qrHome=async function(...a){
@@ -19509,6 +19517,8 @@ try{
    "伝票はA4横で、左が納品書、右が請求書です。品名・入数（例：10kg）・数量・産地・入荷日が入ります。品名の後ろには単協が入り、単協がないロットは仕入先が入ります。大型容器は入数が基数、数量が総重量（kg）になります。",
    "埼玉・深谷へ網コンテナ・鉄コンテナ・パレテーナを出庫するときは、総重量（kg）を必ず入れます。単発のQR出庫は画面の「総重量（kg）」欄、連続出庫・まとめ出庫は出庫のときに出る入力欄に入れます。入れた重さは伝票だけに使い、石岡の在庫の重さは変わりません。",
    "ロットの量目と違う入数で出すとき（例：白菜を12kgで出す）は、QR出庫の画面の「入数（量目と違うときだけ）」に入れます（埼玉・深谷のとき）。",
+   "本社工場の伝票は、本社入荷日（予定）が伝票の日付と同じ分を載せます。「翌日分先送り」で出した分も、本社に着く日の伝票に普通の行として入ります（「先送り」の欄は出ません）。",
+   "品名が長くて行が高くなったときは、印刷の用紙に収まるように、空欄の行を減らし、それでも入らないときは文字と行を少し小さくします。",
    "出庫したあとで総重量や入数を入れる・直すときは、伝票の画面の「総重量・入数を入れる・直す」を開いてボタンを押します（管理者・青果社員）。",
    "同じロットを何回かに分けて出庫したときは1行にまとめます。先送り分は「【○/○ 納品分 先送り】」の下にまとめます。",
    "「この伝票を印刷」または「すべての伝票を印刷」でPDFを作り、開いて印刷します。Android端末は縦向きの紙に回したPDFになります。",
