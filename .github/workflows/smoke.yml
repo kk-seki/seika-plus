@@ -31,4 +31,4 @@ jobs:
         run: |
           python3 -m http.server 8765 >/dev/null 2>&1 &
           sleep 2
-          python3 tests/smoke.py
+          python3 tests/run_all.py
