@@ -39,7 +39,8 @@ NATURAL_HEIGHT = """()=>[...document.querySelectorAll('.sheet')].map(s=>{
  const t=s.querySelector('table'),left=s.querySelector('.left'),available=left.clientHeight;
  t.style.height='auto';t.style.flex='none';
  return{rows:t.querySelectorAll('tr').length,natural:t.getBoundingClientRect().height,available,
-  text:t.innerText};
+  text:t.innerText,name:t.querySelector('td.name').innerText.trim(),
+  nameRowHeight:Math.round(t.querySelector('td.name').getBoundingClientRect().height)};
 })"""
 
 
@@ -286,9 +287,24 @@ class HqDirectTests(unittest.TestCase):
         from_ishioka = self.sheet(page, source_kind="石岡から", via_ishioka=False)
         self.assertNotIn("単協名", from_ishioka["text"])
 
-    def test_sheet_never_prints_spec(self):
+    def test_sheet_prints_spec_next_to_item_name_without_new_row(self):
         page = self.open_app("hq_worker")
-        self.assertNotIn("規格", self.sheet(page, memo="規格：3L")["text"])
+        plain = self.sheet(page)
+        with_spec = self.sheet(page, memo="規格：3L")
+        self.assertEqual(with_spec["rows"], plain["rows"])
+        self.assertEqual(with_spec["name"], "長葱3L")
+        self.assertEqual(plain["name"], "長葱")
+        self.assertEqual(with_spec["nameRowHeight"], plain["nameRowHeight"])
+        self.assertLessEqual(with_spec["natural"], with_spec["available"])
+
+    def test_sheet_with_longest_spec_still_fits(self):
+        page = self.open_app("hq_worker")
+        longest = self.sheet(page, item_name="ミニトマト（アイコ）", memo="規格：" + "秀品3L赤" * 5)
+        self.assertLessEqual(longest["natural"], longest["available"])
+
+    def test_sheet_ignores_other_memo_text(self):
+        page = self.open_app("hq_worker")
+        self.assertEqual(self.sheet(page, memo="取消（架空）：入力の間違い")["name"], "長葱")
 
     def test_guides_describe_required_and_optional_fields(self):
         page = self.open_app("admin")
@@ -298,6 +314,7 @@ class HqDirectTests(unittest.TestCase):
         )
         self.assertIn("必須", text)
         self.assertIn("規格", text)
+        self.assertIn("品名の隣", text)
         self.assertIn("単協名", text)
         self.assertIn("コンテナ", text)
 
