@@ -1,0 +1,39 @@
+
+.v1100GuideCard{
+  padding:0 !important; overflow:hidden;
+      }
+.v1100GuideCard > summary{
+  list-style:none; cursor:pointer; display:flex;
+  align-items:center; justify-content:space-between; gap:12px;
+  padding:18px; font-weight:900;
+      }
+.v1100GuideCard > summary::-webkit-details-marker{
+  display:none;
+      }
+.v1100GuideCard[open] > summary{
+  background:#eef7ff; border-bottom:1px solid #cfe3f4;
+      }
+.v1100GuideBody{
+  padding:16px;
+      }
+.v1100GuideSteps{
+  list-style:none; padding:0; margin:14px 0;
+  display:grid; gap:10px;
+      }
+.v1100GuideSteps li{
+  display:flex; align-items:flex-start; gap:10px;
+  padding:12px; background:#f8fafc; border:1px solid #dbe4ee;
+  border-radius:12px; line-height:1.65; font-weight:700;
+      }
+.guideStepNo{
+  flex:0 0 28px; height:28px; border-radius:50%;
+  display:grid; place-items:center; background:#1769b2;
+  color:#fff; font-weight:900;
+      }
+.v1100GuideBody .ok,
+      .v1100GuideBody .warn{
+  margin-top:12px;
+      }
+.v1100GuideBody .small{
+  line-height:1.7;
+      }

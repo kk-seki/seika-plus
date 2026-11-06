@@ -1,0 +1,10 @@
+
+.homePrimary .btn.homeBtnQuality,.viewerHome .btn.homeBtnQuality{background:linear-gradient(90deg,#5b21b6 0%,#7e22ce 52%,#a855f7 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.28) !important;box-shadow:0 7px 16px rgba(88,28,135,.24) !important;border-color:transparent !important}
+   .homeBtnWeeklyReport{background:linear-gradient(90deg,#0e6f5c 0%,#159e86 48%,#7fd8c6 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.25) !important;border-color:transparent !important;}
+.homeBtnProduction{background:linear-gradient(90deg,#2f3aa3 0%,#5566e6 48%,#a5b4fc 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.18) !important;border-color:transparent !important}
+.homeBtnDailyReport{background:linear-gradient(90deg,#0b6f86 0%,#17a2c4 48%,#7fd6ea 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.18) !important;border-color:transparent !important}
+
+   .homeBtnDest{background:linear-gradient(90deg,#155e75 0%,#0891b2 52%,#22d3ee 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.25) !important;border-color:transparent !important;}
+.homePrimary .btn.homeBtnQuality:hover,.viewerHome .btn.homeBtnQuality:hover{filter:brightness(1.06)}
+.homePrimary .btn.homeBtnQuality:focus-visible,.viewerHome .btn.homeBtnQuality:focus-visible{outline:3px solid rgba(168,85,247,.55);outline-offset:3px}
+.v1143TodayTasks{margin:14px 0}.v1143TaskRows{display:grid;gap:8px;margin-top:10px}.v1143TaskRow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-radius:10px;background:#f8fafc;border:1px solid #dbeafe}.v1143TaskRow .small{min-width:0}.v1143TaskRow .btn{flex:0 0 auto;white-space:nowrap}@media(max-width:520px){.v1143TaskRow{align-items:stretch;flex-direction:column}.v1143TaskRow .btn{width:100%}}

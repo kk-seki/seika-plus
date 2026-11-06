@@ -1,0 +1,46 @@
+
+.v1105MenuTop,
+      .v1105MenuList{
+  display:grid; grid-template-columns:1fr; gap:14px;
+  width:100%;
+      }
+.v1105MenuGroup,
+      .v1105MenuItem{
+  width:100%; min-height:76px; border:0 !important;
+  color:#fff !important; background:linear-gradient(135deg, #102653, #1d4777) !important; box-shadow:0 10px 24px rgba(16, 38, 83, 0.16) !important;
+      }
+.v1105MenuGroup{
+  display:flex !important; flex-direction:column; align-items:flex-start !important;
+  justify-content:center; text-align:left !important; padding:17px 22px !important;
+      }
+.v1105MenuGroup span{
+  font-size:1.08em; font-weight:900;
+      }
+.v1105MenuGroup small{
+  display:block; margin-top:4px; font-size:0.68em;
+  font-weight:700; color:#dbeafe; line-height:1.35;
+      }
+.v1105MenuItem{
+  min-height:68px; font-weight:900 !important;
+      }
+.v1105Logout{
+  width:100%; min-height:68px; margin-top:4px;
+  background:linear-gradient(135deg, #991b1b, #b91c1c) !important;
+      }
+.v1105MenuList{
+  margin-bottom:18px;
+      }
+.v1105MenuItem .badge{
+  margin-left:8px; background:#fff; color:#102653;
+      }
+@media (min-width: 720px) {
+.v1105MenuTop{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+        }
+.v1105MenuList{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+        }
+.v1105Logout{
+  grid-column:1/-1;
+        }
+}

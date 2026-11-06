@@ -1,0 +1,25 @@
+
+.hqSiteBar{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.hqSiteBar .btn{white-space:nowrap}
+.hqHomeGrid .btn{min-height:96px}
+.hqBtnSwitch{background:linear-gradient(135deg,#334155,#0f172a)!important;color:#fff!important}
+.hqBtnPending{background:linear-gradient(135deg,#f59e0b,#b45309)!important;color:#fff!important}
+.hqBtnScan{background:linear-gradient(135deg,#0ea5e9,#0369a1)!important;color:#fff!important}
+.hqBtnOut{background:linear-gradient(135deg,#ef4444,#991b1b)!important;color:#fff!important}
+.hqBtnStock{background:linear-gradient(135deg,#10b981,#047857)!important;color:#fff!important}
+.hqBtnDirect{background:linear-gradient(135deg,#8b5cf6,#5b21b6)!important;color:#fff!important}
+.hqBtnHistory{background:linear-gradient(135deg,#64748b,#334155)!important;color:#fff!important}
+.hqBtnItems{background:linear-gradient(135deg,#a16207,#713f12)!important;color:#fff!important}
+.hqBtnStockHub{background:linear-gradient(135deg,#6366f1,#312e81)!important;color:#fff!important}
+.hqBtnEntryHub{background:linear-gradient(135deg,#84cc16,#3f6212)!important;color:#fff!important}
+.hqBtnTable{background:linear-gradient(135deg,#f97316,#9a3412)!important;color:#fff!important}
+.hqBtnNormal{background:linear-gradient(135deg,#0891b2,#164e63)!important;color:#fff!important}
+.hqBtnGuide{background:linear-gradient(135deg,#ec4899,#9d174d)!important;color:#fff!important}
+.hqBtnPrint{background:linear-gradient(135deg,#0f766e,#134e4a)!important;color:#fff!important}
+.hqBtnConfirm{background:linear-gradient(135deg,#16a34a,#14532d)!important;color:#fff!important;font-size:19px}
+.hqBtnExcel{background:linear-gradient(135deg,#15803d,#166534)!important;color:#fff!important}
+.hqLotMeta{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:10px}
+.hqLotMeta span{display:block;font-size:12px;color:#64748b}.hqLotMeta b{font-size:16px}
+.hqGrades{display:flex;gap:8px}.hqGrade{flex:1;border:2px solid #cbd5e1;border-radius:12px;padding:12px 6px;text-align:center;font-weight:800;font-size:17px}
+.hqGrade_good:has(input:checked){border-color:#16a34a;background:#dcfce7}.hqGrade_review:has(input:checked){border-color:#d97706;background:#fef3c7}.hqGrade_bad:has(input:checked){border-color:#dc2626;background:#fee2e2}
+.hqIssues{display:flex;flex-wrap:wrap;gap:8px 14px}.badge.danger{background:#fee2e2;color:#991b1b}.badge.warn{background:#fef3c7;color:#92400e}
