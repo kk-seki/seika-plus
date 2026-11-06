@@ -35,13 +35,44 @@ SHEET_LOT = {
 }
 SHEET_PAGES = [{"label": "パレット 1/2", "qty": "30 ケース"}, {"label": "パレット 2/2", "qty": "30 ケース"}]
 
-NATURAL_HEIGHT = """()=>[...document.querySelectorAll('.sheet')].map(s=>{
- const t=s.querySelector('table'),left=s.querySelector('.left'),available=left.clientHeight;
- t.style.height='auto';t.style.flex='none';
- return{rows:t.querySelectorAll('tr').length,natural:t.getBoundingClientRect().height,available,
-  text:t.innerText,name:t.querySelector('td.name').innerText.trim(),
-  nameRowHeight:Math.round(t.querySelector('td.name').getBoundingClientRect().height)};
-})"""
+PDF_LAYOUT_METRICS = r"""(pg)=>{
+ const tolerance=1,rect=el=>{const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}};
+ const sheet=pg.querySelector('.sheet'),table=sheet.querySelector('table'),name=sheet.querySelector('td.name'),spec=name.querySelector('.spec');
+ const page=rect(pg),sheetRect=rect(sheet),style=getComputedStyle(sheet);
+ const frame={top:sheetRect.top+parseFloat(style.borderTopWidth),bottom:sheetRect.bottom-parseFloat(style.borderBottomWidth),left:sheetRect.left+parseFloat(style.borderLeftWidth),right:sheetRect.right-parseFloat(style.borderRightWidth)};
+ const outside=(r,b)=>r.top<b.top-tolerance||r.bottom>b.bottom+tolerance||r.left<b.left-tolerance||r.right>b.right+tolerance;
+ const rangeRects=el=>{const range=document.createRange();range.selectNodeContents(el);return [...range.getClientRects()].map(r=>({top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}))};
+ const item=name.querySelector('.item')||name;
+ const itemText=(()=>{const node=[...item.childNodes].find(n=>n.nodeType===Node.TEXT_NODE&&n.textContent.trim());if(!node)return[];const range=document.createRange();range.selectNode(node);return [...range.getClientRects()].map(r=>({top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}))})();
+ const targets=[...sheet.querySelectorAll('th,td,.right img,.right div,.head h1,.head span')];
+ const overflow=[];
+ for(const el of targets){
+  const box=rect(el),textRects=rangeRects(el),label=(el.textContent||el.alt||el.tagName).trim().slice(0,40);
+  if(outside(box,frame))overflow.push({kind:'box',label,rect:box});
+  textRects.forEach((r,i)=>{if(outside(r,frame))overflow.push({kind:'text',label,index:i,rect:r})});
+ }
+ return {
+  page,sheet:sheetRect,frame,frameOverflow:outside(sheetRect,page)?[{sheet:sheetRect,page}]:[],overflow,
+  rows:table.rows.length,text:table.innerText,name:name.textContent.trim(),nameRowHeight:rect(name).height,
+  itemText,spec:spec?{rect:rect(spec),fontSize:parseFloat(getComputedStyle(spec).fontSize)}:null,
+  nameFontSize:parseFloat(getComputedStyle(item).fontSize)
+ };
+}"""
+
+PDF_CAPTURE = r"""async([lot,pages,metrics,options])=>{
+ const measure=eval('('+metrics+')'),original=window.html2canvas,captured=[];
+ window.html2canvas=async pg=>{
+  const sheet=pg.querySelector('.sheet');
+  if(options&&options.sheetHeight)sheet.style.height=options.sheetHeight;
+  captured.push(measure(pg));
+  if(options&&options.failCapture)throw new Error('test capture failure');
+  const canvas=document.createElement('canvas');canvas.width=2;canvas.height=2;return canvas;
+ };
+ try{
+  await window.hqMakePdf(lot,pages);
+  return {pages:captured,status:document.getElementById('hqPdfStatus')?.innerText||''};
+ }finally{window.html2canvas=original}
+}"""
 
 
 def start_server():
@@ -256,13 +287,26 @@ class HqDirectTests(unittest.TestCase):
             html = page.evaluate("(l)=>window.c83Hq.hqLotCard(l,false)", {**SHEET_LOT, "memo": memo})
             self.assertNotIn("<span>規格</span>", html)
 
+    def pdf_layout(self, page, *, expect_all_pages=True, **overrides):
+        options = overrides.pop("_pdf_options", {})
+        result = page.evaluate(
+            PDF_CAPTURE,
+            [{**SHEET_LOT, **overrides}, SHEET_PAGES, PDF_LAYOUT_METRICS, options],
+        )
+        if expect_all_pages:
+            self.assertEqual(len(result["pages"]), len(SHEET_PAGES), result)
+        return result
+
     def sheet(self, page, **overrides):
-        html = page.evaluate("([l,p])=>window.c83Hq.hqSheetHtml(l,p)", [{**SHEET_LOT, **overrides}, SHEET_PAGES])
-        view = page.context.new_page()
-        view.set_viewport_size({"width": 1123, "height": 794})
-        view.emulate_media(media="print")
-        view.set_content(html)
-        return view.evaluate(NATURAL_HEIGHT)[0]
+        result = self.pdf_layout(page, **overrides)
+        return {**result["pages"][0], "pages": result["pages"], "status": result["status"]}
+
+    def assert_pdf_layout_fits(self, result):
+        self.assertIn(f"PDFを作成しました（{len(SHEET_PAGES)}枚）", result["status"])
+        for index, page in enumerate(result["pages"], start=1):
+            with self.subTest(page=index):
+                self.assertEqual(page["frameOverflow"], [], page)
+                self.assertEqual(page["overflow"], [], page)
 
     def test_via_sheet_omits_cooperative_when_supplier_exists(self):
         page = self.open_app("hq_worker")
@@ -271,7 +315,7 @@ class HqDirectTests(unittest.TestCase):
         self.assertIn("JA水戸", both["text"])
         self.assertNotIn("単協名", both["text"])
         self.assertEqual(both["rows"], 7)
-        self.assertLessEqual(both["natural"], both["available"] * 0.85)
+        self.assert_pdf_layout_fits({"pages": both["pages"], "status": both["status"]})
 
     def test_via_sheet_keeps_cooperative_without_supplier(self):
         page = self.open_app("hq_worker")
@@ -287,20 +331,59 @@ class HqDirectTests(unittest.TestCase):
         from_ishioka = self.sheet(page, source_kind="石岡から", via_ishioka=False)
         self.assertNotIn("単協名", from_ishioka["text"])
 
-    def test_sheet_prints_spec_next_to_item_name_without_new_row(self):
+    def test_sheet_prints_short_spec_to_the_right_without_new_row(self):
         page = self.open_app("hq_worker")
         plain = self.sheet(page)
         with_spec = self.sheet(page, memo="規格：3L")
         self.assertEqual(with_spec["rows"], plain["rows"])
         self.assertEqual(with_spec["name"], "長葱3L")
         self.assertEqual(plain["name"], "長葱")
-        self.assertEqual(with_spec["nameRowHeight"], plain["nameRowHeight"])
-        self.assertLessEqual(with_spec["natural"], with_spec["available"])
+        self.assertLessEqual(with_spec["nameRowHeight"], plain["nameRowHeight"] + 1)
+        self.assertAlmostEqual(with_spec["nameFontSize"], plain["nameFontSize"], delta=1)
+        self.assertIsNotNone(with_spec["spec"])
+        self.assertLess(with_spec["spec"]["fontSize"], with_spec["nameFontSize"])
+        self.assertTrue(with_spec["itemText"], with_spec)
+        self.assertGreaterEqual(with_spec["spec"]["rect"]["left"] + 1, max(r["right"] for r in with_spec["itemText"]))
+        self.assert_pdf_layout_fits({"pages": with_spec["pages"], "status": with_spec["status"]})
 
-    def test_sheet_with_longest_spec_still_fits(self):
+    def test_sheet_with_20_character_spec_still_fits_for_via_and_direct(self):
         page = self.open_app("hq_worker")
-        longest = self.sheet(page, item_name="ミニトマト（アイコ）", memo="規格：" + "秀品3L赤" * 5)
-        self.assertLessEqual(longest["natural"], longest["available"])
+        spec = "秀品3L赤" * 4
+        self.assertEqual(len(spec), 20)
+        for via_ishioka in (True, False):
+            with self.subTest(via_ishioka=via_ishioka):
+                result = self.pdf_layout(
+                    page,
+                    via_ishioka=via_ishioka,
+                    item_name="ミニトマト（アイコ）",
+                    memo="規格：" + spec,
+                )
+                self.assert_pdf_layout_fits(result)
+                for layout in result["pages"]:
+                    self.assertEqual(layout["name"], "ミニトマト（アイコ）" + spec)
+                    self.assertIsNotNone(layout["spec"])
+                    self.assertLess(layout["spec"]["fontSize"], layout["nameFontSize"])
+                    self.assertGreaterEqual(layout["spec"]["rect"]["left"] + 1, max(r["right"] for r in layout["itemText"]))
+
+    def test_pdf_rejects_spec_when_minimum_font_still_does_not_fit(self):
+        page = self.open_app("hq_worker")
+        result = self.pdf_layout(page, expect_all_pages=False, item_name="非常に長い品名" * 30, memo="規格：3L")
+        self.assertEqual(result["pages"], [])
+        self.assertIn("PDFを作成できませんでした", result["status"])
+        self.assertIn("品名と規格が貼り紙の枠に収まりません", result["status"])
+        self.assertEqual(page.locator(".hqPdfRoot").count(), 0)
+
+    def test_pdf_layout_detects_clipped_content(self):
+        page = self.open_app("hq_worker")
+        result = self.pdf_layout(page, memo="規格：3L", _pdf_options={"sheetHeight": "200px"})
+        self.assertIn(f"PDFを作成しました（{len(SHEET_PAGES)}枚）", result["status"])
+        self.assertTrue(any(layout["overflow"] for layout in result["pages"]), result)
+
+    def test_pdf_failure_sets_error_status(self):
+        page = self.open_app("hq_worker")
+        result = self.pdf_layout(page, expect_all_pages=False, _pdf_options={"failCapture": True})
+        self.assertIn("PDFを作成できませんでした", result["status"])
+        self.assertIn("test capture failure", result["status"])
 
     def test_sheet_ignores_other_memo_text(self):
         page = self.open_app("hq_worker")
@@ -314,7 +397,9 @@ class HqDirectTests(unittest.TestCase):
         )
         self.assertIn("必須", text)
         self.assertIn("規格", text)
-        self.assertIn("品名の隣", text)
+        self.assertIn("品名の右", text)
+        self.assertIn("20文字", text)
+        self.assertIn("自動で調整", text)
         self.assertIn("単協名", text)
         self.assertIn("コンテナ", text)
 
