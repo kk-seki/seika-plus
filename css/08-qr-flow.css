@@ -1,0 +1,15 @@
+
+.v1111QrPdfOverlay{
+  position:fixed; inset:0; z-index:100000;
+  background:rgba(8,20,40,.72); display:flex; align-items:center;
+  justify-content:center; padding:18px; backdrop-filter:blur(4px);}
+.v1111QrPdfDialog{
+  width:min(620px,100%); max-height:calc(100dvh - 36px); overflow:auto;
+  background:#fff; border-radius:18px; padding:20px;
+  box-shadow:0 24px 70px rgba(0,0,0,.45); color:#0f172a;}
+.v1111QrPdfDialog .btn{
+  position:static!important; z-index:auto!important;}
+.v1111RequiredMark{
+  color:#dc2626; font-weight:900;}
+.v1111PendingQuality{
+  border:3px solid #dc2626; background:#fff1f2; color:#881337;}
