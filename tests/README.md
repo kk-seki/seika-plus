@@ -46,7 +46,7 @@ Workflows権限は追加しません。設定ファイルは平田さんがGitHu
 ```
 
 4. **Commit changes** で `main` に保存する。ほかの行は変えない。
-5. GitHubの **Actions → 自動チェック** で、この設定変更後の実行が成功したことを確認する。ログには `smoke.py`、`permissions.py`、`sync.py`、`test_run_all.py` と最後に「自動チェック: すべてOK（4本）」が出る。
+5. GitHubの **Actions → 自動チェック** で、この設定変更後の実行が成功したことを確認する。ログには `smoke.py`、`permissions.py`、`sync.py`、`test_run_all.py`、`test_hq_direct.py` と最後に「自動チェック: すべてOK（5本）」が出る。
 
 `run_all.py` が入る前に設定だけを変更すると、ファイルが見つからず失敗するため、必ずこの順番で行います。
 設定変更前の緑のチェックは、従来の `smoke.py` だけの結果です。追加テストまで合格した証拠にはなりません。
