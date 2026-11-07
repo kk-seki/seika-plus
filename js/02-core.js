@@ -2517,7 +2517,7 @@ p_expected_version:expectedVersion,p_waste_records:safePayload.wasteRecords||[],
 p_operation_id:item.operationId||meta.operationId,p_device_meta:{deviceId:meta.deviceId,userAgent:navigator.userAgent||""},p_operation_meta:meta
 }):await v186CallRpc("update_app_state_partial_v188",{p_id:STATE_ID,p_expected_version:expectedVersion,p_changes:safePayload,
 p_operation_id:item.operationId||meta.operationId,p_device_meta:{deviceId:meta.deviceId,userAgent:navigator.userAgent||""},p_operation_meta:meta})
-;return ans}saveCloudNow=async function(options={}){if(v161SyncRunning)return false;let queue=v161ReadQueue();if(!queue.length&&options.requireRpc){
+;return ans}const v188SaveCloudNowProtected=async function(options={}){if(v161SyncRunning)return false;let queue=v161ReadQueue();if(!queue.length&&options.requireRpc){
 v188QueueLatest();queue=v161ReadQueue()}if(!queue.length&&v188HistoryPending()){try{await saveHistoryTablesNow();v188SetHistoryPending(false)
 ;markSync();setSyncState("保存済み");return true}catch(e){setSyncState("失敗","履歴データを端末に保持しています");throw e}}if(!queue.length)return true
 ;if(!cloudReady)throw new Error("通信未接続です。入力は端末に保持しています");if(stateVersion===null)throw new Error("競合防止RPCが未導入です。入力は端末に保持しています");v161SyncRunning=true
@@ -2679,8 +2679,8 @@ v188SyncBundle.appData=v188Clone(db);v188SyncBundle.base={schema:V188_SYNC_SCHEM
 ;v188ScheduleBundle()};function v188PendingOwner(){return v188SyncBundle.queue?.[0]?.ownerUserId||null}function v188AssertPendingOwner(){
 const owner=v188PendingOwner()
 ;if(owner&&db?.userId&&String(owner)!==String(db.userId))throw new Error("この端末には別の利用者の未同期データが残っています。データは保持しています。元の利用者でログインして再送するか、管理者へ連絡してください。")}
-const v188IdbSaveCloudBase=saveCloudNow;saveCloudNow=async function(options={}){await v188IdbFlush();v188AssertPendingOwner()
-;const result=await v188IdbSaveCloudBase(options);await v188IdbFlush();return result}
+saveCloudNow=async function(options={}){await v188IdbFlush();v188AssertPendingOwner()
+;const result=await v188SaveCloudNowProtected(options);await v188IdbFlush();return result}
 ;const v188IdbResolveConflictBase=v178ResolvePendingInventoryConflict;v178ResolvePendingInventoryConflict=async function(){await v188IdbFlush()
 ;v188AssertPendingOwner();const result=await v188IdbResolveConflictBase();await v188IdbFlush();return result}
 ;loadCloud=async function(){await v188StorageInit();v188AssertPendingOwner();return v188LoadCloudProtected()};const v188IdbRefreshBase=refreshData
