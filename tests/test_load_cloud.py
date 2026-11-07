@@ -50,6 +50,7 @@ class LoadCloudTests(unittest.IsolatedAsyncioTestCase):
         await self.page.wait_for_timeout(1200)
         await sync_test.prepare(self.page)
         self.server.data = await self.page.evaluate("()=>v188RolePayload(v161Snapshot())")
+        self.assertTrue(await self.page.evaluate("()=>loadCloud===window.loadCloud"))
         self.requests.clear()
 
     async def asyncTearDown(self):
@@ -123,6 +124,95 @@ class LoadCloudTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(state, {"queue": 1, "local": "value", "remote": None})
         self.assertEqual(await self.load_cloud_requests(), [])
+
+    async def test_load_cloud_marks_conflicting_pending_queue_without_reading_remote(self):
+        await self.page.evaluate(
+            """async()=>{
+                db.settings={...(db.settings||{}),local:'protected-value'};
+                v188WriteBase(v161Snapshot(),37);
+                v161QueueLatest();
+                const pending=v161ReadQueue()[0];
+                pending.attempts=1;
+                pending.lastError='他端末更新との競合';
+                v161WriteQueue([pending]);
+                await v188IdbFlush();
+                stateVersion=999;
+            }"""
+        )
+        self.requests.clear()
+        await self.page.evaluate("()=>loadCloud()")
+        state = await self.page.evaluate(
+            """()=>{
+                const pending=v161ReadQueue()[0]||{};
+                return {
+                    queue:v161ReadQueue().length,
+                    attempts:pending.attempts,
+                    lastError:pending.lastError,
+                    sync:syncState,
+                    version:stateVersion,
+                    local:db.settings?.local,
+                    remote:db.settings?.remote
+                };
+            }"""
+        )
+        self.assertEqual(
+            state,
+            {
+                "queue": 1,
+                "attempts": 1,
+                "lastError": "他端末更新との競合",
+                "sync": "競合",
+                "version": 37,
+                "local": "protected-value",
+                "remote": None,
+            },
+        )
+        self.assertEqual(await self.load_cloud_requests(), [])
+
+    async def test_load_cloud_keeps_local_data_and_base_when_remote_read_fails_then_recovers(self):
+        self.server.data["settings"] = {"remote": "recovered-value"}
+        before = await self.page.evaluate(
+            """async()=>{
+                db.settings={...(db.settings||{}),local:'protected-value'};
+                v188WriteBase(v161Snapshot(),41);
+                await v188IdbFlush();
+                return v188ReadBase();
+            }"""
+        )
+
+        async def fail_get_app_state(route):
+            if "/rest/v1/rpc/get_app_state_v187" in route.request.url:
+                await route.fulfill(status=500, body="read failure")
+            else:
+                await self.server.handle(route)
+
+        await self.context.route("**/*supabase.co/**", fail_get_app_state)
+        self.requests.clear()
+        failure = await self.page.evaluate(
+            """async()=>{
+                try{
+                    await loadCloud();
+                    return '';
+                }catch(error){
+                    return String(error.message||error);
+                }
+            }"""
+        )
+        after_failure = await self.page.evaluate(
+            """()=>({local:db.settings?.local,base:v188ReadBase()})"""
+        )
+        self.assertIn("read failure", failure)
+        self.assertEqual(after_failure["local"], "protected-value")
+        self.assertEqual(after_failure["base"], before)
+
+        await self.context.unroute("**/*supabase.co/**", fail_get_app_state)
+        await self.page.evaluate("()=>loadCloud()")
+        recovered = await self.page.evaluate(
+            """()=>({remote:db.settings?.remote,base:v188ReadBase()})"""
+        )
+        self.assertEqual(recovered["remote"], "recovered-value")
+        self.assertEqual(recovered["base"]["version"], self.server.version)
+        self.assertEqual(recovered["base"]["payload"]["settings"]["remote"], "recovered-value")
 
     async def test_load_cloud_rejects_pending_data_for_another_user(self):
         await self.page.evaluate(

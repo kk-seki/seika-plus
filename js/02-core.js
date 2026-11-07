@@ -2560,7 +2560,7 @@ await saveHistoryTablesNow();v188SetHistoryPending(false)}const historyCount=has
 ;alert(historyCount?`訂正履歴 ${historyCount}件の再送が完了しました。`:result.merged?"他端末の変更とこの端末の未同期データを統合して保存しました。":"クラウドへの保存が完了しました。")}catch(e){
 const conflict=v161IsConflictError(e)||isConflict;setSyncState(conflict?"競合":"失敗","未同期データを端末に保持しています")
 ;alert(`保存できませんでした。\n${v161ErrorText(e)}\n\n未送信データはこの端末に保持されています。通信状況を確認し、もう一度「再送」を押してください。`)}finally{v1111RetryPendingRunning=false
-;v161HideProcessing();updateSyncDisplay()}};const v188LoadCloudBase=loadCloud;loadCloud=async function(){const hadPending=v161PendingCount()>0
+;v161HideProcessing();updateSyncDisplay()}};const v188LoadCloudBase=loadCloud;const v188LoadCloudProtected=async function(){const hadPending=v161PendingCount()>0
 ;if(hadPending){const base=v188ReadBase(),pending=v161ReadQueue()[0],conflict=v161IsConflictError(pending?.lastError)||Number(pending?.attempts||0)>0
 ;if(Number.isFinite(Number(base?.version)))stateVersion=Number(base.version);cloudReady=true
 ;setSyncState(conflict?"競合":"未同期",conflict?"他端末の最新データとの統合を待っています":"全入力データを端末に保持し、再送を待っています");return}await v188LoadCloudBase()
@@ -2682,8 +2682,8 @@ const owner=v188PendingOwner()
 const v188IdbSaveCloudBase=saveCloudNow;saveCloudNow=async function(options={}){await v188IdbFlush();v188AssertPendingOwner()
 ;const result=await v188IdbSaveCloudBase(options);await v188IdbFlush();return result}
 ;const v188IdbResolveConflictBase=v178ResolvePendingInventoryConflict;v178ResolvePendingInventoryConflict=async function(){await v188IdbFlush()
-;v188AssertPendingOwner();const result=await v188IdbResolveConflictBase();await v188IdbFlush();return result};const v188IdbLoadCloudBase=loadCloud
-;loadCloud=async function(){await v188StorageInit();v188AssertPendingOwner();return v188IdbLoadCloudBase()};const v188IdbRefreshBase=refreshData
+;v188AssertPendingOwner();const result=await v188IdbResolveConflictBase();await v188IdbFlush();return result}
+;loadCloud=async function(){await v188StorageInit();v188AssertPendingOwner();return v188LoadCloudProtected()};const v188IdbRefreshBase=refreshData
 ;refreshData=async function(){await v188StorageInit();await v188IdbFlush();return v188IdbRefreshBase()};
 /* ===== v1.88 端末未同期データ破棄・クラウド最新版切替 ===== */let v188DiscardPendingRunning=false;function v188PendingDiscardOwner(){
 return v188PendingOwner()||v188SyncBundle?.appData?.userId||null}function v188PendingDiscardSummary(){
