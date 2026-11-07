@@ -3822,16 +3822,6 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    }
    return out;
  }
- if(typeof loadCloud==="function"){
-   const base=loadCloud;
-   loadCloud=async function(...a){
-     const keep={};for(const k of V1218_KEYS)keep[k]=Array.isArray(db?.[k])?db[k].slice():[];
-     const r=await base.apply(this,a);
-     try{for(const k of V1218_KEYS){const remote=Array.isArray(db[k])?db[k]:[];db[k]=remote.length?remote:v1218Merge(keep[k],[])}}catch(e){}
-     return r;
-   };
-   window.loadCloud=loadCloud;
- }
  const shell=pageShell;
  pageShell=function(...a){
    const r=shell.apply(this,a);
@@ -3847,11 +3837,9 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
    return r;
  };
  window.pageShell=pageShell;
-})();
 
 
 /* v1.199-c19 月末棚卸しの状態保護・棚卸し履歴・3か月経過分の削除 */
-(function(){
  const V1205_CLOSED=new Set(['completed','confirmed','test_confirmed','reversed','cancelled']);
  const V1205_PURGE_RPC='seika_purge_old_inventory_counts_v1205';
  function v1205Repair(s){
@@ -3897,7 +3885,17 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
   try{const r=await callRpc(V1205_PURGE_RPC,{p_id:STATE_ID});if(r?.deleted>0)await loadCloud()}catch(e){}
  }
  const loadBase=loadCloud;
- loadCloud=async function(...a){const r=await loadBase.apply(this,a);try{v1205PruneLocal()}catch(e){}return r};
+ async function v1218LoadCandidates(...a){
+  const keep={};for(const k of V1218_KEYS)keep[k]=Array.isArray(db?.[k])?db[k].slice():[];
+  const r=await loadBase.apply(this,a);
+  try{for(const k of V1218_KEYS){const remote=Array.isArray(db[k])?db[k]:[];db[k]=remote.length?remote:v1218Merge(keep[k],[])}}catch(e){}
+  return r;
+ }
+ loadCloud=async function(...a){
+  const r=await v1218LoadCandidates.apply(this,a);
+  try{v1205PruneLocal()}catch(e){}
+  return r;
+ };
  window.loadCloud=loadCloud;
 
  const homeBase=v188Home;
