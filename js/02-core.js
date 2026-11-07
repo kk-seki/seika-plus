@@ -6302,20 +6302,67 @@ function v1163ReadWastePriceQueue(){try{const rows=JSON.parse(localStorage.getIt
 function v1163WriteWastePriceQueue(rows){try{localStorage.setItem(V1163_WASTE_PRICE_QUEUE_KEY,JSON.stringify(rows));}catch(e){throw new Error('廃棄単価を端末へ保持できません。端末の保存容量を確認してください。');}v1163UpdateSyncDisplay();}
 function v1163QueueWastePrice(request,error){const rows=v1163ReadWastePriceQueue().filter(x=>String(x.movementId)!==String(request.movementId));rows.push({...request,attempts:0,lastError:v161ErrorText(error)});v1163WriteWastePriceQueue(rows);}
 function v1163RemoveWastePriceQueue(movementId){v1163WriteWastePriceQueue(v1163ReadWastePriceQueue().filter(x=>String(x.movementId)!==String(movementId)));}
-async function v1163RetryWastePrices(){const rows=v1163ReadWastePriceQueue(),failed=[];let saved=0;for(const row of rows){try{const ans=await callRpc('recalculate_qr_waste_price_v1162',{p_movement_id:row.movementId,p_manual_unit_price:row.price,p_reason:row.reason});if(!ans?.ok)throw new Error(ans?.message||'単価を保存できませんでした');saved++;}catch(error){failed.push({...row,attempts:Number(row.attempts||0)+1,lastError:v161ErrorText(error)});}}v1163WriteWastePriceQueue(failed);if(failed.length)throw new Error(`廃棄単価 ${failed.length}件を再送できませんでした。${failed[0].lastError||''}`);return saved;}
+let v1163RetryRunning=false,v1163PriceRetryRunning=false;
+async function v1163RetryWastePricesProtected(){
+  if(v1163PriceRetryRunning)return;
+  v1163PriceRetryRunning=true;
+  try{
+    v1163UpdateSyncDisplay();
+    const rows=v1163ReadWastePriceQueue(),results=new Map();let saved=0;
+    for(const row of rows){
+      try{
+        const ans=await callRpc('recalculate_qr_waste_price_v1162',{p_movement_id:row.movementId,p_manual_unit_price:row.price,p_reason:row.reason});
+        if(!ans?.ok)throw new Error(ans?.message||'単価を保存できませんでした');
+        saved++;results.set(String(row.movementId),{row});
+      }catch(error){results.set(String(row.movementId),{row,error:v161ErrorText(error)});}
+    }
+    const failed=[],latest=v1163ReadWastePriceQueue().flatMap(row=>{
+      const result=results.get(String(row.movementId));
+      if(!result||!v188Equal(row,result.row))return[row];
+      if(!Object.hasOwn(result,'error'))return[];
+      const pending={...row,attempts:Number(row.attempts||0)+1,lastError:result.error};
+      failed.push(pending);return[pending];
+    });
+    v1163WriteWastePriceQueue(latest);
+    if(failed.length)throw new Error(`廃棄単価 ${failed.length}件を再送できませんでした。${failed[0].lastError||''}`);
+    return saved;
+  }finally{v1163PriceRetryRunning=false;v1163UpdateSyncDisplay();}
+}
+async function v1163RetryWastePrices(){
+  if(v161SyncRunning||v1111RetryPendingRunning||v1163RetryRunning||v1163PriceRetryRunning)return;
+  return await v1163RetryWastePricesProtected();
+}
 const v1163UpdateSyncDisplayCore=updateSyncDisplay;
-function v1163UpdateSyncDisplay(){v1163UpdateSyncDisplayCore();const el=document.getElementById('syncInfo');if(!el)return;const pricePending=v1163ReadWastePriceQueue().length;if(pricePending){el.textContent+=` / 廃棄単価 ${pricePending}件を端末保持`;let btn=document.getElementById('syncRetryBtn');if(!btn){btn=document.createElement('button');btn.id='syncRetryBtn';btn.className='syncRetryBtn';btn.type='button';btn.onclick=retryPendingSync;el.insertAdjacentElement('afterend',btn);}btn.textContent=v161SyncRunning?'再送中…':`廃棄単価を再送（${pricePending}件）`;btn.disabled=v161SyncRunning;}}
+function v1163UpdateSyncDisplay(){
+  v1163UpdateSyncDisplayCore();const el=document.getElementById('syncInfo');if(!el)return;
+  const pricePending=v1163ReadWastePriceQueue().length,running=v161SyncRunning||v1111RetryPendingRunning||v1163RetryRunning||v1163PriceRetryRunning;
+  let btn=document.getElementById('syncRetryBtn');
+  if(pricePending){
+    el.textContent+=` / 廃棄単価 ${pricePending}件を端末保持`;
+    if(!btn){btn=document.createElement('button');btn.id='syncRetryBtn';btn.className='syncRetryBtn';btn.type='button';btn.onclick=retryPendingSync;el.insertAdjacentElement('afterend',btn);}
+    btn.textContent=running?'再送中…':`廃棄単価を再送（${pricePending}件）`;
+  }
+  if(btn&&running){btn.textContent='再送中…';btn.disabled=true;}
+  else if(btn)btn.disabled=false;
+}
 updateSyncDisplay=v1163UpdateSyncDisplay;
 retryPendingSync=async function(){
-  if(v161SyncRunning||v1111RetryPendingRunning)return;
+  if(v161SyncRunning||v1111RetryPendingRunning||v1163RetryRunning||v1163PriceRetryRunning)return;
   const hasStandardPending=v161PendingCount()>0||v188HistoryPending()||v193QrEditHistoryPendingCount()>0;
   const hasPricePending=v1163ReadWastePriceQueue().length>0;
   if(!hasStandardPending&&!hasPricePending)return alert('再送する未同期データはありません。');
-  if(hasStandardPending){await v1159RetryPendingSyncCore();if(v161PendingCount()||v188HistoryPending()||v193QrEditHistoryPendingCount()>0){v1163UpdateSyncDisplay();return;}}
-  if(!hasPricePending){v1163UpdateSyncDisplay();return;}
-  v161ShowProcessing('端末に保持した廃棄単価をクラウドへ再送しています');
-  try{const priceCount=await v1163RetryWastePrices();alert(`廃棄単価 ${priceCount}件の再送が完了しました。`);}catch(error){alert(`廃棄単価を再送できませんでした。\n${v161ErrorText(error)}\n\nデータはこの端末に保持されています。`);}finally{v161HideProcessing();v1163UpdateSyncDisplay();}
+  v1163RetryRunning=true;
+  try{
+    v1163UpdateSyncDisplay();
+    if(hasStandardPending){await v1159RetryPendingSyncCore();if(v161PendingCount()||v188HistoryPending()||v193QrEditHistoryPendingCount()>0){v1163UpdateSyncDisplay();return;}}
+    if(!hasPricePending){v1163UpdateSyncDisplay();return;}
+    v161ShowProcessing('端末に保持した廃棄単価をクラウドへ再送しています');
+    try{const priceCount=await v1163RetryWastePricesProtected();alert(`廃棄単価 ${priceCount}件の再送が完了しました。`);}catch(error){alert(`廃棄単価を再送できませんでした。\n${v161ErrorText(error)}\n\nデータはこの端末に保持されています。`);}finally{v161HideProcessing();}
+  }finally{v1163RetryRunning=false;v1163UpdateSyncDisplay();}
 };
+for(const role of ['admin','sales','clerk']){
+  V195_ROLE_GUIDES[role].sections.push({title:'保存できなかったQR廃棄単価を再送する',where:'画面上部の同期表示 → 廃棄単価を再送',steps:['廃棄単価の端末保持件数がある場合は、通信を確認して再送を押します。','再送中はボタンが無効になります。画面を閉じず、完了を待ちます。','再送中に追加・変更した単価は端末に保持されます。','終了後も端末保持件数が残っていれば、もう一度再送します。'],check:'廃棄単価の端末保持件数が0になったことを確認します。',caution:'途中で追加・変更した単価は、次の再送が成功するまでクラウドへ反映されていない場合があります。別のタブや端末からの同時変更は避けてください。'});
+}
 const V1162_VERSION='v1.179';window.APP_VERSION=V1162_VERSION;document.title='SEIKA＋ v1.193 週次廃棄レポート版';
 
 
