@@ -73,7 +73,7 @@ def core_blocks(source):
     capture = "const v188IdbLoadCloudBase=loadCloud\n;"
     if source[:entry_start].endswith(capture):
         entry_start -= len(capture)
-    entry_end = source.index(";const v188IdbRefreshBase", entry_start)
+    entry_end = source.index("()}", entry_start) + len("()}")
     return protected, source[entry_start:entry_end] + ";"
 
 
