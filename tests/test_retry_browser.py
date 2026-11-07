@@ -292,6 +292,92 @@ class RetryBrowserTests(unittest.IsolatedAsyncioTestCase):
         await self.page.wait_for_function("()=>v1163ReadWastePriceQueue().length===0")
         self.assertEqual(len(self.server.price_requests), 2)
 
+    async def test_idb_flush_error_after_standard_save_skips_price_retry_and_allows_a_later_retry(self):
+        await self.set_price_queue([{"movementId": "price-after-idb-error", "price": 120, "reason": "仮の端末書込み失敗"}])
+        try:
+            state = await self.page.evaluate(
+                """async()=>{
+                    db.settings={...(db.settings||{}),retryBrowserIdbError:'send'};
+                    v188QueueLatest();
+                    await v188IdbFlush();
+                    window.__retryOriginalIdbFlush=v188IdbFlush;
+                    v188IdbFlush=async()=>{
+                        await window.__retryOriginalIdbFlush();
+                        if(!v161ReadQueue().length)throw new Error('仮の端末書込み失敗');
+                    };
+                    window.__retryPriceCount=0;
+                    const actual=window.callRpc;
+                    window.callRpc=async function(...args){
+                        if(args[0]==='recalculate_qr_waste_price_v1162')window.__retryPriceCount++;
+                        return await actual.apply(this,args);
+                    };
+                    window.__retryReturn=await window.retryPendingSync();
+                    return {
+                        appQueue:v161ReadQueue().length,
+                        priceQueue:v1163ReadWastePriceQueue().length,
+                        priceCalls:window.__retryPriceCount,
+                        retryRunning:v1163RetryRunning,
+                        priceRetryRunning:v1163PriceRetryRunning,
+                        standardRetryRunning:v1111RetryPendingRunning,
+                        processingVisible:!!document.getElementById('processingOverlayV161'),
+                        retryReturn:window.__retryReturn,
+                    };
+                }"""
+            )
+        finally:
+            await self.page.evaluate("()=>{v188IdbFlush=window.__retryOriginalIdbFlush;delete window.__retryOriginalIdbFlush}")
+        await self.page.evaluate("()=>window.retryPendingSync()")
+        await self.page.wait_for_function("()=>v1163ReadWastePriceQueue().length===0")
+        self.assertEqual(state["appQueue"], 0, state)
+        self.assertEqual(state["priceCalls"], 0, state)
+        self.assertEqual(state["priceQueue"], 1)
+        self.assertFalse(state["retryRunning"])
+        self.assertFalse(state["priceRetryRunning"])
+        self.assertFalse(state["standardRetryRunning"])
+        self.assertFalse(state["processingVisible"])
+        self.assertIsNone(state["retryReturn"])
+        self.assertEqual(self.server.events, [("standard", None), ("price", "price-after-idb-error")])
+
+    async def test_render_error_after_standard_save_skips_price_retry(self):
+        await self.set_price_queue([{"movementId": "price-after-render-error", "price": 120, "reason": "表示失敗"}])
+        try:
+            state = await self.page.evaluate(
+                """async()=>{
+                    db.settings={...(db.settings||{}),retryBrowserRenderError:'send'};
+                    v188QueueLatest();
+                    await v188IdbFlush();
+                    window.__retryOriginalRenderCurrent=renderCurrent;
+                    renderCurrent=async()=>{throw new Error('仮の画面更新失敗')};
+                    window.__retryPriceCount=0;
+                    const actual=window.callRpc;
+                    window.callRpc=async function(...args){
+                        if(args[0]==='recalculate_qr_waste_price_v1162')window.__retryPriceCount++;
+                        return await actual.apply(this,args);
+                    };
+                    window.__retryReturn=await window.retryPendingSync();
+                    return {
+                        appQueue:v161ReadQueue().length,
+                        priceQueue:v1163ReadWastePriceQueue().length,
+                        priceCalls:window.__retryPriceCount,
+                        retryRunning:v1163RetryRunning,
+                        priceRetryRunning:v1163PriceRetryRunning,
+                        standardRetryRunning:v1111RetryPendingRunning,
+                        processingVisible:!!document.getElementById('processingOverlayV161'),
+                        retryReturn:window.__retryReturn,
+                    };
+                }"""
+            )
+            self.assertEqual(state["appQueue"], 0, state)
+            self.assertEqual(state["priceCalls"], 0, state)
+            self.assertEqual(state["priceQueue"], 1)
+            self.assertFalse(state["retryRunning"])
+            self.assertFalse(state["priceRetryRunning"])
+            self.assertFalse(state["standardRetryRunning"])
+            self.assertFalse(state["processingVisible"])
+            self.assertIsNone(state["retryReturn"])
+        finally:
+            await self.page.evaluate("()=>{renderCurrent=window.__retryOriginalRenderCurrent;delete window.__retryOriginalRenderCurrent}")
+
     async def test_admin_clerk_and_sales_guides_explain_that_price_changes_during_retry_are_kept(self):
         for role in ("admin", "clerk", "sales"):
             with self.subTest(role=role):
@@ -307,6 +393,7 @@ class RetryBrowserTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(guide["screen"], "v195RoleGuidePage")
                 self.assertIn("再送中に追加・変更した単価は端末に保持されます", guide["text"])
+                self.assertIn("通常データの再送に失敗した場合は、廃棄単価の再送を止めます", guide["text"])
 
     async def test_failed_standard_retry_preserves_all_queues_and_skips_price_rpc(self):
         self.server.mode = "fail"

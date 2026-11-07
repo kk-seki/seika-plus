@@ -52,7 +52,7 @@ async function run(){
       if(input.idb==='error')throw new Error('idb failed');
       events.push('idb-done');
     },
-    async renderCurrent(){events.push('render')},
+    async renderCurrent(){events.push('render');if(input.render==='error')throw new Error('render failed')},
     v1163ReadWastePriceQueue(){return prices.map(row=>({...row}))},
     v1163WriteWastePriceQueue(rows){
       events.push(['price-write',rows.map(row=>row.movementId)]);
@@ -77,7 +77,7 @@ async function run(){
   vm.runInContext(input.code,context);
   if(input.forceRetryFlag)vm.runInContext('v1111RetryPendingRunning=true',context);
   if(input.forceFlag)vm.runInContext(`${input.forceFlag}=true`,context);
-  const retry=()=>context.retryPendingSync();
+  const retry=async()=>{const result=await context.retryPendingSync();publicUndefined=result===undefined;return result};
   const waitFor=async(event,label)=>{
     for(let index=0;index<40;index++){
       if(events.some(value=>Array.isArray(value)?value[0]===event:value===event))return;
@@ -85,7 +85,7 @@ async function run(){
     }
     throw new Error(`gate missing: ${label}`);
   };
-  let error=null,beforeRelease=null,settled=false,settledBeforeRelease=null,flagsBeforeRelease=null;
+  let error=null,standardResult=null,publicUndefined=null,beforeRelease=null,settled=false,settledBeforeRelease=null,flagsBeforeRelease=null;
   try{
     if(input.gate==='price'){
       const start=()=>input.firstDirect?context.__retryWastePrices():retry();
@@ -98,6 +98,8 @@ async function run(){
       await barrier();beforeRelease=events.slice();settledBeforeRelease=settled;flagsBeforeRelease=vm.runInContext('[v1163RetryRunning,v1163PriceRetryRunning]',context);
       if(!priceRelease)throw new Error('gate missing: price release');
       priceRelease();await first;await barrier();
+    }else if(input.action==='standard'){
+      standardResult=await context.__standardRetry();
     }else if(input.action==='direct-prices'){
       await context.__retryWastePrices();
     }else if(input.gate==='save'){
@@ -119,7 +121,7 @@ async function run(){
       await retry();await barrier();
     }
   }catch(caught){error=caught.message}
-  return {events,alerts,error,beforeRelease,settledBeforeRelease,flagsBeforeRelease,standard:standard.length,history,qr,prices,running:vm.runInContext('v1111RetryPendingRunning',context),retryRunning:vm.runInContext('v1163RetryRunning',context),priceRunning:vm.runInContext('v1163PriceRetryRunning',context)};
+  return {events,alerts,error,standardResult,publicUndefined,beforeRelease,settledBeforeRelease,flagsBeforeRelease,standard:standard.length,history,qr,prices,running:vm.runInContext('v1111RetryPendingRunning',context),retryRunning:vm.runInContext('v1163RetryRunning',context),priceRunning:vm.runInContext('v1163PriceRetryRunning',context)};
 }
 run().then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error.stack||error);process.exitCode=1});
 '''
@@ -136,15 +138,14 @@ def extract_once(source, start, end, label):
 
 
 def retry_source(source):
+    if source.count('const v188RetryPendingSyncProtected=async function(){') != 1:
+        raise AssertionError('standard retry definition missing or ambiguous')
     standard = extract_once(
         source,
         '/* v1.111 再送完了後のキュー・ボタン確実解除 */',
         'const v188LoadCloudBase=loadCloud;',
         'standard retry',
     )
-    capture = 'const v1159RetryPendingSyncCore=retryPendingSync;'
-    if source.count(capture) != 1:
-        raise AssertionError('standard retry capture marker missing or ambiguous')
     price = extract_once(
         source,
         'let v1163RetryRunning=false,v1163PriceRetryRunning=false;',
@@ -157,7 +158,7 @@ def retry_source(source):
         "for(const role of ['admin','sales','clerk']){",
         'final retry',
     )
-    return standard + capture + '\n' + price + final + '\nglobalThis.__retryWastePrices=v1163RetryWastePrices;'
+    return standard + '\n' + price + final + '\nglobalThis.__retryWastePrices=v1163RetryWastePrices;globalThis.__standardRetry=v188RetryPendingSyncProtected;'
 
 
 def evaluate_retry(source, **scenario):
@@ -428,10 +429,64 @@ class RetryPendingTests(unittest.TestCase):
         self.assertFalse(result['retryRunning'])
         self.assertFalse(result['priceRunning'])
 
+    def test_standard_retry_reports_success_or_failure_explicitly(self):
+        cases = (
+            ({'standard': 1, 'history': True, 'qr': 1}, True),
+            ({'standard': 1, 'save': 'error'}, False),
+            ({'history': True, 'historySave': 'error'}, False),
+            ({'qr': 1, 'qrRetry': 'error'}, False),
+            ({'standard': 1, 'idb': 'error'}, False),
+            ({'history': True, 'idb': 'error'}, False),
+            ({'qr': 1, 'idb': 'error'}, False),
+            ({'standard': 1, 'render': 'error'}, False),
+            ({'standard': 1, 'syncState': '競合', 'merge': 'error'}, False),
+        )
+        for scenario, expected in cases:
+            with self.subTest(scenario=scenario):
+                result = evaluate_retry(self.source, action='standard', **scenario)
+                self.assert_retry_finished(result)
+                self.assertIs(result['standardResult'], expected)
+                self.assertNotIn('price-rpc', event_names(result))
+
+    def test_standard_retry_running_guard_reports_not_completed(self):
+        for scenario in ({'syncRunning': True}, {'forceRetryFlag': True}):
+            with self.subTest(scenario=scenario):
+                result = evaluate_retry(self.source, action='standard', standard=1, **scenario)
+                self.assertIsNone(result['error'])
+                self.assertIs(result['standardResult'], False)
+                self.assertEqual(result['events'], [])
+                self.assertEqual(result['standard'], 1)
+
+    def test_post_save_failures_keep_prices_even_after_other_pending_counts_reach_zero(self):
+        cases = (
+            {'standard': 1, 'idb': 'error'},
+            {'history': True, 'idb': 'error'},
+            {'qr': 1, 'idb': 'error'},
+            {'standard': 1, 'render': 'error'},
+        )
+        for scenario in cases:
+            with self.subTest(scenario=scenario):
+                prices = [{'movementId': 'p1', 'price': 200, 'reason': 'retain'}]
+                result = evaluate_retry(self.source, prices=prices, **scenario)
+                self.assert_retry_finished(result)
+                self.assertEqual((result['standard'], result['history'], result['qr']), (0, False, 0))
+                self.assertNotIn('price-rpc', event_names(result))
+                self.assertEqual(result['prices'], prices)
+                self.assertTrue(result['publicUndefined'])
+                self.assertTrue(any('保存できませんでした' in message for message in result['alerts']))
+                self.assertFalse(any('完了しました' in message for message in result['alerts']))
+
+    def test_public_retry_return_stays_undefined_for_success_failure_and_no_work(self):
+        for scenario in ({}, {'standard': 1}, {'standard': 1, 'idb': 'error'}, {'prices': [{'movementId': 'p1'}]}):
+            with self.subTest(scenario=scenario):
+                result = evaluate_retry(self.source, **scenario)
+                self.assert_retry_finished(result)
+                self.assertTrue(result['publicUndefined'])
+
     def test_source_markers_missing_or_duplicated_fail_instead_of_using_a_different_entry(self):
         markers = (
             '/* v1.111 再送完了後のキュー・ボタン確実解除 */',
-            'const v1159RetryPendingSyncCore=retryPendingSync;',
+            'const v188RetryPendingSyncProtected=async function(){',
             'let v1163RetryRunning=false,v1163PriceRetryRunning=false;',
             'retryPendingSync=async function(){\n  if(v161SyncRunning||v1111RetryPendingRunning||v1163RetryRunning||v1163PriceRetryRunning)return;',
         )
