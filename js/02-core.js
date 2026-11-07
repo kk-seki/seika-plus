@@ -2533,7 +2533,7 @@ if(!ans?.ok)throw new Error(ans?.message||"同期RPCが更新を完了できま�
 await saveHistoryTablesNow();v188SetHistoryPending(false)}catch(e){v188SetHistoryPending(true);setSyncState("未同期","履歴データを再送待ち")}}return true}catch(e){
 if(!v161IsConflictError(e)){const latest=v161ReadQueue()[0]||item;latest.attempts=Number(latest.attempts||0)+1;latest.lastError=v161ErrorText(e)
 ;v161WriteQueue([latest]);setSyncState("失敗","入力は端末に保持されています")}throw e}finally{v161SyncRunning=false;updateSyncDisplay()}}
-;v178ResolvePendingInventoryConflict=async function(){const original=v161ReadQueue()[0];if(!original)return{ok:true,merged:0}
+;const v188ResolveConflictProtected=async function(){const original=v161ReadQueue()[0];if(!original)return{ok:true,merged:0}
 ;if(!original.basePayload){setSyncState("競合","旧形式の未同期データを保護しています");throw new Error("変更前データがない旧形式の未同期データです。自動統合せず端末に保持しました。管理者へ連絡してください")}
 const remote=await v188FetchRemoteState(),local=v188Clone(original.localPayload||original.payload),baseAllowed=v188RolePayload(original.basePayload),localAllowed=v188RolePayload(local),remoteAllowed=v188RolePayload(remote.payload),result=v188MergePayload(baseAllowed,localAllowed,remoteAllowed)
 ;if(!result.ok){setSyncState("競合","自動統合できない項目があります");throw new Error(`同じ項目が別端末でも変更されています：${result.conflicts.join("、")}`)}const fullMerged={
@@ -2584,7 +2584,7 @@ p_waste_records:db.wasteRecords||[],p_movements:canInventory?db.movements||[]:[]
 p_delete_record_ids:role==="admin"?v188HistoryDeletedIds("records",db.records):[],
 p_delete_waste_ids:role==="admin"||role==="worker"?v188HistoryDeletedIds("wasteRecords",db.wasteRecords):[],
 p_delete_movement_ids:role==="admin"?v188HistoryDeletedIds("movements",db.movements):[]})
-;if(!ans?.ok)throw new Error(ans?.message||"履歴データを保存できませんでした")};refreshData=async function(){if(v177ReloadRunning)return false;v177ReloadRunning=true
+;if(!ans?.ok)throw new Error(ans?.message||"履歴データを保存できませんでした")};const v188RefreshDataProtected=async function(){if(v177ReloadRunning)return false;v177ReloadRunning=true
 ;document.querySelectorAll(".reloadResultNotice").forEach(el=>el.remove())
 ;v161ShowProcessing(v161PendingCount()?"未同期データを保存してから再読込しています":"クラウドの最新データを読み込んでいます");try{if(v161PendingCount()){
 if(syncState==="競合")await v178ResolvePendingInventoryConflict();else await saveCloudNow();if(v161PendingCount())throw new Error("未同期データの保存が完了していません")}
@@ -2681,10 +2681,10 @@ const owner=v188PendingOwner()
 ;if(owner&&db?.userId&&String(owner)!==String(db.userId))throw new Error("この端末には別の利用者の未同期データが残っています。データは保持しています。元の利用者でログインして再送するか、管理者へ連絡してください。")}
 saveCloudNow=async function(options={}){await v188IdbFlush();v188AssertPendingOwner()
 ;const result=await v188SaveCloudNowProtected(options);await v188IdbFlush();return result}
-;const v188IdbResolveConflictBase=v178ResolvePendingInventoryConflict;v178ResolvePendingInventoryConflict=async function(){await v188IdbFlush()
-;v188AssertPendingOwner();const result=await v188IdbResolveConflictBase();await v188IdbFlush();return result}
-;loadCloud=async function(){await v188StorageInit();v188AssertPendingOwner();return v188LoadCloudProtected()};const v188IdbRefreshBase=refreshData
-;refreshData=async function(){await v188StorageInit();await v188IdbFlush();return v188IdbRefreshBase()};
+;v178ResolvePendingInventoryConflict=async function(){await v188IdbFlush()
+;v188AssertPendingOwner();const result=await v188ResolveConflictProtected();await v188IdbFlush();return result}
+;loadCloud=async function(){await v188StorageInit();v188AssertPendingOwner();return v188LoadCloudProtected()}
+;refreshData=async function(){await v188StorageInit();await v188IdbFlush();return v188RefreshDataProtected()};
 /* ===== v1.88 端末未同期データ破棄・クラウド最新版切替 ===== */let v188DiscardPendingRunning=false;function v188PendingDiscardOwner(){
 return v188PendingOwner()||v188SyncBundle?.appData?.userId||null}function v188PendingDiscardSummary(){
 const q=v161ReadQueue(),item=q[0],payload=item?.localPayload||item?.payload||{},parts=[]
