@@ -13,6 +13,14 @@ from urllib.request import urlopen
 import run_all
 
 
+def child_process_stopped(status):
+    try:
+        text = status.read_text()
+    except (FileNotFoundError, ProcessLookupError):
+        return True
+    return text.split(") ", 1)[1].startswith("Z ")
+
+
 class RunAllTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -136,6 +144,61 @@ class RunAllTests(unittest.TestCase):
             )
         self.assertEqual(code, 124)
 
+    def test_missing_process_status_is_stopped(self):
+        self.assertTrue(child_process_stopped(self.root / "missing.stat"))
+
+    def test_process_status_disappearing_during_read_is_stopped(self):
+        status = self.root / "process.stat"
+        status.write_text("123 (python) S 0", encoding="utf-8")
+        self.assertTrue(status.exists())
+        read_text = Path.read_text
+
+        def remove_before_read(path, *args, **kwargs):
+            path.unlink()
+            return read_text(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", remove_before_read):
+            self.assertTrue(child_process_stopped(status))
+        self.assertFalse(status.exists())
+
+    def test_process_disappearing_after_status_is_opened_is_stopped(self):
+        status = self.root / "process.stat"
+        status.write_text("123 (python) S 0", encoding="utf-8")
+        with patch.object(Path, "read_text", side_effect=ProcessLookupError("架空の終了済みプロセス")):
+            self.assertTrue(child_process_stopped(status))
+
+    def test_existing_process_states_are_not_all_stopped(self):
+        status = self.root / "process.stat"
+        for state, stopped in [("Z", True), ("S", False), ("R", False), ("D", False), ("T", False)]:
+            with self.subTest(state=state):
+                status.write_text(f"123 (python) {state} 0", encoding="utf-8")
+                self.assertEqual(child_process_stopped(status), stopped)
+
+    def test_unreadable_or_invalid_process_status_is_not_reported_as_stopped(self):
+        status = self.root / "process.stat"
+        for error in [PermissionError("架空の権限不足"), OSError("架空の読込失敗")]:
+            with self.subTest(error=type(error).__name__):
+                with patch.object(Path, "read_text", side_effect=error):
+                    with self.assertRaises(type(error)):
+                        child_process_stopped(status)
+        status.write_text("架空の不正な状態", encoding="utf-8")
+        with self.assertRaises(IndexError):
+            child_process_stopped(status)
+
+    def test_running_child_is_still_reported_as_a_failure(self):
+        with patch.object(run_all, "run_check", return_value=124) as run:
+            def start_child(_command, _env, timeout):
+                (self.root / "child.pid").write_text("123", encoding="utf-8")
+                return 124
+
+            run.side_effect = start_child
+            with patch(__name__ + ".child_process_stopped", return_value=False) as stopped:
+                with patch.object(time, "sleep") as sleep:
+                    with self.assertRaisesRegex(AssertionError, "子プロセスが停止していません"):
+                        self.test_timeout_stops_child_processes()
+            self.assertEqual(stopped.call_count, 100)
+            self.assertEqual(sleep.call_count, 100)
+
     def test_timeout_stops_child_processes(self):
         script = "import subprocess,sys,time;from pathlib import Path;p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)']);Path(sys.argv[1]).write_text(str(p.pid));time.sleep(30)"
         pid_file = self.root / "child.pid"
@@ -149,7 +212,7 @@ class RunAllTests(unittest.TestCase):
         self.assertTrue(pid_file.is_file())
         status = Path(f"/proc/{pid_file.read_text()}/stat")
         for _ in range(100):
-            if not status.exists() or status.read_text().split(") ", 1)[1].startswith("Z "):
+            if child_process_stopped(status):
                 return
             time.sleep(0.01)
         self.fail("テストが起動した子プロセスが停止していません")
