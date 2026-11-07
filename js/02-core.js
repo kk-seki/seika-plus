@@ -2495,7 +2495,7 @@ const ans=await v188SendSyncItem(candidate,candidate.localPayload,remote.version
 ;v188PersistDb();v188WriteBase(candidate.localPayload,stateVersion);v161WriteQueue([]);markSync();setSyncState("保存済み","全入力データの競合を安全に統合")
 ;if(historyTablesReady){try{await saveHistoryTablesNow();v188SetHistoryPending(false)}catch(e){v188SetHistoryPending(true)
 ;setSyncState("未同期","統合済み履歴を再送待ち")}}return{ok:true,merged:1}}catch(e){original.lastError=v161ErrorText(e);v161WriteQueue([original]);throw e}};
-/* v1.111 再送完了後のキュー・ボタン確実解除 */let v1111RetryPendingRunning=false;retryPendingSync=async function(){if(v161SyncRunning||v1111RetryPendingRunning)return
+/* v1.111 再送完了後のキュー・ボタン確実解除 */let v1111RetryPendingRunning=false;const v188RetryPendingSyncProtected=async function(){if(v161SyncRunning||v1111RetryPendingRunning)return false
 ;const pending=v161ReadQueue()[0],hasAppQueue=v161ReadQueue().length>0,hasTableHistory=v188HistoryPending(),hasQrEditHistory=v193QrEditHistoryPendingCount()>0,isConflict=hasAppQueue&&(syncState==="競合"||v161IsConflictError(pending?.lastError)||Number(pending?.attempts||0)>0)
 ;v1111RetryPendingRunning=true;v161ShowProcessing(isConflict?"他端末の最新データと未同期データを安全に統合しています":"端末に保持したデータをクラウドへ再送しています")
 ;const retryButton=document.getElementById("syncRetryBtn");if(retryButton){retryButton.disabled=true;retryButton.textContent="再送中…"}try{let result={
@@ -2506,9 +2506,9 @@ await saveHistoryTablesNow();v188SetHistoryPending(false)}const historyCount=has
 ;if(v193QrEditHistoryPendingCount())throw new Error("訂正履歴の再送が完了していません");setSyncState("保存済み","クラウド保存完了");await renderCurrent()
 ;document.getElementById("syncRetryBtn")?.remove();document.getElementById("syncDiscardBtn")?.remove()
 ;document.querySelectorAll(".syncSafetyNotice").forEach(element=>element.remove());updateSyncDisplay()
-;alert(historyCount?`訂正履歴 ${historyCount}件の再送が完了しました。`:result.merged?"他端末の変更とこの端末の未同期データを統合して保存しました。":"クラウドへの保存が完了しました。")}catch(e){
+;alert(historyCount?`訂正履歴 ${historyCount}件の再送が完了しました。`:result.merged?"他端末の変更とこの端末の未同期データを統合して保存しました。":"クラウドへの保存が完了しました。");return true}catch(e){
 const conflict=v161IsConflictError(e)||isConflict;setSyncState(conflict?"競合":"失敗","未同期データを端末に保持しています")
-;alert(`保存できませんでした。\n${v161ErrorText(e)}\n\n未送信データはこの端末に保持されています。通信状況を確認し、もう一度「再送」を押してください。`)}finally{v1111RetryPendingRunning=false
+;alert(`保存できませんでした。\n${v161ErrorText(e)}\n\n未送信データはこの端末に保持されています。通信状況を確認し、もう一度「再送」を押してください。`);return false}finally{v1111RetryPendingRunning=false
 ;v161HideProcessing();updateSyncDisplay()}};const v188LoadCloudBase=loadCloud;const v188LoadCloudProtected=async function(){const hadPending=v161PendingCount()>0
 ;if(hadPending){const base=v188ReadBase(),pending=v161ReadQueue()[0],conflict=v161IsConflictError(pending?.lastError)||Number(pending?.attempts||0)>0
 ;if(Number.isFinite(Number(base?.version)))stateVersion=Number(base.version);cloudReady=true
@@ -6059,11 +6059,6 @@ v193RetryQrEditHistories=async function(){
   }
   return completed;
 };
-const v1159RetryPendingSyncCore=retryPendingSync;
-retryPendingSync=async function(){
-  try{return await v1159RetryPendingSyncCore();}
-  catch(error){const detail=v1159ParseRpcError(error);alert(`${v138T('訂正履歴再送エラー')}\n[${detail.code}] ${detail.message}`);}
-};
 v1140QualityCard=function(x){
   const buyers=(x.buyers||[]).map(b=>v1144FormalPurchaseStaffName(b.display_name||b.legacy_user_id)).filter(Boolean).join('、')||v138T('担当未設定');
   const buyerLabel=x.buyer_source==='item_assignment'?v138T('品目担当（旧データ）'):v138T('仕入れ担当者');
@@ -6197,14 +6192,14 @@ retryPendingSync=async function(){
   v1163RetryRunning=true;
   try{
     v1163UpdateSyncDisplay();
-    if(hasStandardPending){await v1159RetryPendingSyncCore();if(v161PendingCount()||v188HistoryPending()||v193QrEditHistoryPendingCount()>0){v1163UpdateSyncDisplay();return;}}
+    if(hasStandardPending){const standardResult=await v188RetryPendingSyncProtected();if(standardResult!==true||v161PendingCount()||v188HistoryPending()||v193QrEditHistoryPendingCount()>0){v1163UpdateSyncDisplay();return;}}
     if(!hasPricePending){v1163UpdateSyncDisplay();return;}
     v161ShowProcessing('端末に保持した廃棄単価をクラウドへ再送しています');
     try{const priceCount=await v1163RetryWastePricesProtected();alert(`廃棄単価 ${priceCount}件の再送が完了しました。`);}catch(error){alert(`廃棄単価を再送できませんでした。\n${v161ErrorText(error)}\n\nデータはこの端末に保持されています。`);}finally{v161HideProcessing();}
   }finally{v1163RetryRunning=false;v1163UpdateSyncDisplay();}
 };
 for(const role of ['admin','sales','clerk']){
-  V195_ROLE_GUIDES[role].sections.push({title:'保存できなかったQR廃棄単価を再送する',where:'画面上部の同期表示 → 廃棄単価を再送',steps:['廃棄単価の端末保持件数がある場合は、通信を確認して再送を押します。','再送中はボタンが無効になります。画面を閉じず、完了を待ちます。','再送中に追加・変更した単価は端末に保持されます。','終了後も端末保持件数が残っていれば、もう一度再送します。'],check:'廃棄単価の端末保持件数が0になったことを確認します。',caution:'途中で追加・変更した単価は、次の再送が成功するまでクラウドへ反映されていない場合があります。別のタブや端末からの同時変更は避けてください。'});
+  V195_ROLE_GUIDES[role].sections.push({title:'保存できなかったQR廃棄単価を再送する',where:'画面上部の同期表示 → 廃棄単価を再送',steps:['廃棄単価の端末保持件数がある場合は、通信を確認して再送を押します。','再送中はボタンが無効になります。画面を閉じず、完了を待ちます。','再送中に追加・変更した単価は端末に保持されます。','終了後も端末保持件数が残っていれば、もう一度再送します。','通常データの再送に失敗した場合は、廃棄単価の再送を止めます。表示されたエラーを確認し、解消後に再送してください。'],check:'廃棄単価の端末保持件数が0になったことを確認します。',caution:'途中で追加・変更した単価は、次の再送が成功するまでクラウドへ反映されていない場合があります。別のタブや端末からの同時変更は避けてください。'});
 }
 const V1162_VERSION='v1.179';window.APP_VERSION=V1162_VERSION;document.title='SEIKA＋ v1.193 週次廃棄レポート版';
 
