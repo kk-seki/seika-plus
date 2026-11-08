@@ -22,29 +22,29 @@ function c107RowHasStock(row){
   return !!last&&c107Positive(printDayValue(row,ymdKey(new Date(last.createdAt))));
 }
 
+const C107_PLAIN_GROUP='適正在庫品目',C107_QR_GROUP='QR在庫',C107_GROUP_ORDER=[C107_PLAIN_GROUP,'その他','片岡在庫',C107_QR_GROUP];
+function c107GroupRank(g){const i=C107_GROUP_ORDER.indexOf(g);return i<0?C107_GROUP_ORDER.length-1.5:i}
+
 function c107BuildRows(group,dayKeys,qr){
-  const base=printInventoryRows(group,dayKeys).filter(c107RowHasStock);
-  const groupOfItem=new Map(base.filter(r=>r.id!==undefined&&r.kind!=='special').map(r=>[String(r.id),r.group]));
-  const rows=base.slice(),totals=(qr&&qr.totals)||{},standalone=(qr&&qr.standaloneTotals)||{};
+  const rows=printInventoryRows(group,dayKeys).filter(c107RowHasStock);
+  const totals=(qr&&qr.totals)||{},standalone=(qr&&qr.standaloneTotals)||{};
   const items=allSortedItems();
   for(const [id,kg] of Object.entries(totals)){
     if(!(Number(kg)>0))continue;
     const item=items.find(it=>String(it.id)===String(id));
-    rows.push({kind:'qr',id,name:`${item?item.name:id}（QR）`,spec:'kg',origin:'',qrKg:Number(kg),
-      sort:Number(item?.sort||0)+.5,group:groupOfItem.get(String(id))||'適正在庫品目'});
+    rows.push({kind:'qr',id,name:`${item?item.name:id}（QR）`,spec:'kg',origin:'',qrKg:Number(kg),sort:Number(item?.sort||0),group:C107_QR_GROUP});
   }
   for(const entry of Object.values(standalone)){
     if(!(Number(entry?.total)>0))continue;
-    rows.push({kind:'qr',id:entry.name,name:`${entry.name}（QR）`,spec:'kg',origin:'',qrKg:Number(entry.total),sort:20000,group:'QR在庫'});
+    rows.push({kind:'qr',id:entry.name,name:`${entry.name}（QR）`,spec:'kg',origin:'',qrKg:Number(entry.total),sort:20000,group:C107_QR_GROUP});
   }
-  const last=g=>g==='QR在庫'?1:0;
-  return rows.sort((a,b)=>last(a.group)-last(b.group)||String(a.group).localeCompare(String(b.group),'ja')||a.sort-b.sort||String(a.name).localeCompare(String(b.name),'ja'));
+  return rows.sort((a,b)=>c107GroupRank(a.group)-c107GroupRank(b.group)||a.sort-b.sort||String(a.name).localeCompare(String(b.name),'ja'));
 }
 
 function c107Entries(rows){
   const out=[];
   rows.forEach((r,i)=>{
-    if(i===0||r.group!==rows[i-1].group)out.push({type:'section',label:r.group});
+    if((i===0||r.group!==rows[i-1].group)&&r.group!==C107_PLAIN_GROUP)out.push({type:'section',label:r.group});
     out.push({type:'row',row:r});
   });
   return out;
@@ -63,9 +63,8 @@ function c107Split(entries){
     if(i<entries.length)run+=units[i];
   }
   const left=entries.slice(0,best),right=entries.slice(best);
-  if(right.length&&right[0].type==='row'){
-    const g=right[0].row.group;
-    right.unshift({type:'section',label:`${g}（続き）`});
+  if(right.length&&right[0].type==='row'&&right[0].row.group!==C107_PLAIN_GROUP){
+    right.unshift({type:'section',label:`${right[0].row.group}（続き）`});
   }
   return[left,right];
 }
@@ -143,18 +142,22 @@ window.c107StockPrintHtml=function(group,qr,now=new Date()){
 };
 
 window.printInventorySheet=async function(group){
+  const w=window.open('','_blank');
+  if(!w){alert('印刷画面を開けませんでした。ポップアップ許可を確認してください。');return}
+  w.document.open();w.document.write('<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>在庫表</title></head><body style="font:16px sans-serif;padding:16px">在庫表を準備しています…</body></html>');w.document.close();
   const room=group==='room3'?'room3':'room2';
   let qr;
   try{qr=await qrInventoryKgByItemForRoom(room)}
-  catch(error){alert(`QR在庫を取得できないため、在庫表を印刷できません。\n${typeof v161ErrorText==='function'?v161ErrorText(error):String(error&&error.message||error)}`);return}
-  const built=window.c107StockPrintHtml(group,qr),w=window.open('','_blank');
-  if(!w){alert('印刷画面を開けませんでした。ポップアップ許可を確認してください。');return}
+  catch(error){
+    try{w.close()}catch(_){}
+    alert(`QR在庫を取得できないため、在庫表を印刷できません。\n${typeof v161ErrorText==='function'?v161ErrorText(error):String(error&&error.message||error)}`);return;
+  }
+  const built=window.c107StockPrintHtml(group,qr);
   w.document.open();w.document.write(built.html);w.document.close();
 };
-
 {
   const section={title:'在庫表を印刷する',where:'在庫表 → 印刷用チェック表',
-    steps:['在庫表の画面で「第2冷蔵庫＋片岡在庫を印刷」または「第3冷蔵庫を印刷」を押します。','在庫がある品目だけが、左右2ブロックでA4横1枚に出ます。','QR在庫は「（QR）」の行にkgで出ます。印刷した日の列に印刷時点の在庫が入ります。','PCの印刷画面からA4・横向きで印刷します。'],
+    steps:['在庫表の画面で「第2冷蔵庫＋片岡在庫を印刷」または「第3冷蔵庫を印刷」を押します。','在庫がある品目だけが、左右2ブロックでA4横1枚に出ます。','QR在庫は「QR在庫」の欄にまとめて、kgで出ます。印刷した日の列に印刷時点の在庫が入ります。','PCの印刷画面からA4・横向きで印刷します。'],
     check:'QR在庫を読み込めない場合は、不完全な表を出さずに印刷を止めます。再度押してください。',
     caution:'kg換算できないQRロットがある場合は、表の下に件数が出ます。'};
   for(const role of ['admin','worker','buyer','sales','clerk','viewer','office_viewer']){
