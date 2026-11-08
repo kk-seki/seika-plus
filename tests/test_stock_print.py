@@ -154,21 +154,74 @@ class StockPrintTests(unittest.TestCase):
         view = self.render(context, built["html"])
         self.assertEqual(self.pdf_pages(view), 1)
 
-    def test_print_button_blocks_printing_when_qr_stock_cannot_be_read(self):
+    def test_print_window_is_opened_before_the_qr_stock_is_read(self):
         context, page = self.open_app()
-        out = page.evaluate("""async()=>{const alerts=[];let opened=0;window.alert=m=>alerts.push(String(m));window.open=()=>{opened++;return null};
-          qrInventoryKgByItemForRoom=async()=>{throw new Error('通信に失敗しました')};await printInventorySheet('room3');return{alerts,opened}}""")
-        self.assertEqual(out["opened"], 0)
+        out = page.evaluate("""async()=>{const log=[];let written='';window.alert=()=>{};
+          window.open=()=>{log.push('open');return{document:{open(){},write(h){written=h},close(){}},close(){log.push('close')}}};
+          qrInventoryKgByItemForRoom=async()=>{log.push('fetch');await new Promise(r=>setTimeout(r,50));return{totals:{},standaloneTotals:{},unconvertible:[]}};
+          await printInventorySheet('room3');return{log,written}}""")
+        self.assertEqual(out["log"], ["open", "fetch"])
+        self.assertIn('class="blocks"', out["written"])
+        self.assertEqual(out["written"].count('<table class="blk">'), 2)
+
+    def test_popup_blocked_stops_before_reading_qr_stock(self):
+        context, page = self.open_app()
+        out = page.evaluate("""async()=>{const alerts=[];let fetched=0;window.alert=m=>alerts.push(String(m));window.open=()=>null;
+          qrInventoryKgByItemForRoom=async()=>{fetched++;return{totals:{},standaloneTotals:{},unconvertible:[]}};
+          await printInventorySheet('room3');return{alerts,fetched}}""")
+        self.assertEqual(out["fetched"], 0)
+        self.assertIn("ポップアップ", out["alerts"][0])
+
+    def test_qr_read_failure_closes_the_window_and_prints_nothing(self):
+        context, page = self.open_app()
+        out = page.evaluate("""async()=>{const alerts=[],log=[];let written='';window.alert=m=>alerts.push(String(m));
+          window.open=()=>({document:{open(){},write(h){written+=h},close(){}},close(){log.push('close')}});
+          qrInventoryKgByItemForRoom=async()=>{throw new Error('通信に失敗しました')};
+          await printInventorySheet('room3');return{alerts,log,written}}""")
+        self.assertEqual(out["log"], ["close"])
         self.assertEqual(len(out["alerts"]), 1)
         self.assertIn("QR在庫を取得できない", out["alerts"][0])
+        self.assertNotIn("blocks", out["written"])
 
-    def test_print_button_writes_the_new_layout_to_the_print_window(self):
+    def sequence(self, view):
+        return view.evaluate("""()=>[...document.querySelectorAll('table.blk tr')].filter(tr=>!tr.querySelector('th')).map(tr=>tr.classList.contains('section')?['section',tr.textContent.trim()]:[tr.classList.contains('qr')?'qr':'row',tr.querySelector('td.name').textContent])""")
+
+    def test_no_plain_group_heading_and_all_qr_items_are_one_group_at_the_end(self):
+        for extra in (0, 40):
+            with self.subTest(extra=extra):
+                context, page = self.open_app(extra_items=extra, extra_special=6)
+                ids = page.evaluate("()=>db.items.slice(0,5).map(i=>i.id)")
+                qr = {"totals": {i: 100.5 + n for n, i in enumerate(ids)}, "standaloneTotals": {"k": {"name": "QR専用", "total": 7}}, "unconvertible": []}
+                built = self.build(page, qr)
+                self.assertNotIn("適正在庫品目", built["html"])
+                seq = self.sequence(self.render(context, built["html"]))
+                kinds = [k for k, _ in seq]
+                first_qr = kinds.index("qr")
+                self.assertTrue(all(k in ("qr", "section") for k in kinds[first_qr:]))
+                self.assertEqual(sum(1 for k in kinds if k == "qr"), 6)
+                labels = [v for k, v in seq if k == "section"]
+                heads = [v for v in labels if v.startswith("QR在庫")]
+                self.assertEqual(sum(1 for v in heads if "続き" not in v), 1)
+                self.assertLessEqual(len(heads), 2)
+                self.assertEqual(seq[first_qr - 1], ["section", "QR在庫"])
+
+    def test_order_copy_shows_each_buyer_once_even_with_two_accounts_for_one_person(self):
         context, page = self.open_app()
-        html = page.evaluate("""async()=>{let written='';window.alert=()=>{};
-          window.open=()=>({document:{open(){},write(h){written+=h},close(){}}});
-          qrInventoryKgByItemForRoom=async()=>({totals:{},standaloneTotals:{},unconvertible:[]});await printInventorySheet('room3');return written}""")
-        self.assertIn('class="blocks"', html)
-        self.assertEqual(html.count('<table class="blk">'), 2)
+        out = page.evaluate("""async()=>{
+          const it=db.items[0];db.settings[it.id]={min:500,max:900};db.records=[];
+          db.users=db.users.filter(u=>!['saito','saito_dai'].includes(u.id));
+          db.users.push({id:'saito',name:'斎藤(大)',role:'buyer',active:true},{id:'saito_dai',name:'斎藤(大)',role:'buyer',active:true});
+          db.buyerAssignments={saito_dai:[it.id]};
+          window.v1146LoadQrStock=async()=>({});
+          const groups=orderCopyGroups().map(g=>g.title);
+          await orderCandidatePage();
+          const labels=[...document.querySelectorAll('label.label')].map(l=>l.textContent).filter(x=>x.includes('さん向けコピー文'));
+          const ids=[...document.querySelectorAll('textarea')].map(x=>x.id);
+          return{groups,labels,unique:new Set(ids).size===ids.length}}""")
+        self.assertEqual(out["groups"].count("斎藤(大)"), 1)
+        self.assertEqual(out["labels"].count("斎藤(大)さん向けコピー文"), 1)
+        self.assertEqual(len(out["labels"]), len(set(out["labels"])))
+        self.assertTrue(out["unique"])
 
     def test_home_has_no_entered_or_last_input_tiles_and_counts_include_qr(self):
         context, page = self.open_app()
