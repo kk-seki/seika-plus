@@ -203,13 +203,15 @@ async function c84MonthExcel(){
 }
 function c86CanEdit(){return["admin","worker"].includes(String(db?.role||""))}
 function c86EditHtml(t,i){
- if(t.dest==="本社"||!c86CanEdit())return"";
- const rows=t.lines.map((g,j)=>{const c=c84Cells(g);
+ if(!c86CanEdit())return"";
+ const hq=t.dest==="本社";
+ const rows=t.lines.map((g,j)=>{if(hq&&g.big)return"";const c=c84Cells(g);
   const need=g.big&&!g.mv.every(x=>x.kgSet);
   return `<div style="display:flex;gap:6px;align-items:center;justify-content:space-between;border-top:1px solid #e2e8f0;padding:6px 0"><div class="small" style="flex:1;min-width:0"><b>${esc(g.name)}</b><br>${esc(c.pack)}　${esc(c.qty||"（重さ未入力）")}${esc(c.qty?c.unit:"")}${need?'　<span style="color:#b91c1c;font-weight:800">総重量が未入力</span>':""}</div>
   <button class="btn btn2" style="flex:0 0 auto;padding:6px 10px;font-size:14px" ${seikaEventAttrs("click",g.big?"c86EditKg":"c86EditPack",[i,j])}>${g.big?"総重量を入れる・直す":"入数を直す"}</button></div>`}).join("");
- const open=t.lines.some(g=>g.big&&!g.mv.every(x=>x.kgSet));
- return `<details style="margin-top:8px" ${open?"open":""}><summary style="font-weight:800;cursor:pointer">総重量・入数を入れる・直す</summary>${rows}</details>`;
+ if(!rows)return"";
+ const open=!hq&&t.lines.some(g=>g.big&&!g.mv.every(x=>x.kgSet));
+ return `<details style="margin-top:8px" ${open?"open":""}><summary style="font-weight:800;cursor:pointer">${hq?"入数を直す":"総重量・入数を入れる・直す"}</summary>${rows}</details>`;
 }
 async function c86Save(id,kg,pack){await callRpc("qr_slip_adjust_save_v1199c86",{p_movement_id:id,p_total_kg:kg,p_pack:pack})}
 function c86Err(e){const m=String(e?.message||e||"");return /qr_slip_adjust_save_v1199c86|schema cache|does not exist|404/.test(m)?"保存の仕組み（SQL 036）がまだ入っていません。管理者にSQLの実行を頼んでください。":m}
@@ -277,13 +279,13 @@ try{
    "土曜日のうちに、日曜日の伝票（土曜日に積む分）と月曜日の伝票（日曜積込分）を印刷できます。土曜日の画面に出る「日曜日の伝票」「月曜日の伝票」を押します。",
    "伝票はA4横で、左が納品書、右が請求書です。品名・入数（例：10kg）・数量・産地・入荷日が入ります。品名の後ろには単協が入り、単協がないロットは仕入先が入ります。大型容器は入数が基数、数量が総重量（kg）になります。",
    "埼玉・深谷へ網コンテナ・鉄コンテナ・パレテーナを出庫するときは、総重量（kg）を必ず入れます。単発のQR出庫は画面の「総重量（kg）」欄、連続出庫・まとめ出庫は出庫のときに出る入力欄に入れます。入れた重さは伝票だけに使い、石岡の在庫の重さは変わりません。",
-   "ロットの量目と違う入数で出すとき（例：白菜を12kgで出す）は、QR出庫の画面の「入数（量目と違うときだけ）」に入れます（埼玉・深谷のとき）。",
+   "ロットの量目と違う入数で出すとき（例：白菜を12kgで出す）は、QR出庫の画面の「入数（量目と違うときだけ）」に入れます（埼玉・深谷・本社のとき。大型容器は除く）。本社は、本社移動用の貼り紙の量目にも同じ入数が入ります。在庫は入数に関係なく、出庫したケース数で減ります。",
    "本社工場の伝票は、本社入荷日（予定）が伝票の日付と同じ分を載せます。「翌日分先送り」で出した分も、本社に着く日の伝票に普通の行として入ります（「先送り」の欄は出ません）。",
    "埼玉・深谷の伝票は、品目・先送りの見出し・手書き用の2行を合わせて15行までなら1枚に入ります（当日分 → 手書き用2行 → 先送り分の順）。15行を超えるときだけ、当日分と先送り分の用紙を分けます。当日分だけで超えるときは2枚目に続きます。",
    "埼玉・深谷の伝票の品目は、いつもの納品書と同じ順番に並びます（同じ品目は入荷日の古い順。リストにない品目は最後に品名順）。",
    "本社工場の伝票は、原料発注書に近い形の「納品書」1枚です（請求書はつきません）。品名・入数・数量・産地（単協）・入荷日・備考（手書き用）・QRが入り、手書き用の2行を含めて15行までは1枚、超えるときだけ2枚目に続きます。",
    "品名が長くて行が高くなったときは、印刷の用紙に収まるように、手書き用の2行を残して空欄の行を減らし、それでも入らないときは文字と行を少し小さくします。",
-   "出庫したあとで総重量や入数を入れる・直すときは、伝票の画面の「総重量・入数を入れる・直す」を開いてボタンを押します（管理者・青果社員）。",
+   "出庫したあとで総重量や入数を入れる・直すときは、伝票の画面の「総重量・入数を入れる・直す」（本社工場の伝票は「入数を直す」）を開いてボタンを押します（管理者・青果社員）。本社へ出庫した分は、貼り紙の印刷画面の「入数（量目と違うとき）」からも直せます。",
    "同じロットを何回かに分けて出庫したときは1行にまとめます。先送り分は「【○/○ 納品分 先送り】」の下にまとめます。",
    "「この伝票を印刷」または「すべての伝票を印刷」でPDFを作り、開いて印刷します。Android端末は縦向きの紙に回したPDFになります。",
    "QR品目にないものは、表の下の空いた3行に手書きで書き足します。"],

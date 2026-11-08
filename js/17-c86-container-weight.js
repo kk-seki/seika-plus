@@ -2,7 +2,7 @@
 /* ===== v1.199-c86 埼玉・深谷へ大型容器を出庫するときは総重量（kg）を必ず入力／入数（量目と違うときだけ）を入力 =====
    入れた値は出庫の記録（operation_meta.slip）に残し、伝票だけに使う。石岡の在庫の重さには使わない。 */
 (()=>{
-const DESTS=["埼玉","深谷"],BIG=["網コンテナ","鉄コンテナ","パレテーナ"],KEY="seika_c86_slip_meta";
+const DESTS=["埼玉","深谷"],HQ="本社",BIG=["網コンテナ","鉄コンテナ","パレテーナ"],KEY="seika_c86_slip_meta";
 let pending=null;
 function z2h(v){return String(v??"").trim().replace(/[０-９．]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))}
 function kgOf(v){const t=z2h(v).replace(/\s*(kg|㎏|キロ)$/i,"");if(t==="")return null;const n=Number(t);return n>0&&n<100000?Math.round(n*10)/10:NaN}
@@ -20,8 +20,8 @@ async function lotInfo(q){try{return(await qrSelect("qr_lots",`select=item_name,
 let pageLot=null;
 function boxHtml(){const big=BIG.includes(String(pageLot?.container_type||""));
  return big?`<label class="label" style="margin-top:10px">総重量（kg） <span style="color:#dc2626">必須</span></label><input id="c86Kg" class="input" inputmode="decimal" placeholder="例：808"><div class="small">出庫する${esc(pageLot.container_type)}全部の重さです。伝票の数量に入ります（石岡の在庫の重さは変わりません）。</div>`
- :`<label class="label" style="margin-top:10px">入数（量目と違うときだけ）</label><input id="c86Pack" class="input" placeholder="例：12kg（ロットの量目：${esc(pageLot?.pack_weight||"なし")}）"><div class="small">伝票の入数に入ります。空欄ならロットの量目のままです。</div>`}
-function toggle(){const b=document.getElementById("c86Box");if(!b)return;b.style.display=DESTS.includes(document.getElementById("qrMoveDestination")?.value||"")?"block":"none"}
+ :`<label class="label" style="margin-top:10px">入数（量目と違うときだけ）</label><input id="c86Pack" class="input" placeholder="例：12kg（ロットの量目：${esc(pageLot?.pack_weight||"なし")}）"><div class="small">伝票の入数に入ります（本社へ出庫するときは、本社移動用の貼り紙の量目にも入ります）。空欄ならロットの量目のままです。在庫（ケース数）は変わりません。</div>`}
+function toggle(){const b=document.getElementById("c86Box");if(!b)return;const d=document.getElementById("qrMoveDestination")?.value||"",big=BIG.includes(String(pageLot?.container_type||""));b.style.display=DESTS.includes(d)||(d===HQ&&!big)?"block":"none"}
 const opBase=qrOperationLotPage;
 qrOperationLotPage=async function(kind,q){
  const r=await opBase.apply(this,arguments);
@@ -34,9 +34,10 @@ document.addEventListener("change",e=>{if(e.target?.id==="qrMoveDestination")tog
 const saveBase=qrSaveLotMovement;
 qrSaveLotMovement=async function(kind,q){
  pending=null;
- if(kind==="out"&&DESTS.includes(document.getElementById("qrMoveDestination")?.value||"")&&document.getElementById("c86Box")){
+ const dest0=document.getElementById("qrMoveDestination")?.value||"";
+ if(kind==="out"&&(DESTS.includes(dest0)||dest0===HQ)&&document.getElementById("c86Box")){
   const kEl=document.getElementById("c86Kg"),pEl=document.getElementById("c86Pack");
-  if(kEl){const n=kgOf(kEl.value);if(!(n>0)){typeof v161FocusField==="function"?v161FocusField("c86Kg","総重量（kg）を入れてください。"):alert("総重量（kg）を入れてください。");return}pending={kg:n}}
+  if(kEl&&dest0!==HQ){const n=kgOf(kEl.value);if(!(n>0)){typeof v161FocusField==="function"?v161FocusField("c86Kg","総重量（kg）を入れてください。"):alert("総重量（kg）を入れてください。");return}pending={kg:n}}
   else if(pEl&&pEl.value.trim())pending={pack:packOf(pEl.value)};
  }
  try{return await saveBase.apply(this,arguments)}finally{pending=null}
@@ -45,10 +46,11 @@ window.qrSaveLotMovement=qrSaveLotMovement;
 /* すべての出庫（単発・連続・まとめ出庫）で、記録に総重量・入数を付ける */
 const rpcBase=callRpc;
 callRpc=async function(name,args){
- if(name==="apply_qr_lot_operation"&&args&&args.p_movement_type==="出庫"&&DESTS.includes(String(args.p_destination||""))){
-  const id=String(args.p_operation_id||"");let v=id?store()[id]:null;
+ if(name==="apply_qr_lot_operation"&&args&&args.p_movement_type==="出庫"&&(DESTS.includes(String(args.p_destination||""))||String(args.p_destination||"")===HQ)){
+  const hq=String(args.p_destination||"")===HQ,id=String(args.p_operation_id||"");let v=id?store()[id]:null;
   if(!v&&pending)v=pending;
-  if(!v){const l=await lotInfo(args.p_qr_key);
+  if(hq)v=v&&v.pack?{pack:v.pack}:null;
+  if(!v&&!hq){const l=await lotInfo(args.p_qr_key);
    if(l&&BIG.includes(String(l.container_type||""))){const n=await ask(`${l.item_name}　${args.p_qty}基 → ${args.p_destination}`,"埼玉・深谷へ大型容器を出庫するときは、総重量の入力が必要です。");
     if(n===null)return{ok:false,message:"総重量（kg）が未入力のため、出庫していません。"};v={kg:n}}}
   if(v&&(v.kg||v.pack)){if(id)remember(id,v);const m=args.p_operation_meta&&typeof args.p_operation_meta==="object"?args.p_operation_meta:{};args.p_operation_meta={...m,slip:v.kg?{kg:v.kg}:{pack:v.pack}}}
