@@ -5894,20 +5894,39 @@ if(typeof v188LiveQty==="function"){
 
 /* 在庫表：規格別ロットの品目は、セルに規格ごとのケース数も出す */
 const v1310ByDayBase=qrInventoryKgByItemForRoomByDay;
+async function v1310RunLimited(jobs,limit=6){
+  const out=new Array(jobs.length);let next=0;
+  const worker=async()=>{for(;;){const i=next++;if(i>=jobs.length)return;out[i]=await jobs[i]()}};
+  await Promise.all(Array.from({length:Math.min(limit,jobs.length)},worker));
+  return out;
+}
+async function v1310LoadGradeLotData(gradesPromise){
+  await gradesPromise;
+  if(!v1310GradeMap.size)return null;
+  const ids=[...v1310GradeMap.keys()],lotJobs=[],moveJobs=[];
+  for(let i=0;i<ids.length;i+=50){const part=ids.slice(i,i+50);lotJobs.push(()=>v1300SelectBase("qr_lots",`select=*&id=in.(${part.join(",")})&limit=1000`))}
+  for(let i=0;i<ids.length;i+=40){const part=ids.slice(i,i+40);moveJobs.push(()=>v1300SelectBase("qr_lot_movements",`select=*&lot_id=in.(${part.join(",")})&order=created_at.asc&limit=1000`))}
+  const [lotParts,moveParts]=await Promise.all([v1310RunLimited(lotJobs),v1310RunLimited(moveJobs)]);
+  return{lots:lotParts.flatMap(x=>x||[]),moves:moveParts.flatMap(x=>x||[])};
+}
 qrInventoryKgByItemForRoomByDay=async function(room,dayKeys){
+  const gradesPromise=v1310LoadGrades(true),gradeData=v1310LoadGradeLotData(gradesPromise);
+  gradesPromise.catch(()=>{});gradeData.catch(()=>{});
+  v163SelectAll("qr_lots","select=*&order=qr_key.asc").catch(()=>{});
+  v163SelectAll("qr_lots","select=*&active=eq.true&order=qr_key.asc").catch(()=>{});
   const result=await v1310ByDayBase.apply(this,arguments);
   try{
-    await v1310LoadGrades(true);
+    await gradesPromise;
     if(!v1310GradeMap.size||!result)return result;
-    const ids=[...v1310GradeMap.keys()];
-    const lots=[];
-    for(let i=0;i<ids.length;i+=50){const rows=await v1300SelectBase("qr_lots",`select=*&id=in.(${ids.slice(i,i+50).join(",")})&limit=1000`);lots.push(...(rows||[]))}
+    const data=await gradeData;
+    if(!data)return result;
+    const lots=data.lots;
     const locations=qrCountLocations(room),days=[...new Set(dayKeys||[])];
     const add={},addStand={};
-    for(let i=0;i<lots.length;i+=40){
-      const chunk=lots.slice(i,i+40),moves=await v1300SelectBase("qr_lot_movements",`select=*&lot_id=in.(${chunk.map(l=>l.id).join(",")})&order=created_at.asc&limit=1000`);
-      for(const lot of chunk){
-        const lotMoves=(moves||[]).filter(m=>String(m.lot_id)===String(lot.id)),list=v1310GradeMap.get(String(lot.id))||[];
+    const movesByLot=new Map;for(const m of data.moves){const k=String(m.lot_id);if(!movesByLot.has(k))movesByLot.set(k,[]);movesByLot.get(k).push(m)}
+    for(const lot of lots){
+      {
+        const lotMoves=movesByLot.get(String(lot.id))||[],list=v1310GradeMap.get(String(lot.id))||[];
         const resolved=qrResolveInventoryItem(lot),rule=resolved.rule||qrManagedRuleForName(lot.item_name);
         for(const dayKey of days){
           const snap=v1101LotSnapshotAtDayEnd(lot,lotMoves,dayKey);
