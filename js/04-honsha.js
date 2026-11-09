@@ -1799,7 +1799,7 @@ async function hqYieldPage(month="",tab="日報"){
 
 /* --- 本社の品質評価一覧 --- */
 async function qualityData(month){const{from,to}=h2MonthRange(month);return hqLots(`select=*&grade=not.is.null&hq_received_date=gte.${from}&hq_received_date=lte.${to}&order=hq_received_date.desc,confirmed_at.desc&limit=2000`)}
-function qState(l){if(l.grade==="good")return"確認不要";if(l.quality_checked_at)return"確認済み";return l.purchase_staff?`${l.purchase_staff}さんの確認待ち`:"管理者の確認待ち"}
+function qState(l){if(l.grade==="good")return"確認不要";if(l.quality_checked_at)return"確認済み";return l.purchase_staff?`${v1144FormalPurchaseStaffName(l.purchase_staff)}さんの確認待ち`:"管理者の確認待ち"}
 async function hqQualityPage(month="",only="all",msg=""){
  if(!h2CanReport()&&!roleIs(["hq_receiver"]))return hqHome();month=h2Month(month);setScreen("hqQualityPage",[month,only,msg]);
  pageShell("品質評価一覧","本社で評価した原料（直接入荷・石岡からの受け入れ）",`${okHtml(msg)}<div class="card"><label class="label">本社入荷の月</label><input type="month" class="input" value="${esc(month)}" ${seikaEventAttrs("change","hqQualityPage",[{__seikaValue:true},only])}>

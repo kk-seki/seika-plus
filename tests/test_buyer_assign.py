@@ -189,6 +189,59 @@ class BuyerAssignTests(unittest.TestCase):
         self.assertFalse(got["buyer"] or got["clerk"] or got["sales"])
         self.assertEqual(got["workerValue"], {"a": ["x"]})
 
+    def add_duplicate_accounts(self, page):
+        page.evaluate("""()=>{
+ db.users.push({id:'saito',name:'斎藤(大)',role:'buyer',active:true},{id:'seki',name:'関(宏)',role:'buyer',active:true});
+ for(const u of db.users)if(u.id==='saito_dai')u.name='斎藤(大)';
+}""")
+
+    def test_duplicate_accounts_are_listed_once_with_full_names(self):
+        page = self.open_app("admin")
+        self.add_duplicate_accounts(page)
+        got = page.evaluate("()=>buyerUsers().map(u=>u.name)")
+        self.assertEqual(sorted(got), sorted(set(got)))
+        self.assertEqual(sorted(got), ["吉田 智彦", "坂本 美穂", "斎藤 大明", "荒木 貴裕", "関 宏世"])
+        html = page.evaluate("()=>buyerAssignFormHtml('')")
+        self.assertEqual(html.count("斎藤 大明"), 1)
+        self.assertEqual(html.count("関 宏世"), 1)
+        self.assertNotIn("斎藤(大)", html)
+        self.assertNotIn("関(宏)", html)
+
+    def test_buyer_names_shown_everywhere_are_full_names(self):
+        page = self.open_app("admin")
+        self.add_duplicate_accounts(page)
+        got = page.evaluate("""()=>{
+ const it=db.items.find(i=>i.deleted!==true&&assignedBuyerIds(i.id).includes('saito_dai'));
+ db.buyerAssignments.saito=[it.id];
+ return{text:buyerText(it),names:buyerNamesForItem(it.id),copy:orderCopyGroups().map(g=>g.title),
+  qr:qrBuyerNamesForName(it.name),lot:v1144FormalPurchaseStaffName('斎藤(大)')}
+}""")
+        self.assertEqual(got["names"], ["斎藤 大明"])
+        self.assertIn("斎藤 大明", got["text"])
+        self.assertNotIn("(大)", got["text"])
+        self.assertTrue(all("(" not in t for t in got["copy"]), got["copy"])
+        self.assertTrue(all("(" not in n for n in got["qr"]), got["qr"])
+        self.assertEqual(got["lot"], "斎藤 大明")
+
+    def test_item_edit_screen_lists_each_person_once_and_save_clears_old_account_id(self):
+        page = self.open_app("admin")
+        self.add_duplicate_accounts(page)
+        item_id = page.evaluate("""()=>{
+ const it=db.items.find(i=>i.deleted!==true);
+ db.buyerAssignments.saito=[it.id];
+ itemFormPage(it.id);
+ return it.id
+}""")
+        labels = page.locator(".buyerCheck").locator("xpath=..").all_inner_texts()
+        labels = [x.strip() for x in labels]
+        self.assertEqual(sorted(labels), ["吉田 智彦", "坂本 美穂", "斎藤 大明", "荒木 貴裕", "関 宏世"])
+        self.assertTrue(page.locator('.buyerCheck[value="saito_dai"]').is_checked())
+        page.evaluate("()=>document.querySelectorAll('.buyerCheck').forEach(c=>c.checked=(c.value==='yoshida'))")
+        page.evaluate("(id)=>saveItem(id)", item_id)
+        res = page.evaluate("(id)=>({ids:assignedBuyerIds(id),raw:Object.keys(db.buyerAssignments).filter(k=>(db.buyerAssignments[k]||[]).includes(id))})", item_id)
+        self.assertEqual(res["ids"], ["yoshida"])
+        self.assertEqual(res["raw"], ["yoshida"])
+
     def test_operation_guide_has_new_section_for_admin_and_worker_only(self):
         page = self.open_app("admin")
         got = page.evaluate("()=>Object.fromEntries(Object.entries(V195_ROLE_GUIDES).map(([r,g])=>[r,(g.sections||[]).filter(s=>s.title==='仕入れ担当者を変更する').length]))")
