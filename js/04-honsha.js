@@ -1143,6 +1143,9 @@ async function hqWorkPage(id,msg=""){
  let body=`${okHtml(msg)}<div class="card h2Work s${esc(w.status)}"><div class="itemHead"><div><b style="font-size:21px">${esc(title)}</b><div class="small">${esc(w.place||"")} ／ ${esc(w.work_date)} 開始 ${time2(w.started_at)}${w.ended_at?` ／ 終了 ${time2(w.ended_at)}`:""}</div></div><span class="h2Badge h2B${esc(w.status)}">${esc(w.status==="入力待ち"?"作業終了・数量未入力":w.status)}</span></div>
  ${mats.length?`<div class="small" style="margin-top:6px">原料：${mats.map(m=>`${esc(m.lot_no)}（${esc(m.unit==="kg"?"kg":"ケース")}${m.pack_kg?`・量目${hqQty(m.pack_kg)}kg`:""}）`).join("、")}</div>`:""}
  ${w.kind==="下処理"&&w.confirm_status!=="未確定"?`<div style="margin-top:6px"><span class="badge ${w.confirm_status==="確定"?"normal":"unset"}">${esc(w.confirm_status)}</span></div>`:""}</div>`;
+ if(w.kind==="下処理"&&w.status==="作業中"&&w.confirm_status==="未確定"&&h2CanPrep()){
+  body+=`<div class="card" id="c112Materials"><b>作業中の原料・使用数</b><div class="small">原料を使い終わったら、そのロットで使った合計数を保存します。次の原料は、作業を終えずに追加できます。</div>${mats.map(m=>`<label class="label" style="margin-top:8px">${esc(m.item_name)} ${esc(m.lot_no)}（${m.unit==="kg"?"kg":"ケース"}）</label><div class="row"><input id="c112Qty_${esc(m.id)}" class="input" inputmode="decimal" value="${m.qty==null?"":hqQty(m.qty)}" placeholder="使った合計数"><button class="btn btn2" ${btnAttr("h2SaveMaterialQty",[w.id,m.id])}>使用数を保存</button></div>`).join("")}<button class="btn hqBtnPrep" style="width:100%;margin-top:12px" ${btnAttr("h2AddMaterialOpen",[w.id])}>次の原料を追加（QR）</button><div id="c112AddBox"></div><div class="small" style="margin-top:8px">廃棄・出来高は、下処理全体が終わってから合計を入力します。在庫は確定時に減ります。</div></div>`;
+ }
  if(w.status==="作業中"||w.status==="清掃中"){
   body+=`<div class="card"><b>いまの作業者（${open.length}名）</b>${open.map(m=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><div><b>${esc(m.staff_name)}</b><div class="small">${esc(m.team||"")} ／ ${m.phase} ${time2(m.start_at)}〜</div></div>${h2CanPrep()?`<button class="btn btn2" style="min-height:40px" ${btnAttr("h2WorkLeave",[w.id,m.staff_id,m.staff_name])}>抜ける</button>`:""}</div>`).join("")||'<div class="small">いません</div>'}
   ${h2CanPrep()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("h2WorkJoinOpen",[w.id])}>途中から入る人を追加（スタッフQR）</button><div id="h2JoinBox"></div>`:""}</div>`;
@@ -1167,7 +1170,8 @@ async function hqWorkPage(id,msg=""){
  if(h2CanBoss()&&w.kind==="下処理"&&w.status!=="作業中"&&w.status!=="取消")body+=`<button class="btn hqBtnPrepCheck" style="width:100%;margin-top:8px" ${btnAttr("hqPrepConfirmPage",[w.id])}>確認・確定の画面へ</button>`;
  body+=`<button class="btn btn2" style="width:100%;margin-top:12px" ${btnAttr("hqPrepHome",[])}>いま動いている作業の一覧へ</button>`;
  pageShell(w.kind==="下処理"?"下処理":w.kind==="清掃"?"清掃":"作業",`${esc(w.place||"")} ／ ${esc(w.status)}`,body);
- if(w.status==="作業中"||w.status==="清掃中")h2Every(20000,()=>{if(!document.getElementById("h2JoinReader")&&!document.activeElement?.matches?.("input,select,textarea"))hqWorkPage(id)});
+ document.querySelectorAll("#c112Materials input").forEach(el=>el.addEventListener("input",()=>{document.getElementById("c112Materials").dataset.dirty="1"}));
+ if(w.status==="作業中"||w.status==="清掃中")h2Every(20000,()=>{if(!document.getElementById("h2JoinReader")&&!document.getElementById("c112AddBox")?.hasChildNodes()&&!document.getElementById("c112Materials")?.dataset.dirty&&!document.activeElement?.matches?.("input,select,textarea"))hqWorkPage(id)});
 }
 var H2_LABEL_ON=window.H2_LABEL_ON=false;
 function labelBox(w,beforeClean){
@@ -1178,6 +1182,7 @@ function labelBox(w,beforeClean){
  ${beforeClean?`<button class="btn hqBtnPrint h2Big" style="margin-top:10px" ${btnAttr("h2PrintLabel",[w.id,true])}>ラベルを印刷して ⑩ 清掃へ</button><button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("h2ToClean",[w.id,false])}>印刷できないときは、印刷しないで清掃へ</button>`:`<button class="btn hqBtnPrint" style="width:100%;margin-top:10px" ${btnAttr("h2PrintLabel",[w.id,false])}>ラベルをもう一度印刷</button>`}</div>`;
 }
 async function h2WorkEnd(id){
+ if(document.getElementById("c112Materials")?.dataset.dirty)return alert("先に、入力した使用数を保存してください");
  if(H2.busy)return;if(!confirm("作業を終わります。よろしいですか？"))return;H2.busy=true;
  try{const r=await r2("hq_work_end_v1500",{p_work_id:id});H2.busy=false;return hqWorkPage(id,r?.status==="入力待ち"?"作業を終えました。使用原料・廃棄・出来高を入れてください":"作業を終えました")}catch(e){H2.busy=false;alert(h2Err(e))}
 }
@@ -1200,6 +1205,49 @@ async function h2WorkJoinOpen(id){
  });
 }
 async function h2JoinSelected(id){const sid=h2Val("h2JoinSel");if(!sid)return alert("人を選んでください");try{await r2("hq_work_join_v1500",{p_work_id:id,p_staff_ids:[sid]});await h2StopReader();return hqWorkPage(id,"追加しました")}catch(e){alert(h2Err(e))}}
+async function h2AddMaterialOpen(id){
+ if(!h2CanPrep()||H2.busy)return;
+ const box=document.getElementById("c112AddBox");if(!box)return;
+ if(document.getElementById("c112Materials")?.dataset.dirty)return alert("先に、入力した使用数を保存してください");
+ let w,mats,lots;
+ try{w=(await h2Works(`select=*&id=eq.${id}`))[0];if(!w||w.kind!=="下処理"||w.status!=="作業中"||w.confirm_status!=="未確定")return alert("原料は作業中の下処理だけ追加できます");[mats,lots]=await Promise.all([h2Materials([id]),hqLots(`select=*&item_name=eq.${encodeURIComponent(w.raw_item_name)}&status=eq.在庫あり&order=hq_received_date.asc&limit=500`)]);}catch(e){return alert(h2Err(e))}
+ const choices=lots.filter(l=>Number(l.current_qty)>0&&!mats.some(m=>m.lot_id===l.id));
+ box.innerHTML=`<div id="c112Reader" style="min-height:200px;margin-top:8px"></div><select id="c112Lot" class="input"><option value="">QRが読めないときは一覧から選ぶ</option>${choices.map(l=>`<option value="${esc(l.id)}">${esc(l.item_name)} ${esc(l.lot_no)}（${hqQty(l.current_qty)}${esc(l.unit)}）</option>`).join("")}</select><button class="btn btn2" style="width:100%;margin-top:6px" ${btnAttr("h2AddMaterialSelected",[id])}>選んだ原料を追加</button><button class="btn btn2" style="width:100%;margin-top:6px" ${btnAttr("h2AddMaterialClose",[])}>追加をやめる</button>`;
+ await h2StartReader("c112Reader",async k=>{
+  const rows=await hqLots(`select=*&or=(qr_key.eq.${encodeURIComponent(k)},lot_no.eq.${encodeURIComponent(k)})&limit=1`);
+  if(!rows[0])return alert("この原料は見つかりません");
+  return h2AddMaterial(id,rows[0].id);
+ });
+}
+async function h2AddMaterialClose(){await h2StopReader();document.getElementById("c112AddBox")?.replaceChildren()}
+async function h2AddMaterialSelected(id){const lotId=h2Val("c112Lot");if(!lotId)return alert("原料を選んでください");return h2AddMaterial(id,lotId)}
+async function h2AddMaterial(id,lotId){
+ if(!h2CanPrep()||H2.busy)return;
+ if(document.getElementById("c112Materials")?.dataset.dirty)return alert("先に、入力した使用数を保存してください");
+ H2.busy=true;
+ try{
+  const w=(await h2Works(`select=*&id=eq.${id}`))[0],l=(await hqLots(`select=*&id=eq.${lotId}`))[0];
+  if(!w||w.kind!=="下処理"||w.status!=="作業中"||w.confirm_status!=="未確定")throw new Error("原料は作業中の下処理だけ追加できます");
+  if(!l||l.item_name!==w.raw_item_name)throw new Error("この下処理と同じ品目の原料を選んでください");
+  if(l.status!=="在庫あり"||!(Number(l.current_qty)>0))throw new Error("受け入れ済みで在庫がある原料を選んでください");
+  if(window.hqLimitGuard&&!window.hqLimitGuard(l,"下処理に使う"))return;
+  const r=await r2("hq_work_add_material_v1199c112",{p_work_id:id,p_lot_id:lotId});
+  await h2StopReader();await hqWorkPage(id,r?.already?"この原料は追加済みです":"原料を追加しました。作業はそのまま続けられます");
+ }catch(e){alert(h2Err(e))}finally{H2.busy=false}
+}
+async function h2SaveMaterialQty(id,materialId){
+ if(!h2CanPrep()||H2.busy)return;
+ const el=document.getElementById(`c112Qty_${materialId}`),raw=String(el?.value||"").trim(),qty=num2(raw);
+ if(!raw||!Number.isFinite(qty)||qty<0)return alert("使用数は0以上の数で入れてください");
+ H2.busy=true;
+ try{
+  await r2("hq_work_save_material_qty_v1199c112",{p_work_id:id,p_material_id:materialId,p_qty:qty});
+  el.defaultValue=raw;
+  const panel=document.getElementById("c112Materials");
+  if(panel&&!Array.from(panel.querySelectorAll("input")).some(x=>x.value!==x.defaultValue))delete panel.dataset.dirty;
+  alert("使用数を保存しました。作業はそのまま続けられます");
+ }catch(e){alert(h2Err(e))}finally{H2.busy=false}
+}
 async function h2SaveInputs(id){
  if(H2.busy)return;
  const mats=[];let bad="";
@@ -1268,7 +1316,7 @@ async function h2AddMemberSave(workId){
  const a=h2Val("h2AmA"),b=h2Val("h2AmB");if(!a||!b)return alert("開始と終了を入れてください");
  try{await r2("hq_member_add_v1500",{p_work_id:workId,p_staff_id:h2Val("h2AmS"),p_phase:h2Val("h2AmP"),p_start:new Date(a).toISOString(),p_end:new Date(b).toISOString()});return hqWorkPage(workId,"追加しました")}catch(e){alert(h2Err(e))}
 }
-Object.assign(window,{h2DeleteWorkHtml,h2DeleteWork,hqPrepHome,hqPrepNew,h2NwAddLot,h2NwDelLot,h2NwAddStaff,h2NwDelStaff,h2NwSet,h2NwStart,hqOpScanPage,hqWorkPage,h2WorkEnd,h2CleanEnd,h2WorkLeave,h2WorkJoinOpen,h2JoinSelected,h2SaveInputs,h2PrintLabel,h2ToClean,h2WorkCancel,h2FixMember,h2AddMemberPage,h2AddMemberSave});
+Object.assign(window,{h2DeleteWorkHtml,h2DeleteWork,hqPrepHome,hqPrepNew,h2NwAddLot,h2NwDelLot,h2NwAddStaff,h2NwDelStaff,h2NwSet,h2NwStart,hqOpScanPage,hqWorkPage,h2WorkEnd,h2CleanEnd,h2WorkLeave,h2WorkJoinOpen,h2JoinSelected,h2AddMaterialOpen,h2AddMaterialClose,h2AddMaterialSelected,h2AddMaterial,h2SaveMaterialQty,h2SaveInputs,h2PrintLabel,h2ToClean,h2WorkCancel,h2FixMember,h2AddMemberPage,h2AddMemberSave});
 Object.assign(X,{labelPages,LABEL_CSS,workCard,liveData});
 })();
 
@@ -2025,8 +2073,9 @@ Object.assign(window,{h2DiffAck,h2OpenHqQuality});
 "use strict";
 try{
  const G={
-  prepStart:{title:"下処理を始める（パートさん）",where:"ホーム（下処理）→「＋ 新しい下処理を始める」",steps:["原料の貼り紙のQRを読みます。原料が2つ以上なら、続けて読みます。","仕掛品のボタンを押します。","作業場所のボタンを押します。","作業する人全員の名前のQRを読みます。","「作業開始」を押します（「作業開始」のQRを読んでもよいです）。"],check:"ホームの一覧に、作業が緑色で出ます。",caution:"同じ人は、1つの作業にしか入れません。"},
+  prepStart:{title:"下処理を始める（パートさん）",where:"ホーム（下処理）→「＋ 新しい下処理を始める」",steps:["最初に使う原料の貼り紙のQRを読みます。使う量や、後から使うすべてのロットを最初に決める必要はありません。","仕掛品のボタンを押します。","作業場所のボタンを押します。","作業する人全員の名前のQRを読みます。","「作業開始」を押します（「作業開始」のQRを読んでもよいです）。"],check:"ホームの一覧に、作業が緑色で出ます。",caution:"同じ人は、1つの作業にしか入れません。"},
   prepEnd:{title:"下処理を終える（パートさん）",where:"ホーム（下処理）→ 作業の「開く」",steps:["「作業終了」を押します。","使った原料の数を入れます（大きい容器はkg、それ以外はケース。0.5なども入れられます）。","廃棄のkgを入れます。無ければ 0 です。","出来高のkgを入れます。","「保存して ⑨ 清掃へ」を押します。","「⑨ 清掃へ」を押すと、作業した人全員が清掃に移ります（仕掛品ラベルの印刷は、今は使いません）。","清掃が終わったら「清掃終了」を押します。"],check:"作業した人は、全員そろって清掃に移ります。",caution:"確定は本社社員がします。間違えたときは本社社員に言ってください。"},
+  prepMaterial:{title:"作業中に次の原料を追加する（パートさん）",where:"作業の画面 →「作業中の原料・使用数」",steps:["原料を使い終わったら、そのロットで使った合計数を入力して「使用数を保存」を押します。数を直すときも累計を入力します。","「次の原料を追加（QR）」を押し、次に使う原料の貼り紙のQRを読みます。QRが読めないときは一覧から選べます。","同じ品目の原料を追加し、作業を続けます。原料の切替だけでは作業終了・清掃・作業者の登録し直しは不要です。","下処理全体が終わったら「作業終了」を押し、ロットごとの使用数を確認して、廃棄・出来高を全体の合計で入力します。"],check:"追加したロットが表示され、保存済みの使用数が残っていることを確認します。",caution:"作業中だけ追加できます。使用数の保存だけでは在庫は減りません。確定時に減ります。廃棄・出来高・歩留まりは作業全体で記録します。"},
   prepJoin:{title:"途中から入る・抜ける（パートさん）",where:"作業の画面",steps:["途中から入る人：「途中から入る人を追加」を押して、名前のQRを読みます。","抜ける人：名前の横の「抜ける」を押します。","ほかの作業に移るときは、先に「抜ける」を押します。"],check:"「いまの作業者」に名前が出ます。",caution:""},
   prepOther:{title:"ほかの作業・清掃だけを記録する",where:"ホーム（下処理）→「ほかの作業を始める」「清掃だけ始める」",steps:["作業名（清掃のときはなし）と作業場所を選びます。","作業する人の名前のQRを読みます。","「作業開始」（清掃は「清掃開始」）を押します。","終わったら「作業終了」（清掃は「清掃終了」）を押します。"],check:"作業時間に記録されます。",caution:"大掃除など、清掃だけのときは「清掃」のQRでも始められます。"},
   prepCheck:{title:"下処理を確認して確定する（本社社員）",where:"本社ホーム →「下処理の確認」",steps:["「未確定」の一覧から、下処理の「確認して確定」を押します。","使用原料・廃棄・出来高を確かめます。差（使用−出来高−廃棄）が10%以上のときは赤く出ます。","違っていれば直して「この内容で確定する」を押します。","確定した後に直すときは、理由を入れて「直して確定し直す」を押します。取り消すときは「この下処理を取り消す」を使います。"],check:"確定すると、廃棄一覧（下処理ロス）・歩留まり・製造日報に入ります。在庫反映がオンなら、原料の在庫も減ります。",caution:"確定が次の日になっても、下処理をした日の数字になります。前の日から未確定のものは、ホームにお知らせが出ます。"},
@@ -2052,13 +2101,13 @@ try{
  HQ_GUIDE.hqNormal=G.stockInput;
  HQ_GUIDE.hqTable={...HQ_GUIDE.hqTable,title:"在庫表を見る（QR品目＋原料＋仕掛品）",steps:["最後の日と日数（7・14・31日）を選びます。「◀ 前」「次 ▶」で期間を動かせます。","石岡の在庫表と同じ形で、「QR品目」「原料」「仕掛品」の見出しごとに品目が並び、日ごとのkgといちばん下に合計kgが出ます。今日の列には色が付きます。","品目名の列は左に固定されているので、横に動かしても品目名が見えます。期間中ずっと在庫0の品目は表示せず、表の下に件数だけ出ます。"],check:"QR品目はその日の終わりの在庫、原料・仕掛品はその日に在庫入力した数です（入力がない日は「—」）。"};
  const R={
-  hq_prep:{name:"本社 下処理班",intro:"下処理と作業時間の記録をします。お金の数字は出ません。",keys:["prepStart","prepEnd","prepJoin","prepOther"]},
-  hq_worker:{name:"本社社員",intro:"受け入れ・確定、下処理の確認と確定、在庫入力、棚卸し、マスタ・スタッフの登録、集計とExcelができます。",keys:["switch","hqReceive","prepCheck","stockInput","rawout","waste","take","usage","quality","yield","price","master","workDelete","staff","tasks","worktime","excel","hqDirect","hqStock","hqTable","hqItems","prepStart","prepEnd","hqOut"]},
+  hq_prep:{name:"本社 下処理班",intro:"下処理と作業時間の記録をします。お金の数字は出ません。",keys:["prepStart","prepMaterial","prepEnd","prepJoin","prepOther"]},
+  hq_worker:{name:"本社社員",intro:"受け入れ・確定、下処理の確認と確定、在庫入力、棚卸し、マスタ・スタッフの登録、集計とExcelができます。",keys:["switch","hqReceive","prepCheck","stockInput","rawout","waste","take","usage","quality","yield","price","master","workDelete","staff","tasks","worktime","excel","hqDirect","hqStock","hqTable","hqItems","prepStart","prepMaterial","prepEnd","hqOut"]},
   hq_receiver:{name:"本社 荷受け担当者",intro:"届いた原料の品質評価と確定、貼り紙の印刷、在庫入力、原料出しと原料出しロス・廃棄の入力ができます。",keys:["hqReceive","hqDirect","stockInput","rawout","waste","quality","hqStock","hqTable"]},
   hq_clerk:{name:"本社事務",intro:"本社の在庫・集計を見て、Excelを作れます。",keys:["switch","viewHq","hqStock","hqTable","usage","yield","waste","price","quality","worktime","excel"]}
  };
  for(const[r,g]of Object.entries(R))V195_ROLE_GUIDES[r]={name:g.name,intro:g.intro,sections:g.keys.map(k=>HQ_GUIDE[k]).filter(Boolean)};
- const add={admin:["stage2","prepCheck","workDelete","stockInput","rawout","waste","take","usage","quality","yield","price","master","staff","tasks","worktime","excel","diff"],worker:["diff"],buyer:["viewHq","quality","price","yield","excel"],sales:["viewHq","price","yield","usage","excel"]};
+ const add={admin:["stage2","prepMaterial","prepCheck","workDelete","stockInput","rawout","waste","take","usage","quality","yield","price","master","staff","tasks","worktime","excel","diff"],worker:["diff"],buyer:["viewHq","quality","price","yield","excel"],sales:["viewHq","price","yield","usage","excel"]};
  for(const[r,keys]of Object.entries(add)){const g=V195_ROLE_GUIDES[r];if(!g||!Array.isArray(g.sections))continue;g.sections=g.sections.map(s=>s&&s.title&&s.title.startsWith("通常在庫を入力する")?G.stockInput:s);for(const k of keys)if(!g.sections.some(s=>s&&s.title===HQ_GUIDE[k].title))g.sections.push(HQ_GUIDE[k])}
  for(const r of Object.keys(V195_ROLE_GUIDES)){const g=V195_ROLE_GUIDES[r];if(g&&Array.isArray(g.sections))g.sections=g.sections.map(s=>s&&s.title===HQ_GUIDE.hqTable.title.replace("（QR品目＋原料＋仕掛品）","（QR品目＋通常在庫）")?HQ_GUIDE.hqTable:s)}
 }catch(e){console.warn("[本社 第2段階 ガイド]",e)}
