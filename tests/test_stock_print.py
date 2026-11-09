@@ -218,8 +218,8 @@ class StockPrintTests(unittest.TestCase):
           const labels=[...document.querySelectorAll('label.label')].map(l=>l.textContent).filter(x=>x.includes('さん向けコピー文'));
           const ids=[...document.querySelectorAll('textarea')].map(x=>x.id);
           return{groups,labels,unique:new Set(ids).size===ids.length}}""")
-        self.assertEqual(out["groups"].count("斎藤(大)"), 1)
-        self.assertEqual(out["labels"].count("斎藤(大)さん向けコピー文"), 1)
+        self.assertEqual(out["groups"].count("斎藤 大明"), 1)
+        self.assertEqual(out["labels"].count("斎藤 大明さん向けコピー文"), 1)
         self.assertEqual(len(out["labels"]), len(set(out["labels"])))
         self.assertTrue(out["unique"])
 

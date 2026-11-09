@@ -114,11 +114,11 @@ normalizeDetailList(itemId,DEFAULT_DETAIL_ITEMS[itemId])}for(const it of d.items
 return d}function init(){try{const saved=localStorage.getItem(STORE)||localStorage.getItem(LEGACY_STATE_ID)
 ;if(saved)return normalize(JSON.parse(saved))}catch(e){}return defaultState()}function activeUsers(){
 return(db.users||DEFAULT_USERS).filter(u=>u.active!==false)}function findUser(id){return(db.users||DEFAULT_USERS).find(u=>u.id===id)}
-function buyerUsers(){return(db.users||DEFAULT_USERS).filter(u=>u.role==="buyer"&&u.active!==false)}function activeItems(){
+function buyerFullName(id,name){const c=v1151CanonicalBuyerId(id);return V188_FULL_NAMES[c]||V188_FULL_NAMES[id]||v1179FormalStaffName(c,name)||String(name||"")}function buyerUsers(){const people=new Map;(db.users||DEFAULT_USERS).filter(u=>u.role==="buyer"&&u.active!==false).forEach(u=>{const c=v1151CanonicalBuyerId(u.id);if(!people.has(c))people.set(c,{...u,id:c,name:buyerFullName(c,u.name)})});return[...people.values()]}function activeItems(){
 return(db.items||[]).filter(it=>it.active!==false&&it.deleted!==true)}function allSortedItems(){
 return(db.items||[]).filter(it=>it.deleted!==true).slice().sort((a,b)=>(a.sort||0)-(b.sort||0))}function assignedBuyerIds(itemId){
 const ba=db.buyerAssignments||{};return Object.keys(ba).filter(uid=>(ba[uid]||[]).includes(itemId))}function buyerNamesForItem(itemId){
-return assignedBuyerIds(itemId).map(uid=>findUser(uid)).filter(Boolean).map(u=>u.name)}function autoBuyerIdsForName(name){
+return assignedBuyerIds(itemId).map(uid=>findUser(uid)).filter(Boolean).map(u=>buyerFullName(u.id,u.name))}function autoBuyerIdsForName(name){
 const uid=ITEM_BUYER_MASTER[String(name||"").trim()];return uid?[uid]:[]}function buyerText(it){const names=buyerNamesForItem(it.id)
 ;return names.length?names.map(esc).join("、"):"未設定"}function buyerHtml(it){const names=buyerNamesForItem(it.id)
 ;return`<div class="memo"><span class="small">仕入れ担当者：${names.length?names.map(esc).join("、"):"未設定"}</span></div>`}function memoText(it){
@@ -223,7 +223,7 @@ function qrPurchaseStaffMaster(){qrEnsureMasters();return{...QR_PURCHASE_STAFF_B
 function qrFindItemByName(name){const n=String(name||"").trim();return activeItems().find(x=>String(x.name||"").trim()===n)||null}
 function qrBuyerNamesForName(name){const item=qrFindItemByName(name);if(item){const names=buyerNamesForItem(item.id);if(names.length)return names}
 const master=qrPurchaseStaffMaster(),n=qrNormalizeName(name);for(const[k,v]of Object.entries(master)){if(qrNormalizeName(k)===n)return[v]}
-const ids=autoBuyerIdsForName(name);return(ids||[]).map(uid=>findUser(uid)).filter(Boolean).map(u=>u.name)}
+const ids=autoBuyerIdsForName(name);return(ids||[]).map(uid=>findUser(uid)).filter(Boolean).map(u=>buyerFullName(u.id,u.name))}
 const QR_POTATO_VARIETIES=["男爵","さやか","トヨシロ","オホーツクチップ","キタカムイ","メークイン","とうや","北海黄金","キタアカリ","北あかり","きたあかり","インカのめざめ","シャドークイーン","ながさき黄金","スノーマーチ","十勝こがね","キタムラサキ","インカのひとみ","ニシユタカ","アイユタカ","デジマ","はるか","ピルカ"]
 ;const QR_POTATO_VARIETY_RULE={name:"じゃがいも品種",match:"potatoVariety",aliases:QR_POTATO_VARIETIES};function qrPotatoVarietyDisplayName(name){
 const n=qrNormalizeName(name);if(!n)return"";if(n.includes(qrNormalizeName("ホッカイコガネ")))return"北海黄金"
@@ -1143,7 +1143,7 @@ const pack=Number(document.getElementById("quickItemPack").value),minText=docume
 ;const id=newId(),sort=(db.items||[]).reduce((n,it)=>Math.max(n,Number(it.sort||0)),0)+1;db.items.push({id,name,pack:yen(pack),room,sort,active:true,
 deleted:false,useSpec:false});db.settings[id]=hasOptimal?{min:yen(min),max:yen(max)}:{min:null,max:null};db.purchaseMemos=db.purchaseMemos||{}
 ;db.purchaseMemos[id]="";db.purchaseMemoMeta=db.purchaseMemoMeta||{};db.purchaseMemoMeta[id]={};db.itemDetails=db.itemDetails||{}
-;db.itemDetails[id]=[];db.buyerAssignments=db.buyerAssignments||{};const assigned=autoBuyerIdsForName(name);for(const u of buyerUsers()){
+;db.itemDetails[id]=[];db.buyerAssignments=db.buyerAssignments||{};const assigned=autoBuyerIdsForName(name).map(v1151CanonicalBuyerId);for(const u of buyerUsers()){
 db.buyerAssignments[u.id]=db.buyerAssignments[u.id]||[]
 ;if(assigned.includes(u.id)&&!db.buyerAssignments[u.id].includes(id))db.buyerAssignments[u.id].push(id)}}else{
 const tableId=document.getElementById("quickSpecialTable").value,unit=document.getElementById("quickSpecialUnit").value.trim()
@@ -1256,9 +1256,9 @@ return orderCandidates().filter(x=>assignedBuyerIds(x.it.id).includes(uid))}func
 const lines=[`【発注候補：${title}】`,`確認時刻：${currentTimeLabel()}`];if(!rows.length){lines.push("なし");return lines.join("\n")}rows.forEach(x=>{
 lines.push(`・${x.it.name}：${fmt(x.shortage)}kg不足（現在 ${fmt(x.total)}kg / 下限 ${fmt(x.s.min)}kg）`);const memo=db.purchaseMemos&&db.purchaseMemos[x.it.id]
 ;if(memo)lines.push(`　メモ：${String(memo).replace(/\n/g," / ")}`)});return lines.join("\n")}function makeOrderCopyText(buyerId=null){if(buyerId){
-const u=findUser(buyerId);return makeOrderCopyTextForRows(u&&u.name||"担当者",orderCandidatesForBuyer(buyerId))}const groups=orderCopyGroups()
+const u=findUser(buyerId);return makeOrderCopyTextForRows(u&&buyerFullName(u.id,u.name)||"担当者",orderCandidatesForBuyer(buyerId))}const groups=orderCopyGroups()
 ;return groups.length?groups.map(g=>makeOrderCopyTextForRows(g.title,g.rows)).join("\n\n"):[`【発注候補】`,`確認時刻：${currentTimeLabel()}`,"なし"].join("\n")}
-function orderCopyGroups(){if(db.role==="buyer"){const u=findUser(db.userId);return[{id:db.userId,title:u?u.name:db.user,
+function orderCopyGroups(){if(db.role==="buyer"){const u=findUser(db.userId);return[{id:db.userId,title:u?buyerFullName(u.id,u.name):db.user,
 rows:orderCandidatesForBuyer(db.userId)}]}const people=new Map;buyerUsers().forEach(u=>{const key=v1151CanonicalBuyerId(u.id),prior=people.get(key);if(!prior||u.id===key)people.set(key,u)});const groups=[...people.values()].map(u=>({id:u.id,title:u.name,rows:orderCandidatesForBuyer(u.id)
 })).filter(g=>g.rows.length);const unassigned=orderCandidates().filter(x=>!assignedBuyerIds(x.it.id).length);if(unassigned.length)groups.push({
 id:"unassigned",title:"仕入れ担当者未設定",rows:unassigned});return groups}function orderCandidatePage(msg=""){setScreen("orderCandidatePage",[msg])
@@ -1570,9 +1570,8 @@ const parts=line.split(",");return{id:newId(),spec:String(parts.shift()||"").tri
 ;db.itemDetails[itemId]=useSpec?specLines:[];db.settings[itemId]={min,max};addOptimalStockChangeLog({id:itemId,name
 },oldSetting,db.settings[itemId],"品目編集画面から変更")}else{id=newId();const sort=db.items.reduce((a,it)=>Math.max(a,Number(it.sort||0)),0)+1;db.items.push({
 id,name,pack,room,sort,active,deleted:false,useSpec});db.itemDetails=db.itemDetails||{};db.itemDetails[id]=useSpec?specLines:[];db.settings[id]={min,
-max};db.purchaseMemos[id]=""}db.buyerAssignments=db.buyerAssignments||{};for(const u of buyerUsers()){
-db.buyerAssignments[u.id]=db.buyerAssignments[u.id]||[];db.buyerAssignments[u.id]=db.buyerAssignments[u.id].filter(x=>x!==id)
-;if(checked.includes(u.id))db.buyerAssignments[u.id].push(id)}save();itemsPage("保存しました")}function toggleItemActive(itemId){if(!canManageItems())return
+max};db.purchaseMemos[id]=""}db.buyerAssignments=db.buyerAssignments||{};for(const k of Object.keys(db.buyerAssignments))if(Array.isArray(db.buyerAssignments[k]))db.buyerAssignments[k]=db.buyerAssignments[k].filter(x=>x!==id);for(const u of buyerUsers()){
+db.buyerAssignments[u.id]=db.buyerAssignments[u.id]||[];if(checked.includes(u.id))db.buyerAssignments[u.id].push(id)}save();itemsPage("保存しました")}function toggleItemActive(itemId){if(!canManageItems())return
 ;const it=db.items.find(x=>x.id===itemId&&x.deleted!==true);if(!it)return;it.active=it.active===false;save()
 ;itemsPage(it.active===false?"停止しました":"有効化しました")}function deleteItem(itemId){if(!canManageItems())return
 ;const it=db.items.find(x=>x.id===itemId&&x.deleted!==true);if(!it)return
@@ -2377,7 +2376,7 @@ Authorization:"Bearer "+authToken(),"Content-Type":"application/json"},body:JSON
 if(!done.ok||ans?.ok===false)throw new Error(ans?.message||"変更できませんでした");try{await fetch(SUPABASE_URL+"/rest/v1/rpc/seika_mark_password_changed_v1202",{method:"POST",headers:qrApiHeaders(),body:"{}"})}catch(e){}try{await authProfileLoad()}catch(e){}authProfile.must_change_password=false
 ;authProfile.password_changed_at=(new Date).toISOString();alert("パスワードを変更しました");home()}catch(e){alert(e.message)}}
 ;const V188_USER_ADMIN_FUNCTION="seika-user-admin";let v188AdminUsers=[];const V188_FULL_NAMES={hirata:"平田 祐希",yokosuka_ryo:"横須賀 良太",hitomi:"人見 和之",
-kurosawa:"黒澤 正行",yokosuka_ru:"横須賀 瑠河",saito_yuji:"斎藤 雄二",furenki:"フレンキ",hiep:"ヒェップ",seki_hiroshi:"関 宏世",araki:"荒木 貴裕",saito_dai:"斎藤 大明",yoshida:"吉田 智彦",sakamoto:"坂本 美穂",
+kurosawa:"黒澤 正行",yokosuka_ru:"横須賀 瑠河",saito_yuji:"斎藤 雄二",furenki:"フレンキ",hiep:"ヒェップ",seki_hiroshi:"関 宏世",seki:"関 宏世",araki:"荒木 貴裕",saito_dai:"斎藤 大明",saito:"斎藤 大明",saito_hiroaki:"斎藤 大明",yoshida:"吉田 智彦",sakamoto:"坂本 美穂",
 sales_saito_ayaka:"斉藤 綾香",sales_warabioka_aki:"蕨岡 愛姫",sales_hamamatsu_junko:"浜松 淳子",sales_yatsuda_hiromu:"八ツ田 紘睦",clerk_iizuka_miyuki:"飯塚 美由紀",
 clerk_kase_yoko:"加瀬 洋子",clerk_shirata_nozomi:"白田 望実",office_haga:"芳賀 克則",viewer:"閲覧者"};function v188FullNameUsers(rows){
 return(rows||[]).map(([id,name,group])=>[id,V188_FULL_NAMES[id]||name,group])}function v188LoginUsers(){try{
@@ -2824,7 +2823,7 @@ for(const lot of lots)lot._monthlySnapshots=snapshotMap.get(String(lot.id||""))|
 function v199QrMonthEndRows(lots,moves,endKey){return(lots||[]).map(lot=>{
 const snapshot=v1101LotSnapshotAtDayEnd(lot,v199QrLotMoves(lot,moves),endKey);if(!snapshot||!(snapshot.qty>0))return null
 ;const kg=v163LotKgAtQuantity(lot,snapshot.qty),large=qrIsLargeContainer(lot.container_type),received=Number(lot.received_qty??lot.initial_quantity??0),currentWeight=large&&Number(lot.total_weight)>0&&received>0?Number(lot.total_weight)/received*snapshot.qty:v199QrNumberOrBlank(lot.current_weight)
-;return[lot.item_name||"",lot.lot_no||"",lot.qr_key||"",lot.received_date||"",lot.origin||"",lot.supplier||"",lot.cooperative_name||"",snapshot.qty,lot.unit||qrLotUnit(lot),kg===null?"":Number(kg),large?currentWeight:"",lot.container_type||"",lot.pack_weight||"",snapshot.location||"",qrVisibleMemo(lot.memo||""),lot.purchase_staff||"",lot.receiver_name||lot.received_by||lot.user_name||"",v199QrStatusAt(snapshot.qty,snapshot.deleted)]
+;return[lot.item_name||"",lot.lot_no||"",lot.qr_key||"",lot.received_date||"",lot.origin||"",lot.supplier||"",lot.cooperative_name||"",snapshot.qty,lot.unit||qrLotUnit(lot),kg===null?"":Number(kg),large?currentWeight:"",lot.container_type||"",lot.pack_weight||"",snapshot.location||"",qrVisibleMemo(lot.memo||""),v1144FormalPurchaseStaffName(lot.purchase_staff),lot.receiver_name||lot.received_by||lot.user_name||"",v199QrStatusAt(snapshot.qty,snapshot.deleted)]
 }).filter(Boolean).sort((a,b)=>String(a[0]).localeCompare(String(b[0]),"ja")||String(a[3]).localeCompare(String(b[3])))}
 function v199QrMovementRows(moves,startKey,endKey){return(moves||[]).filter(m=>{const k=v199QrMovementDateKey(m);return k>=startKey&&k<=endKey
 }).sort((a,b)=>v163MovementTime(a)-v163MovementTime(b)).map(m=>[v199QrMovementDateKey(m),v163MovementAt(m)?dt(v163MovementAt(m)):"",m.movement_type||"",m.item_name||"",m.lot_no||"",m.qr_key||"",v199QrNumberOrBlank(m.qty??m.quantity),m.unit||"",v199QrNumberOrBlank(m.before_quantity),v199QrNumberOrBlank(m.after_quantity),v199QrNumberOrBlank(m.weight),v199QrNumberOrBlank(m.before_weight),v199QrNumberOrBlank(m.after_weight),m.destination||"",m.storage_location||"",m.origin||"",m.supplier||"",m.cooperative_name||"",m.user_name||"",v199QrMovementMemo(m),v199QrNumberOrBlank(m.purchase_price_yen_per_kg),v199QrNumberOrBlank(m.waste_amount_yen),m.price_match_type||"",m.price_match_reason||""])
@@ -5589,7 +5588,7 @@ function v1151BuyerIdsForItem(itemId){
   return [...found].filter(Boolean);
 }
 assignedBuyerIds=function(itemId){return v1151BuyerIdsForItem(itemId)};
-buyerNamesForItem=function(itemId){return v1151BuyerIdsForItem(itemId).map(uid=>findUser(uid)||v1144PurchaseStaffCandidates?.().find(x=>x.legacy_user_id===uid)).filter(Boolean).map(row=>row.name||row.display_name)};
+buyerNamesForItem=function(itemId){return v1151BuyerIdsForItem(itemId).map(uid=>{const row=findUser(uid)||v1144PurchaseStaffCandidates?.().find(x=>x.legacy_user_id===uid);return row?buyerFullName(uid,row.name||row.display_name):""}).filter(Boolean)};
 isMyBuyerItem=function(itemId){return db.role==='buyer'&&v1151BuyerIdsForItem(itemId).includes(v1151CanonicalBuyerId(db.userId))};
 orderCandidatesForBuyer=function(uid){const canonical=v1151CanonicalBuyerId(uid);return orderCandidates().filter(row=>v1151BuyerIdsForItem(row.it.id).includes(canonical))};
 excessCandidatesForBuyer=function(uid){const canonical=v1151CanonicalBuyerId(uid);return excessCandidates().filter(row=>v1151BuyerIdsForItem(row.it.id).includes(canonical))};
