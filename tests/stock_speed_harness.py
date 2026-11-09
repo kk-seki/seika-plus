@@ -92,6 +92,9 @@ def run(url_root, label):
     return handler, log, t0
 
 
+FIXED_NOW = "2026-11-09T03:00:00Z"
+
+
 async def amain(label):
     srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(ROOT)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -101,6 +104,7 @@ async def amain(label):
         c = await b.new_context(viewport={"width": 820, "height": 1180}, service_workers="block", timezone_id="Asia/Tokyo")
         handler, log, t0 = run(url, label)
         await c.route("**/*", handler)
+        await c.clock.set_fixed_time(FIXED_NOW)
         pg = await c.new_page()
         pg.on("pageerror", lambda e: print("PAGEERR", e))
         await pg.goto(url, wait_until="load")
