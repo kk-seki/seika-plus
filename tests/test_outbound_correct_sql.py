@@ -9,7 +9,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SQL = (ROOT / 'db/043_QR出庫数の当日訂正.sql').read_text(encoding='utf-8')
+SQL_043 = (ROOT / 'db/043_QR出庫数の当日訂正.sql').read_text(encoding='utf-8')
+SQL_044 = (ROOT / 'db/044_QR出庫数の訂正_実数調整後も可能.sql').read_text(encoding='utf-8')
+SQL = SQL_043 + '\n' + SQL_044
 SCRATCH = Path('/tmp/jai-scratch/c113')
 TIMEOUT = 30
 
@@ -53,6 +55,15 @@ class OutboundCorrectSqlStaticTests(unittest.TestCase):
         self.assertNotRegex(SQL, r'update public\.qr_lot_movements\s+set\s+qty\s*=')
         self.assertIn("current_setting('seika.c113_outbound_correction_cancel',true)", SQL)
 
+    def test_044_allows_only_adjustment_move_and_info_changes_after_the_outbound(self):
+        allowed = ('入庫・調整増', '出庫・調整減', '差分なし', '調整', '場所移動', '重量確定', '重量更新', 'ロット情報訂正')
+        guard = SQL_044[SQL_044.index('m.movement_type not in (') : SQL_044.index(') then raise exception', SQL_044.index('m.movement_type not in ('))]
+        for kind in allowed + ('出庫', '取消'):
+            self.assertIn(f"'{kind}'", guard)
+        for kind in ('棚卸し調整増', '棚卸し調整減', '入庫', '廃棄'):
+            self.assertNotIn(f"'{kind}'", guard)
+        self.assertNotRegex(SQL_044, r'update public\.qr_lot_movements\s+set\s+qty\s*=')
+
 
 class OutboundCorrectSqlRuntimeTests(unittest.TestCase):
     @classmethod
@@ -82,7 +93,8 @@ class OutboundCorrectSqlRuntimeTests(unittest.TestCase):
         cls.command(cls.runner + [str(BIN / 'pg_ctl'), '-D', str(cls.data), '-l', str(cls.log), '-o', f'-p {cls.port} -h 127.0.0.1 -k {cls.tmp.name}', '-w', 'start'])
         cls.base = [str(BIN / 'psql'), '-h', '127.0.0.1', '-p', cls.port, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-X']
         cls.psql(SCHEMA)
-        cls.psql(SQL)
+        cls.psql(SQL_043)
+        cls.psql(SQL_044)
 
     @classmethod
     def command(cls, command):
@@ -135,6 +147,48 @@ class OutboundCorrectSqlRuntimeTests(unittest.TestCase):
         self.assertTrue(self.call(qty=0)['ok'])
         self.assertEqual(self.psql("select count(*) from public.qr_lot_movements where movement_type='出庫'", True), '1')
         self.assertTrue(self.call(qty=0)['idempotent'])
+
+    def add_later(self, kind, qty=1, before=5, after=6, seconds=1):
+        self.psql(f"insert into public.qr_lot_movements(movement_type,lot_id,qty,before_quantity,after_quantity,operation_id,created_at,occurred_at) values('{kind}','10000000-0000-0000-0000-000000000001',{qty},{before},{after},gen_random_uuid(),now()+interval '{seconds} second',now()+interval '{seconds} second')")
+
+    def test_correction_after_actual_count_adjustment_applies_only_the_difference(self):
+        self.reset()
+        self.add_later('入庫・調整増')
+        self.psql("update public.qr_lots set current_qty=0,current_weight=0,status='在庫なし'")
+        result = self.call(qty=3, expected=0)
+        self.assertTrue(result['ok'], result)
+        self.assertEqual(result['after_quantity'], 2)
+        self.assertEqual(self.psql("select current_qty||':'||status from public.qr_lots", True), '2:在庫あり')
+        self.assertEqual(self.psql("select string_agg(movement_type,',' order by created_at) from public.qr_lot_movements", True), '出庫,入庫・調整増,取消,出庫')
+        self.assertEqual(self.psql("select count(*) from public.qr_lot_movements where movement_type='入庫・調整増' and qty=1", True), '1')
+        self.assertTrue(self.call(qty=3, expected=0)['idempotent'])
+        self.assertTrue(self.call('40000000-0000-0000-0000-000000000002', 0, expected=2, original='40000000-0000-0000-0000-000000000001')['ok'])
+        self.assertEqual(self.psql('select current_qty from public.qr_lots', True), '5')
+
+    def test_correction_after_each_allowed_operation_and_still_blocked_after_others(self):
+        for kind in ('出庫・調整減', '差分なし', '調整', '場所移動', '重量確定', '重量更新', 'ロット情報訂正'):
+            self.reset()
+            self.add_later(kind, qty=0, before=5, after=5)
+            self.assertTrue(self.call(qty=3)['ok'], kind)
+            self.assertEqual(self.psql('select current_qty from public.qr_lots', True), '7', kind)
+        for kind in ('棚卸し調整増', '棚卸し調整減', '入庫', '廃棄'):
+            self.reset()
+            self.add_later(kind)
+            with self.assertRaises(AssertionError, msg=kind):
+                self.call(qty=3)
+            self.assertEqual(self.psql('select current_qty from public.qr_lots', True), '5', kind)
+            self.assertEqual(self.psql("select count(*) from public.qr_lot_movements where movement_type='取消'", True), '0', kind)
+
+    def test_correction_after_adjustment_still_rejects_insufficient_stock_and_keeps_grades_consistent(self):
+        self.reset()
+        self.add_later('入庫・調整増')
+        self.psql("update public.qr_lots set current_qty=1")
+        self.assertTrue(self.call(qty=7, expected=1)['insufficient_stock'])
+        self.assertEqual(self.psql('select current_qty from public.qr_lots', True), '1')
+        self.reset(grade=True)
+        self.add_later('入庫・調整増')
+        self.assertTrue(self.call(qty=4, grades='[{"grade":"A","qty":3},{"grade":"B","qty":1}]')['ok'])
+        self.assertEqual(self.psql("select string_agg(grade||':'||current_qty::text,',' order by grade) from public.qr_lot_grades_v1300", True), 'A:3,B:3')
 
     def test_retry_and_concurrent_retry_are_idempotent(self):
         self.reset()
@@ -191,7 +245,8 @@ class OutboundCorrectSqlRuntimeTests(unittest.TestCase):
         with self.assertRaises(AssertionError): self.call(qty=3)
         self.reset(occurred_at="now()-interval '1 day'")
         with self.assertRaises(AssertionError): self.call(qty=3)
-        self.psql(SQL)
+        self.psql(SQL_043)
+        self.psql(SQL_044)
         self.reset()
         replies = []
         def invoke(op):
