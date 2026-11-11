@@ -76,19 +76,24 @@ class OutboundCorrectSqlRuntimeTests(unittest.TestCase):
         cls.log = Path(cls.tmp.name) / 'postgres.log'
         if cls.runner:
             os.chmod(cls.tmp.name, 0o777)
+        cls.addClassCleanup(cls.cleanup_postgres)
         cls.command(cls.runner + [str(BIN / 'initdb'), '-D', str(cls.data), '-A', 'trust', '-U', 'postgres'])
         cls.port = '55434'
-        cls.command(cls.runner + [str(BIN / 'pg_ctl'), '-D', str(cls.data), '-l', str(cls.log), '-o', f'-p {cls.port}', '-w', 'start'])
+        cls.command(cls.runner + [str(BIN / 'pg_ctl'), '-D', str(cls.data), '-l', str(cls.log), '-o', f'-p {cls.port} -h 127.0.0.1 -k {cls.tmp.name}', '-w', 'start'])
         cls.base = [str(BIN / 'psql'), '-h', '127.0.0.1', '-p', cls.port, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-X']
         cls.psql(SCHEMA)
         cls.psql(SQL)
 
     @classmethod
     def command(cls, command):
-        return subprocess.run(command, text=True, capture_output=True, check=True, timeout=TIMEOUT)
+        result = subprocess.run(command, text=True, capture_output=True, timeout=TIMEOUT)
+        if result.returncode:
+            log = cls.log.read_text(encoding='utf-8') if cls.log.exists() else ''
+            raise AssertionError(f'PostgreSQL準備失敗: {command}\n{result.stdout}\n{result.stderr}\n{log}')
+        return result
 
     @classmethod
-    def tearDownClass(cls):
+    def cleanup_postgres(cls):
         try:
             if hasattr(cls, 'data'):
                 subprocess.run(cls.runner + [str(BIN / 'pg_ctl'), '-D', str(cls.data), '-m', 'immediate', '-w', 'stop'], text=True, capture_output=True, timeout=TIMEOUT)
