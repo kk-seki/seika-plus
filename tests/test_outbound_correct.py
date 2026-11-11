@@ -55,7 +55,7 @@ class OutboundCorrectTests(unittest.TestCase):
         }""", role)
         return page
 
-    def install_api(self, page, *, destination="埼玉", qty=3, stock=5, grades=None, big=False, occurred_at=None):
+    def install_api(self, page, *, destination="埼玉", qty=3, stock=5, grades=None, big=False, occurred_at=None, later=None):
         occurred_at = occurred_at or datetime.now(timezone.utc).isoformat()
         page.evaluate("""data=>{
           const movement={id:'movement-1',operation_id:data.op,lot_id:'lot-1',destination:data.destination,
@@ -63,14 +63,15 @@ class OutboundCorrectTests(unittest.TestCase):
             container_type:data.big?'網コンテナ':'ダンボール',operation_meta:data.grades?{grades:data.grades.map(g=>({grade:g.grade,delta:-g.qty}))}:{}};
           const lot={id:'lot-1',current_qty:data.stock,unit:'ケース',container_type:movement.container_type};
           const gradeRows=(data.grades||[]).map((g,i)=>({grade:g.grade,current_qty:g.stock,sort_order:i+1}));
+          const later=data.later.map((t,i)=>({id:'later-'+i,movement_type:t,created_at:'2026-11-11T08:48:39+00:00'}));
           window.__selects=[]; window.__calls=[]; window.__history=[]; window.__rpc=async()=>({ok:true});
           window.qrSelect=async(table, query)=>{window.__selects.push([table,query]);
-            if(table==='qr_lot_movements')return [movement]; if(table==='qr_lots')return [lot];
+            if(table==='qr_lot_movements')return query.includes('created_at=gt.')?later:[movement]; if(table==='qr_lots')return [lot];
             if(table==='qr_lot_grades_v1300')return gradeRows; throw new Error('unexpected select '+table)};
           window.callRpc=async(name,args)=>{window.__calls.push([name,args]);return window.__rpc(name,args)};
           window.v1144QrOutboundHistoryPage=async args=>window.__history.push(['page',args]);
           window.v1144LoadOutboundHistory=async force=>window.__history.push(['load',force]);
-        }""", {"op": OP, "destination": destination, "qty": qty, "stock": stock, "grades": grades, "big": big, "occurred_at": occurred_at})
+        }""", {"op": OP, "destination": destination, "qty": qty, "stock": stock, "grades": grades, "big": big, "occurred_at": occurred_at, "later": later or []})
 
     def open_correction(self, page):
         page.evaluate("op=>c113CorrectPage(op)", OP)
@@ -112,6 +113,37 @@ class OutboundCorrectTests(unittest.TestCase):
             self.assertEqual(args["p_grades"], [])
             self.assertIsNone(args["p_total_kg"])
         self.assertGreaterEqual(len(page.evaluate("()=>window.__history")), 6)
+
+    def test_after_actual_count_adjustment_shows_notice_and_stock_preview(self):
+        page = self.open_app()
+        self.install_api(page, qty=5, stock=0, later=["入庫・調整増", "場所移動", "出庫"])
+        self.open_correction(page)
+        body = page.locator("body").inner_text()
+        self.assertIn("この出庫の後に「入庫・調整増」「場所移動」があります", body)
+        self.assertIn("差の分だけを現在の在庫へ反映", body)
+        self.assertIn("現在 0 → 訂正後 0", page.locator("#c113Preview").inner_text())
+        page.locator("#c113Qty").fill("3")
+        self.assertIn("現在 0 → 訂正後 2", page.locator("#c113Preview").inner_text())
+        page.locator("#c113Qty").fill("6")
+        self.assertEqual(page.locator("#c113Preview").inner_text(), "在庫が足りません。")
+        page.locator("#c113Qty").fill("3")
+        self.save(page)
+        page.wait_for_function("()=>__calls.length===1")
+        args = page.evaluate("()=>__calls[0][1]")
+        self.assertEqual((args["p_qty"], args["p_expected_qty"]), (3, 0))
+        self.assertIn("現在 0 → 訂正後 2", page.evaluate("()=>__confirms.at(-1)"))
+
+    def test_no_notice_without_later_operations_and_blocked_after_stocktaking_receipt_or_waste(self):
+        page = self.open_app()
+        self.install_api(page, later=["出庫", "取消"])
+        self.open_correction(page)
+        self.assertNotIn("この出庫の後に", page.locator("body").inner_text())
+        for kind in ("棚卸し調整増", "棚卸し調整減", "入庫", "廃棄"):
+            self.install_api(page, later=["入庫・調整増", kind])
+            page.evaluate("()=>{__alerts.length=0}")
+            page.evaluate("op=>c113CorrectPage(op)", OP)
+            page.wait_for_function("()=>__alerts.length===1")
+            self.assertIn(f"「{kind}」があるため訂正できません", page.evaluate("()=>__alerts[0]"))
 
     def test_grade_fraction_big_kg_and_validation(self):
         page = self.open_app()
