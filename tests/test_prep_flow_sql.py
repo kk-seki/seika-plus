@@ -474,6 +474,27 @@ class PrepC120FlowSqlTests(unittest.TestCase):
         output = self.sql(f"set role authenticated; set app.\"user\" = '{PREP}'; select public.hq_prep_available_lots_v1199c120(null);", True)
         self.assertTrue(json.loads(output.splitlines()[-1]))
 
+    def test_legacy_guard_patch_works_when_functions_use_crlf_and_are_reapplied(self):
+        # 本番のSQLエディタ経由で改行がCRLFになった旧関数でも、047が停止せず安全パッチを入れられる。
+        self.sql(r"""
+do $block$
+declare f oid; d text;
+begin
+  for f in select p.oid from pg_proc p where p.prokind='f' and pg_get_functiondef(p.oid) like '%c120 legacy-route guard v1%' loop
+    d:=pg_get_functiondef(f);
+    d:=regexp_replace(d,E'  -- c120 legacy-route guard v1\\n  [^\\n]*\\n','','g');
+    d:=replace(d,E'\n',E'\r\n');
+    execute d;
+  end loop;
+end $block$""")
+        self.assertEqual(self.sql("select count(*) from pg_proc p where p.prokind='f' and pg_get_functiondef(p.oid) like '%c120 legacy-route guard v1%'", True), "0")
+        self.assertEqual(self.sql("select count(*) from pg_proc p where p.prokind='f' and pg_get_functiondef(p.oid) like '%'||chr(13)||'%' and p.proname like 'hq\\_%'", True), "11")
+        self.pg.file(SQL_047)
+        self.assertEqual(self.sql("select count(*) from pg_proc p where p.prokind='f' and pg_get_functiondef(p.oid) like '%c120 legacy-route guard v1%'", True), "11")
+        self.reset()
+        s, _, _ = self.completed_c120(80, qty=9)
+        self.assert_denied(PREP, "public.hq_work_end_v1500", f"'{s['id']}'::uuid")
+
     def test_cancelled_submitted_report_cannot_be_confirmed(self):
         self.reset()
         work = self.save(None, None, "51000000-0000-0000-0000-000000000209")

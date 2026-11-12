@@ -671,7 +671,7 @@ begin
 end $f$;
 
 do $block$
-declare f regprocedure; d text; p integer; needle text:=E'\nbegin\n'; injected text:=E'\nbegin\n  -- c120 legacy-route guard v1\n  perform public.hq_c120_reject_legacy_route(p_work_id);\n';
+declare f regprocedure; d text; p integer; b integer; prefix text;
 begin
   foreach f in array array[
     'public.hq_work_end_v1500(uuid)'::regprocedure,
@@ -688,14 +688,15 @@ begin
   ] loop
     d:=pg_get_functiondef(f);
     if position('-- c120 legacy-route guard v1' in d)>0 then continue; end if;
+    -- 本番の改行がCRLFでも字下げが違っても、本体先頭のbeginを探してその直後に差し込む。
+    b:=position('AS $' in d);
+    prefix:=case when b>0 then (regexp_match(substr(d,b),E'^(.*?)\\mbegin\\M','i'))[1] end;
+    if prefix is null then raise exception '旧入口の安全パッチ位置を確認できません: %',f; end if;
+    p:=b+char_length(prefix);
     if position('p_work_id uuid' in d)>0 then
-      p:=position(needle in d);
-      if p=0 then raise exception '旧入口の安全パッチ位置を確認できません: %',f; end if;
-      d:=overlay(d placing injected from p for char_length(needle));
+      d:=overlay(d placing E'begin\n  -- c120 legacy-route guard v1\n  perform public.hq_c120_reject_legacy_route(p_work_id);\n' from p for 5);
     elsif f='public.hq_member_fix_v1500(uuid,timestamp with time zone,timestamp with time zone,boolean)'::regprocedure then
-      p:=position(needle in d);
-      if p=0 then raise exception '旧入口の安全パッチ位置を確認できません: %',f; end if;
-      d:=overlay(d placing E'\nbegin\n  -- c120 legacy-route guard v1\n  if exists(select 1 from public.hq_work_members_v1500 m join public.hq_works_v1500 w on w.id=m.work_id where m.id=p_member_id and w.c120_flow) then raise exception ''c120の下処理は新しい確認フローから操作してください''; end if;\n' from p for char_length(needle));
+      d:=overlay(d placing E'begin\n  -- c120 legacy-route guard v1\n  if exists(select 1 from public.hq_work_members_v1500 m join public.hq_works_v1500 w on w.id=m.work_id where m.id=p_member_id and w.c120_flow) then raise exception ''c120の下処理は新しい確認フローから操作してください''; end if;\n' from p for 5);
     else
       raise exception '旧入口の安全パッチ対象が変わりました: %',f;
     end if;
