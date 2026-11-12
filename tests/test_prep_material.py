@@ -121,7 +121,7 @@ class PrepMaterialTests(unittest.TestCase):
         p.evaluate("()=>h2WorkEnd('W1')")
         self.assertEqual(p.locator('.h2MatQty').count(),2)
         p.locator('.h2MatQty').nth(0).fill('3');p.locator('.h2MatQty').nth(1).fill('2')
-        p.locator('#h2Waste').fill('5');p.locator('#h2Yield').fill('45')
+        p.locator('#h2Yield').fill('45');self.assertEqual(p.locator('#h2Waste').input_value(),'5')
         p.evaluate("()=>h2SaveInputs('W1')")
         self.assertEqual(p.evaluate('()=>[__T.hq_works_v1500[0].waste_kg,__T.hq_works_v1500[0].yield_kg]'),[5,45])
 
