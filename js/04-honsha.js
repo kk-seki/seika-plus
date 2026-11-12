@@ -1216,7 +1216,7 @@ async function hqWorkPage(id,msg=""){
  ${mats.length?`<div class="small" style="margin-top:6px">原料：${mats.map(m=>`${esc(m.lot_no)}（${esc(m.unit==="kg"?"kg":"ケース")}${m.pack_kg?`・量目${hqQty(m.pack_kg)}kg`:""}）`).join("、")}</div>`:""}
  ${w.kind==="下処理"&&w.confirm_status!=="未確定"?`<div style="margin-top:6px"><span class="badge ${w.confirm_status==="確定"?"normal":"unset"}">${esc(w.confirm_status)}</span></div>`:""}</div>`;
  if(w.kind==="下処理"&&w.status==="作業中"&&w.confirm_status==="未確定"&&h2CanPrep()){
-  body+=`<div class="card" id="c112Materials"><b>作業中の原料・使用数</b><div class="small">原料を使い終わったら、そのロットで使った合計数を保存します。次の原料は、作業を終えずに追加できます。</div>${mats.map(m=>`<label class="label" style="margin-top:8px">${esc(m.item_name)} ${esc(m.lot_no)}（${m.unit==="kg"?"kg":"ケース"}）</label><div class="row"><input id="c112Qty_${esc(m.id)}" class="input" inputmode="decimal" value="${m.qty==null?"":hqQty(m.qty)}" placeholder="使った合計数"><button class="btn btn2" ${btnAttr("h2SaveMaterialQty",[w.id,m.id])}>使用数を保存</button></div>`).join("")}<button class="btn hqBtnPrep" style="width:100%;margin-top:12px" ${btnAttr("h2AddMaterialOpen",[w.id])}>次の原料を追加（QR）</button><div id="c112AddBox"></div><div class="small" style="margin-top:8px">廃棄・出来高は、下処理全体が終わってから合計を入力します。在庫は確定時に減ります。</div></div>`;
+  body+=`<div class="card" id="c112Materials"><b>作業中の原料・使用数</b><div class="small">原料を使い終わったら、そのロットで使った合計数を保存します。次の原料は、作業を終えずに追加できます。</div>${mats.map(m=>`<label class="label" style="margin-top:8px">${esc(m.item_name)} ${esc(m.lot_no)}（${m.unit==="kg"?"kg":"ケース"}）</label><div class="row"><input id="c112Qty_${esc(m.id)}" class="input" inputmode="decimal" data-c119="1" data-lot="${esc(m.lot_id)}" data-unit="${esc(m.unit)}" data-pack="${esc(m.pack_kg||'')}" value="${m.qty==null?"":hqQty(m.qty)}" placeholder="使った合計数"><button class="btn btn2" ${btnAttr("h2SaveMaterialQty",[w.id,m.id])}>使用数を保存</button></div><button class="btn green" style="width:100%;margin-top:6px" ${btnAttr("h2MatUseAll",[w.id,m.id,"save"])}>使い切った（残り全部・自動で入れて保存）</button><div class="small c119Kg" data-for="c112Qty_${esc(m.id)}"></div>`).join("")}<button class="btn hqBtnPrep" style="width:100%;margin-top:12px" ${btnAttr("h2AddMaterialOpen",[w.id])}>次の原料を追加（QR）</button><div id="c112AddBox"></div><div class="small" style="margin-top:8px">廃棄・出来高は、下処理全体が終わってから合計を入力します。在庫は確定時に減ります。</div></div>`;
  }
  if(w.kind==='下処理'&&w.status==='作業中'&&h2CanPrep()){
   body+=`<div class="card" id="c116PauseControls"><b>休憩・中断</b><div class="small">休憩に入らない人だけを選ぶと、残りの全員の時間を止めます。中断中は別の作業に移れます。</div>${w.pause_kind?`<button class="btn hqBtnPrep" style="width:100%;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'再開'])}>${esc(w.pause_kind)}から再開する</button>`:`<div class="row" style="margin-top:8px"><button class="btn btn2" ${btnAttr('h2PauseOpen',[w.id,'休憩'])}>休憩</button><button class="btn btn2" ${btnAttr('h2PauseOpen',[w.id,'中断'])}>中断（別の作業へ）</button></div>`}<div id="c116PauseBox"></div></div>`;
@@ -1227,7 +1227,7 @@ async function hqWorkPage(id,msg=""){
   if(h2CanPrep()&&!w.pause_kind)body+=w.status==="作業中"?`<button class="btn hqBtnOut h2Big" ${btnAttr("h2WorkEnd",[w.id])}>作業終了</button><div class="small" style="text-align:center;margin-top:4px">「作業終了」のQRを読み取っても終われます（QRを読む画面）。</div>`:`<button class="btn blue h2Big" ${btnAttr("h2CleanEnd",[w.id])}>清掃終了</button>`;
  }
  if(w.kind==="下処理"&&w.status==="入力待ち"&&h2CanPrep()&&w.confirm_status==="未確定"){
-  body+=`<div class="card"><b style="font-size:19px">⑥ 使用原料の数</b>${mats.map(m=>`<label class="label" style="margin-top:8px">${esc(m.item_name)} ${esc(m.lot_no)}（${m.unit==="kg"?"kg":"ケース・小数も入れられます"}）</label><input class="input h2MatQty" data-id="${esc(m.id)}" data-unit="${esc(m.unit)}" data-pack="${esc(m.pack_kg||'')}" inputmode="decimal" value="${m.qty==null?"":hqQty(m.qty)}" placeholder="${m.unit==="kg"?"例：120":"例：3.5"}">`).join("")}
+  body+=`<div class="card"><b style="font-size:19px">⑥ 使用原料の数</b>${mats.map(m=>`<label class="label" style="margin-top:8px">${esc(m.item_name)} ${esc(m.lot_no)}（${m.unit==="kg"?"kg":"ケース・小数も入れられます"}）</label><input class="input h2MatQty" data-c119="1" data-lot="${esc(m.lot_id)}" data-id="${esc(m.id)}" data-unit="${esc(m.unit)}" data-pack="${esc(m.pack_kg||'')}" inputmode="decimal" value="${m.qty==null?"":hqQty(m.qty)}" placeholder="${m.unit==="kg"?"例：120":"例：3.5"}"><button type="button" class="btn green" style="width:100%;margin-top:6px" ${btnAttr("h2MatUseAll",[w.id,m.id,"fill"])}>使い切った（残り全部・自動で入れる）</button><div class="small c119Kg" data-for-qty="${esc(m.id)}"></div>`).join("")}
   <label class="label" style="margin-top:12px;font-size:19px">⑦ 廃棄（kg・使用原料−出来高で自動計算）</label><input id="h2Waste" class="input" readonly inputmode="decimal" value="${w.waste_kg==null?"":hqQty(w.waste_kg)}" placeholder="例：0">
   ${w.outputs?.length>1?`<b style="display:block;margin-top:12px">⑧ それぞれの出来高（kg）</b>${outputFields("h2Output")}`:`<label class="label" style="margin-top:12px;font-size:19px">⑧ 出来高（kg）</label><input id="h2Yield" class="input" inputmode="decimal" value="${w.yield_kg==null?"":hqQty(w.yield_kg)}" placeholder="例：85">`}
   <button class="btn hqBtnPrep h2Big" style="margin-top:12px" ${btnAttr("h2SaveInputs",[w.id])}>保存して ⑨ 清掃へ</button></div>`;
@@ -1247,6 +1247,7 @@ async function hqWorkPage(id,msg=""){
  if(h2CanBoss()&&w.kind==="下処理"&&w.status!=="作業中"&&w.status!=="取消")body+=`<button class="btn hqBtnPrepCheck" style="width:100%;margin-top:8px" ${btnAttr("hqPrepConfirmPage",[w.id])}>確認・確定の画面へ</button>`;
  body+=`<button class="btn btn2" style="width:100%;margin-top:12px" ${btnAttr("hqPrepHome",[])}>いま動いている作業の一覧へ</button>`;
  pageShell(w.kind==="下処理"?"下処理":w.kind==="清掃"?"清掃":"作業",`${esc(w.place||"")} ／ ${esc(w.status)}`,body);
+ h2MatKgRefresh();
  if(document.getElementById("h2Waste")){document.querySelectorAll(".h2MatQty,.h2OutputQty,#h2Yield").forEach(el=>el.addEventListener("input",h2AutoWaste));h2AutoWaste()}
  document.querySelectorAll("#c112Materials input").forEach(el=>el.addEventListener("input",()=>{document.getElementById("c112Materials").dataset.dirty="1"}));
  if(w.status==="作業中"||w.status==="清掃中")h2Every(20000,()=>{if(!document.getElementById("h2JoinReader")&&!document.getElementById("c116PauseBox")?.hasChildNodes()&&!document.getElementById("c116BreakBox")?.hasChildNodes()&&!document.getElementById("c112AddBox")?.hasChildNodes()&&!document.getElementById("c112Materials")?.dataset.dirty&&!document.activeElement?.matches?.("input,select,textarea"))hqWorkPage(id)});
@@ -1319,6 +1320,32 @@ async function h2AddMaterial(id,lotId){
   const r=await r2("hq_work_add_material_v1199c112",{p_work_id:id,p_lot_id:lotId});
   await h2StopReader();await hqWorkPage(id,r?.already?"この原料は追加済みです":"原料を追加しました。作業はそのまま続けられます");
  }catch(e){alert(h2Err(e))}finally{H2.busy=false}
+}
+function h2MatKgText(unit,pack,v){
+ const q=num2(v);if(!Number.isFinite(q))return"";
+ if(unit==="kg")return`＝ ${hqQty(q)}kg`;
+ const p=num2(pack);if(!(p>0))return"量目が分からないため、kgは自動で計算できません";
+ return`＝ ${hqQty(Math.round(q*p*1000)/1000)}kg（量目 ${hqQty(p)}kg × ${hqQty(q)}ケース）`;
+}
+function h2MatKgRefresh(){
+ document.querySelectorAll("input[data-c119]").forEach(el=>{
+  const box=el.id?document.querySelector(`.c119Kg[data-for="${el.id}"]`):document.querySelector(`.c119Kg[data-for-qty="${el.dataset.id}"]`);
+  if(box)box.textContent=h2MatKgText(el.dataset.unit,el.dataset.pack,el.value);
+ });
+}
+document.addEventListener("input",e=>{if(e.target?.dataset?.c119)h2MatKgRefresh()});
+async function h2MatUseAll(workId,materialId,mode){
+ if(!h2CanPrep()||H2.busy)return;
+ const el=mode==="save"?document.getElementById(`c112Qty_${materialId}`):document.querySelector(`.h2MatQty[data-id="${materialId}"]`);
+ if(!el)return;
+ let lots;try{lots=await r2("hq_prep_available_lots_v1199c117",{p_work_id:workId})}catch(e){return alert(h2Err(e))}
+ const lot=(lots||[]).find(l=>l.id===el.dataset.lot);
+ if(!lot)return alert("この原料の残りが見つかりません。画面を開き直してください");
+ const q=Number(lot.available_qty);
+ if(!Number.isFinite(q)||q<=0)return alert("この原料は、残りがありません");
+ el.value=String(Math.round(q*1000000)/1000000);
+ el.dispatchEvent(new Event("input",{bubbles:true}));
+ if(mode==="save")return h2SaveMaterialQty(workId,materialId);
 }
 async function h2SaveMaterialQty(id,materialId){
  if(!h2CanPrep()||H2.busy)return;
@@ -1496,7 +1523,7 @@ async function h2AddMemberSave(workId){
  const a=h2Val("h2AmA"),b=h2Val("h2AmB");if(!a||!b)return alert("開始と終了を入れてください");
  try{await r2("hq_member_add_v1500",{p_work_id:workId,p_staff_id:h2Val("h2AmS"),p_phase:h2Val("h2AmP"),p_start:new Date(a).toISOString(),p_end:new Date(b).toISOString()});return hqWorkPage(workId,"追加しました")}catch(e){alert(h2Err(e))}
 }
-Object.assign(window,{h2NwMaterialCamera,h2NwStaffCamera,h2JoinStaffCamera,h2OpStaffSelected,h2OpStaffCamera,h2OpCamera,h2DeleteWorkHtml,h2DeleteWork,hqPrepHome,hqPrepNew,h2NwAddLot,h2NwDelLot,h2NwAddStaff,h2NwDelStaff,h2NwSet,h2NwPair,h2NwStart,hqOpScanPage,hqWorkPage,h2WorkEnd,h2CleanEnd,h2WorkLeave,h2WorkJoinOpen,h2JoinSelected,h2AddMaterialOpen,h2AddMaterialClose,h2AddMaterialSelected,h2AddMaterial,h2SaveMaterialQty,h2SaveInputs,h2PrintLabel,h2ToClean,h2WorkCancel,h2FixMember,h2AddMemberPage,h2AddMemberSave});
+Object.assign(window,{h2NwMaterialCamera,h2NwStaffCamera,h2JoinStaffCamera,h2OpStaffSelected,h2OpStaffCamera,h2OpCamera,h2DeleteWorkHtml,h2DeleteWork,hqPrepHome,hqPrepNew,h2NwAddLot,h2NwDelLot,h2NwAddStaff,h2NwDelStaff,h2NwSet,h2NwPair,h2NwStart,hqOpScanPage,hqWorkPage,h2WorkEnd,h2CleanEnd,h2WorkLeave,h2WorkJoinOpen,h2JoinSelected,h2AddMaterialOpen,h2AddMaterialClose,h2AddMaterialSelected,h2AddMaterial,h2SaveMaterialQty,h2MatUseAll,h2SaveInputs,h2PrintLabel,h2ToClean,h2WorkCancel,h2FixMember,h2AddMemberPage,h2AddMemberSave});
 Object.assign(X,{labelPages,LABEL_CSS,workCard,liveData});
 })();
 
@@ -2263,8 +2290,8 @@ try{
  const G={
   qrRead:{title:"QRを読むときの決まり（まちがい防止）",where:"スタッフQR・原料QR・操作用QRを読む画面すべて",steps:["カメラの上に出る色つきの帯を見ます。青は「スタッフのQR」、緑は「原料の貼り紙のQR」、茶色は「操作用QR」です。いま読むものと同じ種類のQRだけを読みます。","スタッフQRの一覧ボードは、たくさんのQRが並んでいます。自分のQRだけが、カメラの枠の中に入るように近づけます。","読めると、大きな画面に「〇〇さんを追加しました」と名前が出ます。自分の名前かどうか、必ず見ます。","違う人の名前が出たときは、「取り消す」を押します。自動でもう一度カメラが開くので、読み直します。","種類のちがうQRを読むと、赤い画面で「〇〇のQRを読みました」と出て、低い音が鳴ります。登録はされません。「もう一度読む」を押して、正しいQRを読みます。","途中から入る人と、原料を追加するときは、「〇〇さんですか？」「〇〇を追加しますか？」と聞かれます。合っていれば「はい」、違えば「ちがう」を押します。"]},
   prepStart:{title:"下処理を始める（パートさん）",where:"ホーム（下処理）→「＋ 新しい下処理を始める」",steps:["最初に使う原料の貼り紙のQRを読みます。使う量や、後から使うすべてのロットを最初に決める必要はありません。","仕掛品のボタンを押します。","作業場所のボタンを押します。","作業する人全員を班ごとの一覧から選びます。スタッフQRを使う場合は「スタッフQRを1人読む」を押します。1人読むとカメラが止まるので、次の人はもう一度押します。","「作業開始」を押します。原料用カメラでは、スタッフQRや操作用QRは受け付けません。"],check:"ホームの一覧に、作業が緑色で出ます。",caution:"同じ人は、1つの作業にしか入れません。"},
-  prepEnd:{title:"下処理を終える（パートさん）",where:"ホーム（下処理）→ 作業の「開く」",steps:["「作業終了」を押します。","使った原料の数を入れます（大きい容器はkg、それ以外はケース。0.5なども入れられます）。","廃棄のkgを入れます。無ければ 0 です。","出来高のkgを入れます。","「保存して ⑨ 清掃へ」を押します。","「⑨ 清掃へ」を押すと、作業した人全員が清掃に移ります（仕掛品ラベルの印刷は、今は使いません）。","清掃が終わったら「清掃終了」を押します。"],check:"作業した人は、全員そろって清掃に移ります。",caution:"確定は本社社員がします。間違えたときは本社社員に言ってください。"},
-  prepMaterial:{title:"作業中に次の原料を追加する（パートさん）",where:"作業の画面 →「作業中の原料・使用数」",steps:["原料を使い終わったら、そのロットで使った合計数を入力して「使用数を保存」を押します。数を直すときも累計を入力します。","「次の原料を追加（QR）」を押し、次に使う原料の貼り紙のQRを読みます。QRが読めないときは一覧から選べます。","同じ品目の原料を追加し、作業を続けます。原料の切替だけでは作業終了・清掃・作業者の登録し直しは不要です。","下処理全体が終わったら「作業終了」を押し、ロットごとの使用数を確認して、廃棄・出来高を全体の合計で入力します。"],check:"追加したロットが表示され、保存済みの使用数が残っていることを確認します。",caution:"作業中だけ追加できます。使用数の保存だけでは在庫は減りません。確定時に減ります。廃棄・出来高・歩留まりは作業全体で記録します。"},
+  prepEnd:{title:"下処理を終える（パートさん）",where:"ホーム（下処理）→ 作業の「開く」",steps:["「作業終了」を押します。","使った原料の数を確認します。そのロットを全部使い切ったときは「使い切った」を押します。残りの数が自動で入り、下に kg も出ます（ケースは「量目×ケース数」、大型容器は残りの重量）。一部だけ使ったときは、使った数を入れます（大きい容器はkg、それ以外はケース。0.5なども入れられます）。","出来高のkgを入れます。廃棄は、使った原料のkgから出来高を引いて自動で出るので、入力しません。","「保存して ⑨ 清掃へ」を押します。","「⑨ 清掃へ」を押すと、作業した人全員が清掃に移ります（仕掛品ラベルの印刷は、今は使いません）。","清掃が終わったら「清掃終了」を押します。"],check:"作業した人は、全員そろって清掃に移ります。",caution:"確定は本社社員がします。間違えたときは本社社員に言ってください。"},
+  prepMaterial:{title:"作業中に次の原料を追加する（パートさん）",where:"作業の画面 →「作業中の原料・使用数」",steps:["原料を全部使い切ったときは「使い切った」を押します。残りの数が自動で入って保存され、下に kg も出ます。一部だけ使ったときは、使った合計数を入力して「使用数を保存」を押します。数を直すときも累計を入力します。","「次の原料を追加（QR）」を押し、次に使う原料の貼り紙のQRを読みます。QRが読めないときは一覧から選べます。","同じ品目の原料を追加し、作業を続けます。原料の切替だけでは作業終了・清掃・作業者の登録し直しは不要です。","下処理全体が終わったら「作業終了」を押し、ロットごとの使用数を確認して、廃棄・出来高を全体の合計で入力します。"],check:"追加したロットが表示され、保存済みの使用数が残っていることを確認します。",caution:"作業中だけ追加できます。使用数の保存だけでは在庫は減りません。確定時に減ります。廃棄・出来高・歩留まりは作業全体で記録します。"},
   prepJoin:{title:"途中から入る・抜ける（パートさん）",where:"作業の画面",steps:["途中から入る人：「途中から入る人を追加」を押して一覧から選びます。QRを使う場合は「スタッフQRを1人読む」を押します。","抜ける人：名前の横の「抜ける」を押します。","ほかの作業に移るときは、先に「抜ける」を押します。"],check:"「いまの作業者」に名前が出ます。",caution:""},
   prepOther:{title:"ほかの作業・清掃だけを記録する",where:"ホーム（下処理）→「ほかの作業を始める」「清掃だけ始める」",steps:["作業名（清掃のときはなし）と作業場所を選びます。","作業する人を一覧から選びます。スタッフQRを使うときだけボタンを押し、1人ずつ読みます。","「作業開始」（清掃は「清掃開始」）を押します。","終わったら「作業終了」（清掃は「清掃終了」）を押します。"],check:"作業時間に記録されます。",caution:"大掃除など、清掃だけのときは「清掃」のQRでも始められます。"},
   prepCheck:{title:"下処理を確認して確定する（本社社員）",where:"本社ホーム →「下処理の確認」",steps:["「未確定」の一覧から、下処理の「確認して確定」を押します。","使用原料・廃棄・出来高を確かめます。差（使用−出来高−廃棄）が10%以上のときは赤く出ます。","違っていれば直して「この内容で確定する」を押します。","確定した後に直すときは、「使用原料・廃棄・出来高を訂正する」を開き、理由を入れて「訂正を保存する」を押します。取り消すときは「この下処理を取り消す」を使います。"],check:"確定すると、廃棄一覧（下処理ロス）・歩留まり・製造日報に入ります。在庫反映がオンなら、原料の在庫も減ります。",caution:"確定が次の日になっても、下処理をした日の数字になります。前の日から未確定のものは、ホームにお知らせが出ます。"},
