@@ -263,7 +263,7 @@ class PrepWorkTests(unittest.TestCase):
         fields.nth(0).fill("12.5")
         fields.nth(1).fill("7.5")
         page.locator(".h2MatQty").fill("8")
-        page.locator("#h2Waste").fill("1")
+        self.assertEqual(page.locator("#h2Waste").input_value(), "60")
         page.get_by_role("button", name="保存して ⑨ 清掃へ", exact=True).click()
         page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_save_inputs_v1199c116')")
         args = self.calls(page, "hq_work_save_inputs_v1199c116")[0]["a"]

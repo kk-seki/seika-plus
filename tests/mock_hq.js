@@ -31,7 +31,7 @@
  };
  const filt=(rows,q)=>{for(const p of String(q).split('&')){let m;if(m=p.match(/^(\w+)=eq\.(.*)$/)){const v=decodeURIComponent(m[2]);rows=rows.filter(r=>String(r[m[1]])===v)}else if(m=p.match(/^(\w+)=in\.\((.*)\)$/)){const vs=decodeURIComponent(m[2]).split(',');rows=rows.filter(r=>vs.includes(String(r[m[1]])))}else if(m=p.match(/^(\w+)=neq\.(.*)$/)){rows=rows.filter(r=>String(r[m[1]])!==decodeURIComponent(m[2]))}else if(m=p.match(/^(\w+)=is\.null$/)){rows=rows.filter(r=>r[m[1]]==null)}}return rows};
  qrSelect=async(t,q)=>JSON.parse(JSON.stringify(filt(T[t]||[],q)));
- callRpc=async(n,a)=>{if(n==='get_hq_stock_table_v1500')return{rows:[],count_days:[]};return []};
+ callRpc=async(n,a)=>{if(n==='hq_prep_available_lots_v1199c117')return JSON.parse(JSON.stringify(T.hq_lots_v1400.filter(l=>['在庫あり','在庫なし'].includes(l.status)).map(l=>({...l,available_qty:l.current_qty}))));if(n==='get_hq_stock_table_v1500')return{rows:[],count_days:[]};return []};
  window.alert=()=>{};window.confirm=()=>true;
  db.role=role;db.user=role==='hq_prep'?'下処理':role==='hq_receiver'?'荷受 太郎':'本社 一郎';
  window.__T=T;
