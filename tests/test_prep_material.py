@@ -19,6 +19,7 @@ SETUP = """()=>{
  callRpc=async(n,a)=>{
   __calls.push({n,a});
   const w=__T.hq_works_v1500.find(x=>x.id===a?.p_work_id);
+  if(n==='hq_prep_available_lots_v1199c117')return __T.hq_lots_v1400.map(l=>({...l,available_qty:window.__avail?.[l.id]??l.current_qty}));
   if(n==='hq_work_save_material_qty_v1199c112'){
    if(window.__fail)throw new Error('仮の通信エラー');
    __T.hq_work_materials_v1500.find(m=>m.id===a.p_material_id).qty=a.p_qty;return{ok:true};
@@ -137,6 +138,25 @@ class PrepMaterialTests(unittest.TestCase):
         p.locator('#h2Yield').fill('45');self.assertEqual(p.locator('#h2Waste').input_value(),'5')
         p.evaluate("()=>h2SaveInputs('W1')")
         self.assertEqual(p.evaluate('()=>[__T.hq_works_v1500[0].waste_kg,__T.hq_works_v1500[0].yield_kg]'),[5,45])
+
+    def test_use_all_fills_remaining_cases_with_kg_and_saves_on_work_page(self):
+        p=self.app();p.evaluate("()=>{window.__avail={L1:3};return hqWorkPage('W1')}")
+        p.get_by_role('button',name='使い切った（残り全部・自動で入れて保存）').first.click()
+        p.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_save_material_qty_v1199c112')")
+        self.assertEqual(p.locator('#c112Qty_M1').input_value(),'3')
+        self.assertEqual(p.evaluate("()=>__T.hq_work_materials_v1500.find(m=>m.id==='M1').qty"),3)
+        self.assertIn('＝ 30kg（量目 10kg × 3ケース）',p.locator('.c119Kg[data-for="c112Qty_M1"]').inner_text())
+
+    def test_use_all_at_end_fills_kg_lot_and_blocks_when_nothing_left(self):
+        p=self.app();p.evaluate("()=>{window.__avail={L1:4.5};__T.hq_work_materials_v1500.find(m=>m.id==='M1').unit='kg';return h2WorkEnd('W1')}")
+        p.get_by_role('button',name='使い切った（残り全部・自動で入れる）').first.click()
+        p.wait_for_function("()=>document.querySelector('.h2MatQty').value==='4.5'")
+        self.assertIn('＝ 4.5kg',p.locator('.c119Kg[data-for-qty="M1"]').inner_text())
+        p.locator('.h2MatQty').first.fill('')
+        p.evaluate("()=>{window.__avail={L1:0};window.__msgs=[];window.alert=m=>__msgs.push(m)}")
+        p.get_by_role('button',name='使い切った（残り全部・自動で入れる）').first.click()
+        p.wait_for_function("()=>__msgs.length>0")
+        self.assertEqual(p.locator('.h2MatQty').first.input_value(),'')
 
     def test_non_prep_role_and_closed_work_have_no_add(self):
         p=self.app('hq_receiver')
