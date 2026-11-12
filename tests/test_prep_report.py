@@ -76,7 +76,8 @@ class PrepReportBrowserTests(unittest.TestCase):
           window.__h2.h2Materials=async()=>JSON.parse(JSON.stringify(mats)); window.__h2.h2Members=async()=>JSON.parse(JSON.stringify(members));
           window.__h2.sel2=async(table)=>table==='hq_work_pauses_v1199c116'?[{kind:'休憩',start_at:'2026-11-12T00:30:00Z',end_at:'2026-11-12T01:00:00Z',excluded_staff_ids:[]}]:[];
           window.__h2.h2OutputParts=w=>Array.isArray(w.outputs)&&w.outputs.length?w.outputs:[{master_id:w.prep_master_id,name:w.product_name,yield_kg:w.yield_kg}];
-          window.__h2.h2StartReader=async(_host,cb)=>window.__scanner=cb; window.__h2.h2StopReader=async()=>{window.__stops=(window.__stops||0)+1};
+          window.__h2.h2ScanNotice=o=>{document.getElementById('h2ScanNotice')?.remove();const d=document.createElement('div');d.id='h2ScanNotice';d.textContent=o.title+(o.sub||'');d.__undo=o.undo;document.body.appendChild(d)}; window.__h2.h2QrWrong=(k,opt)=>{const kind=/^HQST-/i.test(k)?'staff':'material';if(!opt.expect||kind===opt.expect)return false;window.__h2.h2ScanNotice({ng:true,title:(kind==='staff'?'スタッフ（人の名前）のQR':'原料の貼り紙のQR')+'を読みました',sub:'ここでは「'+(opt.expect==='staff'?'スタッフ（人の名前）のQR':'原料の貼り紙のQR')+'」を読んでください。'});return true};
+          window.__h2.h2StartReader=async(_host,cb,opt={})=>window.__scanner=k=>window.__h2.h2QrWrong(k,opt)?undefined:cb(k); window.__h2.h2StopReader=async()=>{window.__stops=(window.__stops||0)+1};
           window.hqPrepHome=async()=>{setScreen('hqPrepHome',[]);pageShell('作業一覧','','<div id="homeBase"></div>')}; window.hqWorkPage=async id=>{setScreen('hqWorkPage',[id]);pageShell('作業','','<div id="workBase"></div>')};
         }""", role)
         page.add_script_tag(url=self.base + "/js/25-c117-prep-report.js")
@@ -140,13 +141,14 @@ class PrepReportBrowserTests(unittest.TestCase):
         page.evaluate("()=>c117OpenMaterialQr()")
         page.wait_for_function("()=>typeof __scanner==='function'")
         page.evaluate("()=>__scanner('HQST-S2')")
-        page.wait_for_function("()=>__alerts.length>0")
-        self.assertIn("スタッフQR", page.evaluate("()=>__alerts.at(-1)"))
+        page.wait_for_selector("#h2ScanNotice")
+        self.assertIn("スタッフ", page.locator("#h2ScanNotice").inner_text())
+        self.assertIn("原料の貼り紙のQR", page.locator("#h2ScanNotice").inner_text())
         page.evaluate("()=>c117OpenStaffQr()")
         page.wait_for_function("()=>typeof __scanner==='function'")
         page.evaluate("()=>__scanner('HQ-L2')")
-        page.wait_for_function("()=>__alerts.length>1")
-        self.assertIn("原料QR", page.evaluate("()=>__alerts.at(-1)"))
+        page.wait_for_selector("#h2ScanNotice")
+        self.assertIn("原料の貼り紙のQRを読みました", page.locator("#h2ScanNotice").inner_text())
         page.evaluate("()=>c117OpenStaffQr()")
         page.evaluate("()=>__scanner('HQST-S2')")
         page.wait_for_function("()=>document.querySelectorAll('[data-c117-member]').length===2")
