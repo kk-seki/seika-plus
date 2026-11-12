@@ -569,7 +569,7 @@ qrOperationLotPage=function(kind,q,...rest){const k=hqKeyOf(q);if(/^HQ-/.test(k)
 window.qrOperationLotPage=qrOperationLotPage;
 
 /* ---- 荷受け担当者・下処理班は本社の画面だけ ---- */
-const HQ_ONLY_ALLOWED=["login","accountMenu","changePasswordPage","displaySettingsPage","v195RoleGuidePage","settings"];
+const HQ_ONLY_ALLOWED=["c117ReportPage","c117ReportList","login","accountMenu","changePasswordPage","displaySettingsPage","v195RoleGuidePage","settings"];
 const hqSetScreenBase=setScreen;
 setScreen=function(name,args){
  const r=hqSetScreenBase.apply(this,arguments);
@@ -862,7 +862,7 @@ window.h2Stage2=h2Stage2;
 
 /* ---------- 画面の切り替えで止めるもの（カメラ・自動更新） ---------- */
 function h2StopAll(){if(H2.timer){clearInterval(H2.timer);H2.timer=null}h2StopReader()}
-async function h2StopReader(){const r=H2.reader;H2.reader=null;H2.readerScreen="";if(r){try{await r.stop()}catch(e){}try{r.clear()}catch(e){}}}
+async function h2StopReader(){document.getElementById(H2.hintId||"")?.remove();H2.hintId="";const r=H2.reader;H2.reader=null;H2.readerScreen="";if(r){try{await r.stop()}catch(e){}try{r.clear()}catch(e){}}}
 const h2SetScreenBase=setScreen;
 setScreen=function(name,args){
  if(H2.readerScreen&&H2.readerScreen!==name)h2StopReader();
@@ -871,19 +871,55 @@ setScreen=function(name,args){
 };
 window.setScreen=setScreen;
 function h2Every(ms,fn){if(H2.timer)clearInterval(H2.timer);H2.timerScreen=currentScreen;H2.timer=setInterval(()=>{if(currentScreen!==H2.timerScreen){clearInterval(H2.timer);H2.timer=null;return}fn()},ms)}
+const H2_EXPECT={staff:{t:"いま読むもの：スタッフのQR（自分の名前）",c:"#0b5cad",n:"スタッフ（人の名前）のQR"},material:{t:"いま読むもの：原料の貼り紙のQR",c:"#1b7f3b",n:"原料の貼り紙のQR"},op:{t:"いま読むもの：操作用のQR",c:"#8a4b00",n:"操作用のQR"}};
+function h2QrKind(k){if(/^HQST-/i.test(k))return"staff";if(window.__h2&&typeof window.__h2.opOf==="function"&&window.__h2.opOf(k))return"op";return"material"}
+function h2ScanNotice(o){
+ document.getElementById("h2ScanNotice")?.remove();
+ const ng=o.ng,box=document.createElement("div");box.id="h2ScanNotice";
+ box.style.cssText=`position:fixed;left:8px;right:8px;top:10px;z-index:99999;padding:14px;border-radius:12px;border:4px solid ${ng?"#b00020":"#1b7f3b"};background:${ng?"#fff0f0":"#effaf1"};color:#111;box-shadow:0 4px 16px rgba(0,0,0,.35);text-align:center`;
+ box.innerHTML=`<div style="font-size:${ng?20:24}px;font-weight:900;line-height:1.35">${ng?"⚠ ":""}${esc(o.title)}</div>${o.sub?`<div style="font-size:16px;margin-top:6px;line-height:1.4">${esc(o.sub)}</div>`:""}<div style="display:flex;gap:8px;margin-top:10px">${o.undo?`<button type="button" id="h2ScanUndo" style="flex:1;font-size:18px;font-weight:900;padding:12px;border-radius:10px;border:3px solid #b00020;background:#fff;color:#b00020">取り消す</button>`:""}<button type="button" id="h2ScanClose" style="flex:1;font-size:18px;font-weight:900;padding:12px;border-radius:10px;border:3px solid #555;background:#fff;color:#111">${ng?"もう一度読む":"OK"}</button></div>`;
+ document.body.appendChild(box);
+ const close=()=>{clearTimeout(t);box.remove()};const t=setTimeout(close,ng?10000:8000);
+ box.querySelector("#h2ScanClose").onclick=close;
+ const u=box.querySelector("#h2ScanUndo");if(u)u.onclick=()=>{close();try{o.undo()}catch(e){alert(h2Err(e))}};
+ ng?h2BeepNg():h2Beep();
+}
+function h2ScanConfirm(o){
+ return new Promise(res=>{
+  document.getElementById("h2ScanNotice")?.remove();
+  const box=document.createElement("div");box.id="h2ScanNotice";
+  box.style.cssText="position:fixed;left:8px;right:8px;top:10px;z-index:99999;padding:14px;border-radius:12px;border:4px solid #0b5cad;background:#eef5ff;color:#111;box-shadow:0 4px 16px rgba(0,0,0,.35);text-align:center";
+  box.innerHTML=`<div style="font-size:24px;font-weight:900;line-height:1.35">${esc(o.title)}</div>${o.sub?`<div style="font-size:16px;margin-top:6px">${esc(o.sub)}</div>`:""}<div style="display:flex;gap:8px;margin-top:10px"><button type="button" id="h2CfNo" style="flex:1;font-size:20px;font-weight:900;padding:14px;border-radius:10px;border:3px solid #555;background:#fff;color:#111">ちがう</button><button type="button" id="h2CfYes" style="flex:1;font-size:20px;font-weight:900;padding:14px;border-radius:10px;border:3px solid #1b7f3b;background:#1b7f3b;color:#fff">はい</button></div>`;
+  document.body.appendChild(box);h2Beep();
+  const done=v=>{box.remove();res(v)};
+  box.querySelector("#h2CfYes").onclick=()=>done(true);box.querySelector("#h2CfNo").onclick=()=>done(false);
+ });
+}
+function h2QrWrong(k,options){
+ const exp=H2_EXPECT[options.expect];if(!exp)return false;
+ const kind=h2QrKind(k);if(kind===options.expect)return false;
+ h2ScanNotice({ng:true,title:`${H2_EXPECT[kind]?.n||"このQR"}を読みました`,sub:`ここでは「${exp.n}」を読んでください。`});return true;
+}
 async function h2StartReader(elId,onCode,options={}){
  await h2StopReader();
  const el=document.getElementById(elId);if(!el)return;
  if(typeof Html5Qrcode!=="function"){el.innerHTML='<div class="err">カメラを使えません。下の一覧から選んでください。</div>';return}
+ const exp=H2_EXPECT[options.expect];
+ if(exp){const h=document.createElement("div");h.id=elId+"Hint";h.style.cssText=`background:${exp.c};color:#fff;font-size:18px;font-weight:900;text-align:center;padding:8px;border-radius:8px;margin-bottom:6px`;h.innerHTML=`${esc(exp.t)}<div style="font-size:14px;font-weight:700">枠の中にQRを1つだけ入れてください</div>`;el.insertAdjacentElement("beforebegin",h);H2.hintId=h.id}
+ const box=options.expect==="staff"?160:220;
  const screen=currentScreen;let last="",lastAt=0,busy=false;
  try{
   const r=new Html5Qrcode(elId);H2.reader=r;H2.readerScreen=screen;
-  await r.start({facingMode:"environment"},{fps:8,qrbox:{width:220,height:220}},async raw=>{
+  await r.start({facingMode:"environment"},{fps:8,qrbox:{width:box,height:box}},async raw=>{
    if(H2.reader!==r||busy)return;const k=hqKeyOf(raw);const now=Date.now();if(!k||(k===last&&now-lastAt<2500))return;last=k;lastAt=now;busy=true;
-   try{if(options.once)await h2StopReader();await onCode(k)}catch(e){alert(h2Err(e))}finally{busy=false}
+   try{
+    if(h2QrWrong(k,options))return;
+    if(options.once)await h2StopReader();await onCode(k)
+   }catch(e){alert(h2Err(e))}finally{busy=false}
   },()=>{});
  }catch(e){el.innerHTML=`<div class="err">カメラを開けませんでした：${esc(h2Err(e))}<br>下の一覧から選べます。</div>`}
 }
+function h2BeepNg(){try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.frequency.value=330;o.connect(a.destination);o.start();setTimeout(()=>{o.frequency.value=220},180);setTimeout(()=>{o.stop();a.close()},400)}catch(e){}try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}}
 function h2Beep(){try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.frequency.value=880;o.connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close()},120)}catch(e){}try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}}
 
 /* ---------- A4縦のPDF ---------- */
@@ -980,7 +1016,7 @@ async function h2Prices(from,to,items){
 function h2PriceOf(map,item,date){const r=map[`${item}|${h2Monday(date)}`];return r&&r.price!=null?Number(r.price):null}
 
 Object.assign(window,{h2StopReader});
-window.__h2=Object.assign(window.__h2||{},{H2,r2,sel2,enc2,num2,kg2,yen2,pct2,time2,dt2,md2,mins2,hm2,btnAttr,roleIs,h2CanPrep,h2CanBoss,h2CanRaw,h2CanMoney,h2CanCount,h2CanReport,h2Month,h2MonthRange,h2MonthLabel,h2Monday,h2FiscalStart,h2Err,h2Notice,h2Loading,h2Set,h2Val,h2Stage2,h2Every,h2StartReader,h2StopReader,h2Beep,h2MakePdf,h2PdfStatus,h2Qr,h2Staff,h2Teams,h2Places,h2Tasks,h2Masters,h2QrItems,h2OutputParts,h2Works,h2Members,h2Materials,h2MatKg,h2UsedKg,h2Diff,h2Yield,h2Prices,h2PriceOf});
+window.__h2=Object.assign(window.__h2||{},{h2ScanNotice,h2ScanConfirm,h2QrWrong,H2,r2,sel2,enc2,num2,kg2,yen2,pct2,time2,dt2,md2,mins2,hm2,btnAttr,roleIs,h2CanPrep,h2CanBoss,h2CanRaw,h2CanMoney,h2CanCount,h2CanReport,h2Month,h2MonthRange,h2MonthLabel,h2Monday,h2FiscalStart,h2Err,h2Notice,h2Loading,h2Set,h2Val,h2Stage2,h2Every,h2StartReader,h2StopReader,h2Beep,h2MakePdf,h2PdfStatus,h2Qr,h2Staff,h2Teams,h2Places,h2Tasks,h2Masters,h2QrItems,h2OutputParts,h2Works,h2Members,h2Materials,h2MatKg,h2UsedKg,h2Diff,h2Yield,h2Prices,h2PriceOf});
 })();
 
 /* ===== 下処理・作業（パートさん＝下処理班の共用アカウント／本社社員） ===== */
@@ -988,8 +1024,10 @@ window.__h2=Object.assign(window.__h2||{},{H2,r2,sel2,enc2,num2,kg2,yen2,pct2,ti
 "use strict";
 const X=window.__h2;const{H2,r2,sel2,num2,kg2,time2,dt2,md2,mins2,hm2,btnAttr,h2CanPrep,h2CanBoss,h2Err,h2Notice,h2Loading,h2Set,h2Val,h2Stage2,h2Every,h2StartReader,h2StopReader,h2Beep,h2MakePdf,h2Qr,h2Staff,h2Places,h2Tasks,h2Masters,h2Works,h2Members,h2Materials,h2Diff}=X;
 const OP={"HQOP-START":"start","HQOP-END":"end","HQOP-CLEAN":"clean","HQOP-CLEANEND":"cleanend"};
+const{h2ScanNotice,h2ScanConfirm}=X;
 const OP_LABEL={start:"作業開始",end:"作業終了",clean:"清掃",cleanend:"清掃終了"};
 function opOf(k){return OP[String(k||"").toUpperCase()]||""}
+X.opOf=opOf;
 
 /* --- いま動いている作業（全端末で同じ一覧。自動で更新） --- */
 function workCard(w,mem,mats){
@@ -1076,19 +1114,16 @@ function nwRender(){
 }
 async function h2NwMaterialCamera(){
  if(!h2CanPrep()||!NW||NW.kind!=='下処理')return;
- return h2StartReader('h2NwReader',k=>/^HQST-/i.test(k)||opOf(k)?undefined:nwScan(k));
+ return h2StartReader('h2NwReader',k=>nwScan(k),{expect:'material'});
 }
 async function h2NwStaffCamera(){
  if(!h2CanPrep()||!NW)return;
- return h2StartReader('h2NwReader',k=>{
-  if(!/^HQST-/i.test(k))return alert('スタッフQRを読み取ってください');
-  return nwScan(k);
- },{once:true});
+ return h2StartReader('h2NwReader',k=>nwScan(k),{once:true,expect:'staff'});
 }
 async function nwScan(k){
  const op=opOf(k);
  if(op){if(op==="start"||(op==="clean"&&NW.kind==="清掃"))return h2NwStart();return alert(`「${OP_LABEL[op]}」のQRです。作業を始めてから使います。`)}
- if(/^HQST-/i.test(k)){const s=NW.cache.staff.find(x=>x.qr_key===k);if(!s)return alert("このスタッフQRは登録されていません（削除された人かもしれません）");if(!NW.staff.some(x=>x.id===s.id)){NW.staff.push(s);h2Beep()}return nwRender()}
+ if(/^HQST-/i.test(k)){const s=NW.cache.staff.find(x=>x.qr_key===k);if(!s)return alert("このスタッフQRは登録されていません（削除された人かもしれません）");if(!NW.staff.some(x=>x.id===s.id)){NW.staff.push(s);nwRender();return h2ScanNotice({title:`${s.name}さんを追加しました`,sub:"違う人のときは「取り消す」を押してください",undo:()=>{NW.staff=NW.staff.filter(x=>x.id!==s.id);nwRender();if(document.getElementById("h2NwReader"))h2NwStaffCamera()}})}return h2ScanNotice({ng:true,title:`${s.name}さんは、もう入っています`})}
  if(/^HQ-|^H\d{8}-/.test(k)){
   if(NW.kind!=="下処理")return alert("原料のQRは、下処理のときに読み取ります");
   const l=(await hqLots(`select=id,qr_key,lot_no,item_name,current_qty,unit,status&or=(qr_key.eq.${encodeURIComponent(k)},lot_no.eq.${encodeURIComponent(k)})&limit=1`))[0];
@@ -1101,8 +1136,8 @@ function addLot(l){
  if(!["在庫あり","在庫なし"].includes(l.status))return alert(`この原料は、まだ使えません（${l.status}）。受け入れの確定をしてください`);
  if(!NW.lots.some(x=>x.id===l.id)&&window.hqLimitGuard&&!window.hqLimitGuard(l,"下処理に使う"))return;
  if(NW.lots.length&&NW.lots[0].item_name!==l.item_name)return alert(`ちがう品目です（${l.item_name}）。1つの下処理では、同じ品目の原料だけを使います`);
- if(!NW.lots.some(x=>x.id===l.id)){NW.lots.push(l);h2Beep()}
- nwRender();
+ if(!NW.lots.some(x=>x.id===l.id)){NW.lots.push(l);nwRender();return h2ScanNotice({title:`${l.item_name} を追加しました`,sub:`ロットNo ${l.lot_no||""}　違うときは「取り消す」`,undo:()=>h2NwDelLot(l.id)})}
+ nwRender();h2ScanNotice({ng:true,title:"この原料は、もう入っています",sub:`ロットNo ${l.lot_no||""}`});
 }
 function h2NwAddLot(id){if(!id)return;const l=NW.cache.lots.find(x=>x.id===id);addLot(l)}
 function h2NwDelLot(id){NW.lots=NW.lots.filter(x=>x.id!==id);nwRender()}
@@ -1141,15 +1176,15 @@ function opInfo(){h2Set('h2OpInfo',`<div><b>選んだ人：</b>${OPS.staff.map(s
 function h2OpStaffSelected(id){h2StopReader();const s=OPS.choices?.find(x=>x.id===id);OPS.staff=s?[s]:[];opInfo()}
 function h2OpStaffCamera(){
  if(!h2CanPrep())return;
- return h2StartReader('h2OpReader',k=>/^HQST-/i.test(k)?opScan(k):alert('スタッフQRを読み取ってください'),{once:true});
+ return h2StartReader('h2OpReader',k=>opScan(k),{once:true,expect:'staff'});
 }
 function h2OpCamera(){
  if(!h2CanPrep())return;
- return h2StartReader('h2OpReader',k=>opOf(k)?opScan(k):alert('操作用QRを読み取ってください'),{once:true});
+ return h2StartReader('h2OpReader',k=>opScan(k),{once:true,expect:'op'});
 }
 async function opScan(k){
  const op=opOf(k);
- if(/^HQST-/i.test(k)){OPS.staff=[];const s=(await sel2("hq_staff_v1500",`select=*&qr_key=eq.${encodeURIComponent(k)}&deleted_at=is.null`))[0];if(!s)return alert("このスタッフQRは登録されていません");if(!OPS.staff.some(x=>x.id===s.id)){OPS.staff.push(s);h2Beep()}return opInfo()}
+ if(/^HQST-/i.test(k)){OPS.staff=[];const s=(await sel2("hq_staff_v1500",`select=*&qr_key=eq.${encodeURIComponent(k)}&deleted_at=is.null`))[0];if(!s)return alert("このスタッフQRは登録されていません");OPS.staff.push(s);opInfo();return h2ScanNotice({title:`${s.name}さんを選びました`,sub:"違う人のときは「取り消す」を押してください",undo:()=>{OPS.staff=[];opInfo();if(document.getElementById("h2OpReader"))h2OpStaffCamera()}})}
  if(!op)return alert("スタッフQRか操作用のQRを読み取ってください");
  if(op==="start"||op==="clean"){
   const kind=op==="start"?"下処理":"清掃";nwReset(kind);NW.staff=[...OPS.staff];await h2StopReader();return hqPrepNew(kind,true);
@@ -1248,10 +1283,10 @@ async function h2JoinStaffCamera(id){
  if(!h2CanPrep())return;
  const staff=await h2Staff();
  return h2StartReader('h2JoinReader',async k=>{
-  if(!/^HQST-/i.test(k))return alert('スタッフQRを読み取ってください');
   const s=staff.find(x=>x.qr_key===k);if(!s)return alert('このスタッフQRは登録されていません');
+  if(!await h2ScanConfirm({title:`${s.name}さんですか？`,sub:"「はい」を押すと、作業に入ります"})){if(document.getElementById('h2JoinReader'))h2JoinStaffCamera(id);return}
   await r2('hq_work_join_v1500',{p_work_id:id,p_staff_ids:[s.id]});h2Beep();return hqWorkPage(id,`${s.name}さんが入りました`);
- },{once:true});
+ },{once:true,expect:'staff'});
 }
 async function h2JoinSelected(id){if(!h2CanPrep()||H2.busy)return;const sid=h2Val("h2JoinSel");if(!sid)return alert("人を選んでください");try{await r2("hq_work_join_v1500",{p_work_id:id,p_staff_ids:[sid]});await h2StopReader();return hqWorkPage(id,"追加しました")}catch(e){alert(h2Err(e))}}
 async function h2AddMaterialOpen(id){
@@ -1265,8 +1300,9 @@ async function h2AddMaterialOpen(id){
  await h2StartReader("c112Reader",async k=>{
   const rows=await hqLots(`select=*&or=(qr_key.eq.${encodeURIComponent(k)},lot_no.eq.${encodeURIComponent(k)})&limit=1`);
   if(!rows[0])return alert("この原料は見つかりません");
+  if(!await h2ScanConfirm({title:`${rows[0].item_name} を追加しますか？`,sub:`ロットNo ${rows[0].lot_no||""}`}))return;
   return h2AddMaterial(id,rows[0].id);
- });
+ },{expect:'material'});
 }
 async function h2AddMaterialClose(){await h2StopReader();document.getElementById("c112AddBox")?.replaceChildren()}
 async function h2AddMaterialSelected(id){const lotId=h2Val("c112Lot");if(!lotId)return alert("原料を選んでください");return h2AddMaterial(id,lotId)}
@@ -2225,6 +2261,7 @@ Object.assign(window,{h2DiffAck,h2OpenHqQuality});
 "use strict";
 try{
  const G={
+  qrRead:{title:"QRを読むときの決まり（まちがい防止）",where:"スタッフQR・原料QR・操作用QRを読む画面すべて",steps:["カメラの上に出る色つきの帯を見ます。青は「スタッフのQR」、緑は「原料の貼り紙のQR」、茶色は「操作用QR」です。いま読むものと同じ種類のQRだけを読みます。","スタッフQRの一覧ボードは、たくさんのQRが並んでいます。自分のQRだけが、カメラの枠の中に入るように近づけます。","読めると、大きな画面に「〇〇さんを追加しました」と名前が出ます。自分の名前かどうか、必ず見ます。","違う人の名前が出たときは、「取り消す」を押します。自動でもう一度カメラが開くので、読み直します。","種類のちがうQRを読むと、赤い画面で「〇〇のQRを読みました」と出て、低い音が鳴ります。登録はされません。「もう一度読む」を押して、正しいQRを読みます。","途中から入る人と、原料を追加するときは、「〇〇さんですか？」「〇〇を追加しますか？」と聞かれます。合っていれば「はい」、違えば「ちがう」を押します。"]},
   prepStart:{title:"下処理を始める（パートさん）",where:"ホーム（下処理）→「＋ 新しい下処理を始める」",steps:["最初に使う原料の貼り紙のQRを読みます。使う量や、後から使うすべてのロットを最初に決める必要はありません。","仕掛品のボタンを押します。","作業場所のボタンを押します。","作業する人全員を班ごとの一覧から選びます。スタッフQRを使う場合は「スタッフQRを1人読む」を押します。1人読むとカメラが止まるので、次の人はもう一度押します。","「作業開始」を押します。原料用カメラでは、スタッフQRや操作用QRは受け付けません。"],check:"ホームの一覧に、作業が緑色で出ます。",caution:"同じ人は、1つの作業にしか入れません。"},
   prepEnd:{title:"下処理を終える（パートさん）",where:"ホーム（下処理）→ 作業の「開く」",steps:["「作業終了」を押します。","使った原料の数を入れます（大きい容器はkg、それ以外はケース。0.5なども入れられます）。","廃棄のkgを入れます。無ければ 0 です。","出来高のkgを入れます。","「保存して ⑨ 清掃へ」を押します。","「⑨ 清掃へ」を押すと、作業した人全員が清掃に移ります（仕掛品ラベルの印刷は、今は使いません）。","清掃が終わったら「清掃終了」を押します。"],check:"作業した人は、全員そろって清掃に移ります。",caution:"確定は本社社員がします。間違えたときは本社社員に言ってください。"},
   prepMaterial:{title:"作業中に次の原料を追加する（パートさん）",where:"作業の画面 →「作業中の原料・使用数」",steps:["原料を使い終わったら、そのロットで使った合計数を入力して「使用数を保存」を押します。数を直すときも累計を入力します。","「次の原料を追加（QR）」を押し、次に使う原料の貼り紙のQRを読みます。QRが読めないときは一覧から選べます。","同じ品目の原料を追加し、作業を続けます。原料の切替だけでは作業終了・清掃・作業者の登録し直しは不要です。","下処理全体が終わったら「作業終了」を押し、ロットごとの使用数を確認して、廃棄・出来高を全体の合計で入力します。"],check:"追加したロットが表示され、保存済みの使用数が残っていることを確認します。",caution:"作業中だけ追加できます。使用数の保存だけでは在庫は減りません。確定時に減ります。廃棄・出来高・歩留まりは作業全体で記録します。"},
@@ -2253,7 +2290,7 @@ try{
  HQ_GUIDE.hqNormal=G.stockInput;
  HQ_GUIDE.hqTable={...HQ_GUIDE.hqTable,title:"在庫表を見る（QR品目＋原料＋仕掛品）",steps:["最後の日と日数（7・14・31日）を選びます。「◀ 前」「次 ▶」で期間を動かせます。","石岡の在庫表と同じ形で、「QR品目」「原料」「仕掛品」の見出しごとに品目が並び、日ごとのkgといちばん下に合計kgが出ます。今日の列には色が付きます。","品目名の列は左に固定されているので、横に動かしても品目名が見えます。期間中ずっと在庫0の品目は表示せず、表の下に件数だけ出ます。"],check:"QR品目はその日の終わりの在庫、原料・仕掛品はその日に在庫入力した数です（入力がない日は「—」）。"};
  const R={
-  hq_prep:{name:"本社 下処理班",intro:"下処理と作業時間の記録をします。お金の数字は出ません。",keys:["prepStart","prepMaterial","prepEnd","prepJoin","prepOther"]},
+  hq_prep:{name:"本社 下処理班",intro:"下処理と作業時間の記録をします。お金の数字は出ません。",keys:["prepStart","qrRead","prepMaterial","prepEnd","prepJoin","prepOther"]},
   hq_worker:{name:"本社社員",intro:"受け入れ・確定、下処理の確認と確定、在庫入力、棚卸し、マスタ・スタッフの登録、集計とExcelができます。",keys:["switch","hqReceive","prepCheck","stockInput","rawout","waste","take","usage","quality","yield","price","master","workDelete","staff","tasks","worktime","excel","hqDirect","hqStock","hqTable","hqItems","prepStart","prepMaterial","prepEnd","hqOut"]},
   hq_receiver:{name:"本社 荷受け担当者",intro:"届いた原料の品質評価と確定、貼り紙の印刷、在庫入力、原料出しと原料出しロス・廃棄の入力ができます。",keys:["hqReceive","hqDirect","stockInput","rawout","waste","quality","hqStock","hqTable"]},
   hq_clerk:{name:"本社事務",intro:"本社の在庫・集計を見て、Excelを作れます。",keys:["switch","viewHq","hqStock","hqTable","usage","yield","waste","price","quality","worktime","excel"]}

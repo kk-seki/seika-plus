@@ -87,10 +87,23 @@ class PrepMaterialTests(unittest.TestCase):
 
     def test_qr_add_and_duplicate_do_not_duplicate_rows(self):
         p=self.app();p.evaluate("()=>h2AddMaterialOpen('W1')")
-        p.evaluate("()=>__reader('HQ-NEW')")
+        p.evaluate("()=>{__reader('HQ-NEW')}")
+        p.click('#h2CfYes')
         p.wait_for_selector('#c112Qty_M4')
         p.evaluate("()=>h2AddMaterial('W1','L4')")
         self.assertEqual(p.evaluate("()=>__T.hq_work_materials_v1500.filter(m=>m.work_id==='W1'&&m.lot_id==='L4').length"),1)
+
+    def test_wrong_kind_qr_is_refused_and_unconfirmed_lot_is_not_added(self):
+        p=self.app();p.evaluate("()=>h2AddMaterialOpen('W1')")
+        self.assertIn('原料の貼り紙のQR',p.locator('#c112ReaderHint').inner_text())
+        before=p.evaluate("()=>__T.hq_work_materials_v1500.length")
+        p.evaluate("()=>{__reader('HQST-S1')}")
+        p.wait_for_selector('#h2ScanNotice')
+        self.assertIn('スタッフ（人の名前）のQRを読みました',p.locator('#h2ScanNotice').inner_text())
+        p.click('#h2ScanClose')
+        p.evaluate("()=>{__reader('HQ-NEW')}")
+        p.click('#h2CfNo')
+        self.assertEqual(p.evaluate("()=>__T.hq_work_materials_v1500.length"),before)
 
     def test_invalid_lot_and_expiry_are_blocked(self):
         p=self.app()

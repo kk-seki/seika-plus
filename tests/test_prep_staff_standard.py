@@ -50,6 +50,26 @@ class PrepStaffStandardTests(unittest.TestCase):
         page.evaluate("()=>__scanners.at(-1).cb('HQST-S3')")
         self.assertEqual(page.locator("#h2NwBody .h2Chip").count(), 2)
 
+    def test_staff_read_shows_name_and_undo_removes_and_reopens_camera(self):
+        page = self.app()
+        page.evaluate("()=>hqPrepNew('清掃')")
+        page.evaluate("()=>h2NwStaffCamera()")
+        page.evaluate("()=>{__scanners.at(-1).cb('HQST-S2')}")
+        page.wait_for_selector("#h2ScanNotice")
+        self.assertIn("鈴木 美咲さんを追加しました", page.locator("#h2ScanNotice").inner_text())
+        self.assertEqual(page.locator("#h2NwBody .h2Chip").count(), 1)
+        starts = page.evaluate("()=>__starts")
+        page.click("#h2ScanUndo")
+        self.assertEqual(page.locator("#h2NwBody .h2Chip").count(), 0)
+        self.assertEqual(page.evaluate("()=>__starts"), starts + 1)
+
+    def test_report_screens_are_not_redirected_for_hq_only_accounts(self):
+        page = self.app()
+        for fn in ("c117ReportList", "c117ReportPage"):
+            page.evaluate(f"()=>{fn}()")
+            page.wait_for_timeout(500)
+            self.assertNotIn("本社のアカウントでは使えません", page.locator("body").inner_text(), fn)
+
     def test_material_camera_ignores_staff_and_switching_selection_stops_camera(self):
         page = self.app()
         page.evaluate("()=>hqPrepNew('下処理')")
