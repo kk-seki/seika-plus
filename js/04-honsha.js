@@ -569,7 +569,7 @@ qrOperationLotPage=function(kind,q,...rest){const k=hqKeyOf(q);if(/^HQ-/.test(k)
 window.qrOperationLotPage=qrOperationLotPage;
 
 /* ---- 荷受け担当者・下処理班は本社の画面だけ ---- */
-const HQ_ONLY_ALLOWED=["c117ReportPage","c117ReportList","login","accountMenu","changePasswordPage","displaySettingsPage","v195RoleGuidePage","settings"];
+const HQ_ONLY_ALLOWED=["c117ReportPage","c117ReportList","c120SignaturePage","login","accountMenu","changePasswordPage","displaySettingsPage","v195RoleGuidePage","settings"];
 const hqSetScreenBase=setScreen;
 setScreen=function(name,args){
  const r=hqSetScreenBase.apply(this,arguments);
@@ -1277,8 +1277,10 @@ function labelBox(w,beforeClean){
 let C120_END=null,C120_ACTION=null;
 function h2C120ReviewLabel(w){return({draft:'下書き',submitted:'確認待ち',returned:'差し戻し',confirmed:'確認済み'})[w.review_status]||'下書き'}
 function h2C120JstLocal(t){if(!t)return h2JstLocalNow();const p=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(t)).reduce((o,x)=>(o[x.type]=x.value,o),{});return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`}
+async function h2C120Signatures(id){try{const rows=await r2('hq_prep_signatures_v1199c121',{p_work_id:id});return Array.isArray(rows)?rows:[]}catch(e){return[]}}
+function h2C120SignatureHtml(rows){const s=rows[0];return s?`<div class="card"><b>入力者</b><div class="small" style="margin-top:4px">${esc(s.signer_name||'')} ／ ${dt2(s.signed_at)}</div>${s.signature_png?`<img alt="入力者サイン" src="${esc(s.signature_png)}" style="display:block;width:100%;max-width:600px;height:auto;margin-top:8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff">`:''}</div>`:''}
 async function h2C120WorkPage(w,mem,mats,msg='',pauses=[]){
- const open=mem.filter(m=>!m.end_at),ended=!!w.ended_at||w.status==='入力待ち',active=!ended&&w.status==='作業中';
+ const open=mem.filter(m=>!m.end_at),ended=!!w.ended_at||w.status==='入力待ち',active=!ended&&w.status==='作業中',signatures=ended&&(['submitted','confirmed'].includes(w.review_status))?await h2C120Signatures(w.id):[];
  const title=`${w.raw_item_name||''} → ${X.h2OutputParts(w).map(p=>p.name).filter(Boolean).join('・')||w.product_name||''}`;
  const review=h2C120ReviewLabel(w),canReview=h2CanBoss()&&ended;
  let body=`${okHtml(msg)}<div class="card h2Work s${esc(w.status)}"><div class="itemHead"><div><b style="font-size:21px">${esc(title)}</b><div class="small">${esc(w.place||'')} ／ ${esc(w.work_date||'')} ／ 開始 ${time2(w.started_at)}${w.ended_at?` ／ 終了 ${time2(w.ended_at)}`:''}</div></div><span class="h2Badge h2B${esc(w.status)}">${esc(ended?'作業終了':w.status)}</span></div><div class="small" style="margin-top:6px">確認状況：<b>${esc(review)}</b>${w.review_reason?` ／ ${esc(w.review_reason)}`:''}</div></div>`;
@@ -1287,7 +1289,8 @@ async function h2C120WorkPage(w,mem,mats,msg='',pauses=[]){
  if(active)body+=`<div class="card"><b>いまの作業者（${open.length}名）</b>${open.map(m=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><div><b>${esc(m.staff_name)}</b><div class="small">${esc(m.team||'')} ／ 作業 ${time2(m.start_at)}〜</div></div>${h2CanPrep()?`<button class="btn btn2" style="min-height:40px" ${btnAttr('h2WorkLeave',[w.id,m.staff_id,m.staff_name])}>抜ける</button>`:''}</div>`).join('')||'<div class="small">いません</div>'}${h2CanPrep()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${w.pause_kind?'disabled':''} ${btnAttr('h2WorkJoinOpen',[w.id])}>途中から入る人を追加</button><div id="h2JoinBox"></div>`:''}</div>`;
  if(active&&h2CanPrep())body+=`<div class="card"><b>作業終了</b><label class="label" style="margin-top:6px">終了時刻（日本時間）</label><input id="c120EndedAt" type="datetime-local" class="input" value="${esc(C120_END?.id===w.id?C120_END.endedLocal:h2JstLocalNow())}" ${w.pause_kind?'disabled':''}><div class="small">${w.pause_kind?'休憩・中断の対象者全員を再開してから終了してください。':'正しい終了時刻に直してから終了できます。開始時刻は日報で訂正します。'}</div><button id="c120EndButton" class="btn hqBtnOut h2Big" style="margin-top:10px" ${w.pause_kind?'disabled':''} ${btnAttr('h2C120End',[w.id,w.updated_at])}>作業終了して日報へ</button></div>`;
  if(ended&&h2CanPrep())body+=`<div class="card"><b>日報・確認</b><div class="small">作業時間・原料・出来高・廃棄をまとめて編集し、確認へ送ります。</div><button class="btn hqBtnPrep h2Big" style="margin-top:8px" ${btnAttr('c117ReportPage',[w.id])}>日報を入力・編集する</button></div>`;
- if(canReview)body+=`<div class="card"><b>本社社員の確認</b><div class="small">日報を開いて内容を確認・訂正してから操作してください。</div>${w.review_status==='submitted'?`<button class="btn hqBtnConfirm" style="width:100%;margin-top:8px" ${btnAttr('h2C120Confirm',[w.id,w.updated_at])}>確認済みにする</button>`:''}${['submitted','confirmed'].includes(w.review_status)?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr('h2C120Return',[w.id,w.updated_at])}>差し戻す</button>`:''}${w.review_status==='confirmed'?`<button class="btn hqBtnPrepCheck" style="width:100%;margin-top:8px" ${btnAttr('h2C120EmployeeEdit',[w.id])}>日報を訂正する</button>`:''}</div>`;
+ if(signatures.length)body+=h2C120SignatureHtml(signatures);
+ if(canReview)body+=`<div class="card"><b>本社社員の確認</b><div class="small">日報と入力者サインを確認してから操作してください。</div>${w.review_status==='submitted'?`<button class="btn hqBtnConfirm" style="width:100%;margin-top:8px" ${btnAttr('h2C120Confirm',[w.id,w.updated_at])}>確認済みにする</button>`:''}${['submitted','confirmed'].includes(w.review_status)?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr('h2C120Return',[w.id,w.updated_at])}>差し戻す</button>`:''}${w.review_status==='confirmed'?`<button class="btn hqBtnPrepCheck" style="width:100%;margin-top:8px" ${btnAttr('h2C120EmployeeEdit',[w.id])}>日報を訂正する</button>`:''}</div>`;
  body+=`<div class="card"><b>休憩・中断の記録</b>${pauses.map(p=>`<div class="small" style="padding:6px 0">${esc(p.kind)} ${dt2(p.start_at)}〜${p.end_at?dt2(p.end_at):'再開待ち'} ／ ${(p.staff_ids||[]).map(sid=>esc(mem.find(m=>m.staff_id===sid)?.staff_name||sid)).join('、')}</div>`).join('')||'<div class="small">まだありません</div>'}${ended&&h2CanPrep()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'後入力'])}>押し忘れた休憩を入力する</button><div id="c116BreakBox"></div>`:''}</div><button class="btn btn2" style="width:100%;margin-top:12px" ${btnAttr('hqPrepHome',[])}>いま動いている作業の一覧へ</button>`;
  pageShell('下処理',`${esc(w.place||'')} ／ ${esc(ended?'作業終了':w.status||'')}`,body);
  h2MatKgRefresh();
@@ -1610,18 +1613,18 @@ async function hqPrepCheckPage(from="",to="",only="未確定",msg=""){
   let q=`select=*&kind=eq.下処理&work_date=gte.${from}&work_date=lte.${to}&order=work_date.desc,started_at.desc&limit=500`;
   if(only==="未確定")q=`select=*&kind=eq.下処理&confirm_status=eq.未確定&status=neq.取消&order=work_date.asc,started_at.asc&limit=500`;
   else if(only!=="すべて")q+=`&confirm_status=eq.${encodeURIComponent(only)}`;
-  const works=await h2Works(q);const ids=works.map(w=>w.id);const[mats,mem]=await Promise.all([h2Materials(ids),h2Members(ids)]);
-  h2Set("h2CkList",works.length?works.map(w=>checkCard(w,mats.filter(m=>m.work_id===w.id),mem.filter(m=>m.work_id===w.id))).join(""):'<div class="notice">該当する下処理はありません。</div>');
+  const works=await h2Works(q);const ids=works.map(w=>w.id);const[mats,mem,signatures]=await Promise.all([h2Materials(ids),h2Members(ids),Promise.all(ids.map(id=>r2('hq_prep_signatures_v1199c121',{p_work_id:id}).catch(()=>[])))]);const signatureByWork=new Map(ids.map((id,i)=>[id,Array.isArray(signatures[i])?signatures[i][0]:null]));
+  h2Set("h2CkList",works.length?works.map(w=>checkCard(w,mats.filter(m=>m.work_id===w.id),mem.filter(m=>m.work_id===w.id),signatureByWork.get(w.id))).join(""):'<div class="notice">該当する下処理はありません。</div>');
  }catch(e){h2Set("h2CkList",`<div class="err">${esc(h2Err(e))}</div>`)}
 }
-function checkCard(w,mats,mem){
+function checkCard(w,mats,mem,signature=null){
  const d=h2Diff(w,mats),u=h2UsedKg(mats),yr=h2Yield(w);
  const people=new Set(mem.filter(m=>m.phase==="作業").map(m=>m.staff_id)).size,min=mem.filter(m=>m.phase==="作業").reduce((s,m)=>s+mins2(m.start_at,m.end_at),0);
  const old=w.confirm_status==="未確定"&&w.work_date<hqToday();
  return `<div class="card h2Work s${esc(w.status)}" ${old?'style="border:2px solid #dc2626"':""}><div class="itemHead"><div><b style="font-size:18px">${esc(w.raw_item_name||"")} → ${esc(w.product_name||"")}</b><div class="small">${esc(w.work_date)} ${esc(w.place||"")} ／ ${esc(w.status)}${old?' <span class="h2Red">前の日から未確定</span>':""}</div></div><span class="badge ${w.confirm_status==="確定"?"normal":w.confirm_status==="取消"?"unset":"warn"}">${esc(w.confirm_status)}</span></div>
  <div class="hqLotMeta"><div><span>使用原料</span><b>${u.kg?kg2(u.kg)+"kg":"—"}${u.unknown?"＋量目不明":""}</b></div><div><span>出来高</span><b>${kg2(w.yield_kg)}kg</b></div><div><span>廃棄</span><b>${kg2(w.waste_kg)}kg</b></div><div><span>差</span><b class="${d&&Math.abs(d.rate)>=0.1?"h2Red":""}">${d?`${kg2(d.kg)}kg（${pct2(d.rate)}）`:"—"}</b></div><div><span>歩留まり</span><b>${pct2(yr)}</b></div><div><span>作業</span><b>${people}名 ${hm2(min)}</b></div></div>
  ${w.confirm_status==="確定"?`<div class="small">確定：${esc(w.confirmed_by_name||"")} ${dt2(w.confirmed_at)}${w.stock_applied?" ／ 在庫に反映済み":" ／ 在庫には反映していません（オフの期間）"}</div>`:""}
- ${window.c117StandardBadge?window.c117StandardBadge(w,mats):''}<div class="row" style="margin-top:8px">${h2CanBoss()&&w.confirm_status!=="取消"&&w.status!=="作業中"?`<button class="btn hqBtnPrepCheck" ${btnAttr("hqPrepConfirmPage",[w.id])}>${w.confirm_status==="確定"?"修正・取消":"確認して確定"}</button>`:""}<button class="btn btn2" ${btnAttr("hqWorkPage",[w.id])}>作業の記録</button></div></div>`;
+ ${signature?`<div class="small" style="margin-top:6px">入力者：${esc(signature.signer_name||'')}</div>`:''}${window.c117StandardBadge?window.c117StandardBadge(w,mats):''}<div class="row" style="margin-top:8px">${h2CanBoss()&&w.confirm_status!=="取消"&&w.status!=="作業中"?`<button class="btn hqBtnPrepCheck" ${btnAttr("hqPrepConfirmPage",[w.id])}>${w.confirm_status==="確定"?"修正・取消":"確認して確定"}</button>`:""}<button class="btn btn2" ${btnAttr("hqWorkPage",[w.id])}>作業の記録</button></div></div>`;
 }
 function h2CkFilter(k){return hqPrepCheckPage(h2Val("h2CkF"),h2Val("h2CkT"),k)}
 async function h2ToggleStage2(on){
