@@ -48,24 +48,31 @@ SETUP = r"""()=>{
     if(t==='hq_work_pauses_v1199c116')return clone(T.hq_work_pauses_v1199c116.filter(p=>!q.includes('end_at=is.null')||!p.end_at));
     return selectBase(t,q);
   };
-  const startWork=(a,modern)=>{
+  const startWork=(a,modern,c120=false)=>{
     const id='W'+(T.hq_works_v1500.length+1),now=new Date().toISOString();
     const masterIds=modern?a.p_master_ids:[a.p_master_id];
-    const ms=masterIds.map(id=>T.hq_prep_masters_v1500.find(m=>m.id===id)).filter(Boolean);
-    const row={id,kind:a.p_kind,status:'作業中',confirm_status:'未確定',work_date:ymdKey(new Date()),
-      raw_item_name:ms[0]?.item_name||null,product_name:ms.map(m=>m.name).join('・'),prep_master_id:ms[0]?.id||null,
-      outputs:ms.length>1?ms.map(m=>({master_id:m.id,name:m.name,expiry_days:m.expiry_days,yield_kg:0})):[],
-      task_name:a.p_task_name||null,place:a.p_place,started_at:now,updated_at:now,pause_kind:''};
+    const ms=(masterIds||[]).map(id=>T.hq_prep_masters_v1500.find(m=>m.id===id)).filter(Boolean);
+    const outputs=c120?clone(a.p_outputs):ms.length>1?ms.map(m=>({master_id:m.id,name:m.name,expiry_days:m.expiry_days,yield_kg:0})):[];
+    const started=c120?a.p_started_at:now;
+    const row={id,kind:c120?'下処理':a.p_kind,status:'作業中',confirm_status:'未確定',work_date:ymdKey(new Date()),
+      raw_item_name:c120?T.hq_lots_v1400.find(l=>l.id===a.p_lot_ids[0])?.item_name:ms[0]?.item_name||null,product_name:outputs.map(x=>x.name).join('・')||ms.map(m=>m.name).join('・'),prep_master_id:ms[0]?.id||null,
+      outputs,task_name:a.p_task_name||null,place:a.p_place,started_at:started,updated_at:now,pause_kind:'',c120_flow:c120,review_status:c120?'draft':undefined};
     T.hq_works_v1500.push(row);
-    (a.p_lot_ids||[]).forEach((lotId,i)=>{const l=T.hq_lots_v1400.find(x=>x.id===lotId);T.hq_work_materials_v1500.push({id:'NM'+id+i,work_id:id,lot_id:lotId,lot_no:l.lot_no,item_name:l.item_name,unit:l.unit,pack_kg:10})});
-    (a.p_staff_ids||[]).forEach((staffId,i)=>{const s=T.hq_staff_v1500.find(x=>x.id===staffId);T.hq_work_members_v1500.push({id:'NP'+id+i,work_id:id,staff_id:staffId,staff_name:s.name,team:s.team,phase:'作業',start_at:now})});
-    return {id};
+    (a.p_lot_ids||[]).forEach((lotId,i)=>{const l=T.hq_lots_v1400.find(x=>x.id===lotId);T.hq_work_materials_v1500.push({id:'NM'+id+i,work_id:id,lot_id:lotId,lot_no:l.lot_no,item_name:l.item_name,unit:l.unit,pack_kg:10,qty:null})});
+    (a.p_staff_ids||[]).forEach((staffId,i)=>{const s=T.hq_staff_v1500.find(x=>x.id===staffId);T.hq_work_members_v1500.push({id:'NP'+id+i,work_id:id,staff_id:staffId,staff_name:s.name,team:s.team,phase:'作業',start_at:started})});
+    return {ok:true,id,updated_at:now};
   };
   const base=callRpc;
   callRpc=async(n,a)=>{
     __calls.push({n,a:clone(a)});
     if(window.__rpcFailOnce){const fail=window.__rpcFailOnce;window.__rpcFailOnce=null;throw new Error(fail)}
     if(n==='hq_work_start_v1199c116')return startWork(a,true);
+    if(n==='hq_prep_start_v1199c120')return startWork(a,false,true);
+    if(n==='hq_work_save_material_qty_v1199c112'){const m=T.hq_work_materials_v1500.find(x=>x.id===a.p_material_id&&x.work_id===a.p_work_id);if(!m)throw new Error('原料が見つかりません');m.qty=a.p_qty;const x=w(a.p_work_id);x.updated_at=new Date().toISOString();return {ok:true,updated_at:x.updated_at}}
+    if(n==='hq_work_join_v1500'){const s=T.hq_staff_v1500.find(x=>x.id===a.p_staff_ids[0]);T.hq_work_members_v1500.push({id:'J'+Date.now(),work_id:a.p_work_id,staff_id:s.id,staff_name:s.name,team:s.team,phase:'作業',start_at:new Date().toISOString()});return {ok:true}}
+    if(n==='hq_work_leave_v1500'){const m=T.hq_work_members_v1500.find(x=>x.work_id===a.p_work_id&&x.staff_id===a.p_staff_id&&!x.end_at);if(m)m.end_at=new Date().toISOString();return {ok:true}}
+    if(n==='hq_work_end_v1500'){const x=w(a.p_work_id);x.status='入力待ち';x.ended_at=new Date().toISOString();return {ok:true,status:'入力待ち'}}
+    if(n==='hq_prep_end_v1199c120'){const x=w(a.p_work_id);if(a.p_expected_updated_at!==x.updated_at)return {ok:false,message:'ほかの画面で更新されています'};x.status='入力待ち';x.ended_at=a.p_ended_at;x.updated_at=new Date().toISOString();T.hq_work_members_v1500.filter(m=>m.work_id===x.id&&!m.end_at).forEach(m=>m.end_at=a.p_ended_at);return {ok:true,id:x.id,updated_at:x.updated_at}}
     if(n==='hq_work_start_v1500')return startWork(a,false);
     if(n==='hq_work_save_inputs_v1199c116'){
       const x=w(a.p_work_id);x.outputs=clone(a.p_outputs);x.yield_kg=a.p_outputs.reduce((s,o)=>s+Number(o.yield_kg),0);x.waste_kg=a.p_waste_kg;x.inputs_saved_at=new Date().toISOString();return {ok:true};
@@ -231,29 +238,105 @@ class PrepWorkTests(unittest.TestCase):
         self.assertEqual(added["p_excluded_staff_ids"], ["S1"])
         self.assertLess(added["p_start"], added["p_end"])
 
-    def test_pair_start_uses_new_rpc_and_single_start_keeps_old_rpc(self):
+    def test_prep_start_uses_c120_rpc_for_multiple_outputs_and_custom_output(self):
         page = self.app("hq_prep")
         page.evaluate("()=>hqPrepNew('下処理')")
         page.locator("#h2NwBody select").first.wait_for()
         page.locator("#h2NwBody select").first.select_option("L1")
-        page.get_by_role("button", name="1/4芯・1/4葉を同時に作る", exact=True).click()
+        page.get_by_role("button", name="1/4芯", exact=True).click()
+        page.get_by_role("button", name="1/4葉", exact=True).click()
+        custom = page.locator("#h2NwCustomOutput")
+        custom.fill("手入力仕掛品")
+        self.assertEqual(custom.input_value(), "手入力仕掛品")
         page.get_by_role("button", name="作業台A", exact=True).click()
         page.evaluate("()=>h2NwAddStaff('S1')")
         page.get_by_role("button", name="作業開始", exact=True).click()
-        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_start_v1199c116')")
-        paired = self.calls(page, "hq_work_start_v1199c116")[0]["a"]
-        self.assertEqual(paired["p_master_ids"], ["PMC", "PML"])
-        self.assertEqual(paired["p_lot_ids"], ["L1"])
-        self.assertEqual(paired["p_staff_ids"], ["S1"])
+        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_prep_start_v1199c120')")
+        started = self.calls(page, "hq_prep_start_v1199c120")[0]["a"]
+        self.assertEqual(started["p_lot_ids"], ["L1"])
+        self.assertEqual(started["p_staff_ids"], ["S1"])
+        self.assertEqual([x["master_id"] for x in started["p_outputs"][:2]], ["PMC", "PML"])
+        self.assertEqual(started["p_outputs"][2]["name"], "手入力仕掛品")
+        self.assertTrue(started["p_outputs"][2]["custom"])
+        self.assertEqual(started["p_outputs"][2]["expiry_days"], 2)
+
+    def test_c120_active_work_keeps_materials_people_and_break_controls(self):
+        page = self.app("hq_prep")
+        page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.updated_at='2026-11-12T01:00:00Z';__T.hq_work_pauses_v1199c116.push({id:'B1',work_id:'W1',kind:'休憩',start_at:'2026-11-12T00:10:00Z',end_at:'2026-11-12T00:20:00Z',staff_ids:['S1','S2'],excluded_staff_ids:[]})}""")
+        self.work_page(page, "W1")
+        text = page.locator("body").inner_text()
+        for label in ("作業中の原料・使用数", "使い切った", "次の原料を追加", "休憩", "中断", "途中から入る人を追加", "抜ける"):
+            self.assertIn(label, text)
+        self.assertNotIn("清掃へ", text)
+        page.locator("#c112Qty_M1").fill("3")
+        page.get_by_role("button", name="使用数を保存", exact=True).click()
+        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_save_material_qty_v1199c112')")
+        self.assertEqual(self.calls(page, "hq_work_save_material_qty_v1199c112")[0]["a"]["p_qty"], 3)
+        page.get_by_role("button", name="途中から入る人を追加", exact=True).click()
+        page.locator("#h2JoinSel").select_option("S3")
+        page.get_by_role("button", name="選んだ人を入れる", exact=True).click()
+        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_join_v1500')")
+        page.get_by_role("button", name="中断（別の作業へ）", exact=True).click()
+        page.get_by_role("button", name="全員の作業を中断", exact=True).click()
+        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_pause_v1199c116')")
+
+    def test_c120_end_requires_saved_materials_and_active_people(self):
+        page = self.app("hq_prep")
+        page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.updated_at='2026-11-12T01:00:00Z'}""")
+        self.work_page(page, "W1")
+        page.locator("#c112Qty_M1").fill("3")
+        page.get_by_role("button", name="作業終了して日報へ", exact=True).click()
+        self.assertIn("先に", page.evaluate("()=>__alerts.at(-1)"))
+        self.assertEqual(self.calls(page, "hq_prep_end_v1199c120"), [])
+        page.get_by_role("button", name="使用数を保存", exact=True).click()
+        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_save_material_qty_v1199c112')")
+        saved = self.calls(page, "hq_work_save_material_qty_v1199c112")[0]["a"]
+        page.get_by_role("button", name="作業終了して日報へ", exact=True).click()
+        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_prep_end_v1199c120')")
+        ended = self.calls(page, "hq_prep_end_v1199c120")[0]["a"]
+        self.assertNotEqual(ended["p_expected_updated_at"], "2026-11-12T01:00:00Z")
+        self.assertEqual(ended["p_work_id"], saved["p_work_id"])
+
+        page = self.app("hq_prep")
+        page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.pause_kind='休憩'}""")
+        self.work_page(page, "W1")
+        self.assertTrue(page.locator("#c120EndButton").is_disabled())
+        page.evaluate("()=>h2C120End('W1','x')")
+        page.wait_for_function("()=>__alerts.length>0")
+        self.assertIn("再開", page.evaluate("()=>__alerts.at(-1)"))
+        self.assertEqual(self.calls(page, "hq_prep_end_v1199c120"), [])
+
+    def test_c120_end_retry_and_start_custom_field_are_stable(self):
+        page = self.app("hq_prep")
+        page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.updated_at='2026-11-12T01:00:00Z'}""")
+        self.work_page(page, "W1")
+        page.evaluate("""()=>{let n=0;const base=callRpc;callRpc=async(name,args)=>{if(name==='hq_prep_end_v1199c120'&&n++===0){window.__firstEnd=JSON.parse(JSON.stringify(args));throw new Error(JSON.stringify({code:'P0001',message:'時刻を直してください'}))}return base(name,args)}}""")
+        page.get_by_role("button", name="作業終了して日報へ", exact=True).click()
+        page.wait_for_function("()=>__alerts.length>0")
+        page.locator("#c120EndedAt").fill("2026-11-12T12:00")
+        page.get_by_role("button", name="作業終了して日報へ", exact=True).click()
+        page.wait_for_function("()=>__calls.filter(c=>c.n==='hq_prep_end_v1199c120').length===1")
+        second = self.calls(page, "hq_prep_end_v1199c120")[0]["a"]
+        first = page.evaluate("()=>__firstEnd")
+        self.assertNotEqual(first["p_operation_id"], second["p_operation_id"])
+        self.assertNotEqual(first["p_ended_at"], second["p_ended_at"])
+
+        page = self.app("hq_prep")
         page.evaluate("()=>hqPrepNew('下処理')")
-        page.locator("#h2NwBody select").first.wait_for()
         page.locator("#h2NwBody select").first.select_option("L1")
-        page.get_by_role("button", name="キャベツ千切り", exact=True).click()
         page.get_by_role("button", name="作業台A", exact=True).click()
         page.evaluate("()=>h2NwAddStaff('S1')")
+        custom = page.locator("#h2NwCustomOutput")
+        custom.fill("手入力だけ")
+        self.assertFalse(page.locator("#h2NwStart").is_disabled())
+        page.evaluate("""()=>{let n=0;const base=callRpc;callRpc=async(name,args)=>{if(name==='hq_prep_start_v1199c120'&&n++===0)throw new Error('network');return base(name,args)}}""")
         page.get_by_role("button", name="作業開始", exact=True).click()
-        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_start_v1500')")
-        self.assertEqual(self.calls(page, "hq_work_start_v1500")[0]["a"]["p_master_id"], "PM1")
+        page.wait_for_function("()=>__alerts.includes('network')")
+        page.get_by_role("button", name="作業開始", exact=True).click()
+        page.wait_for_function("()=>__calls.filter(c=>c.n==='hq_prep_start_v1199c120').length===1")
+        started = self.calls(page, "hq_prep_start_v1199c120")[0]["a"]
+        self.assertEqual(started["p_outputs"][0]["name"], "手入力だけ")
+        self.assertTrue(started["p_outputs"][0]["custom"])
 
     def test_multiple_output_input_uses_new_save_rpc_and_total_yield(self):
         page = self.app("hq_prep")
@@ -315,7 +398,7 @@ class PrepWorkTests(unittest.TestCase):
           r,V195_ROLE_GUIDES[r].sections.map(s=>s.title)]))""")
         for role, titles in guides.items():
             self.assertIn("下処理で休憩・中断・再開する", titles)
-            self.assertIn("キャベツ1/4芯・1/4葉を同時に作る", titles)
+            self.assertIn("同じ原料から複数の仕掛品を作る", titles)
             self.assertEqual("下処理の使用原料・廃棄・出来高を訂正する" in titles, role != "hq_prep")
 
     def test_pause_preserves_unsaved_materials_and_correction_rejects_unsuccessful_result(self):

@@ -73,6 +73,8 @@ class PrepStaffStandardTests(unittest.TestCase):
     def test_material_camera_ignores_staff_and_switching_selection_stops_camera(self):
         page = self.app()
         page.evaluate("()=>hqPrepNew('下処理')")
+        self.assertEqual(page.evaluate("()=>__starts"), 0)
+        page.evaluate("()=>h2NwMaterialCamera()")
         self.assertEqual(page.evaluate("()=>__starts"), 1)
         page.evaluate("()=>__scanners.at(-1).cb('HQST-S1')")
         self.assertNotIn("佐藤 花子", page.locator("#h2NwBody .h2Chip").all_text_contents())
@@ -171,13 +173,13 @@ class PrepStaffStandardTests(unittest.TestCase):
     def test_role_guides_match_selection_report_and_standard_workflow(self):
         page = self.app()
         sections = page.evaluate("()=>V195_ROLE_GUIDES.hq_prep.sections")
-        report = next(s for s in sections if s["title"] == "下処理日報をあとから登録・確認・編集する")
-        self.assertIn("下処理班で全項目", " ".join(report["steps"]))
+        report = next(s for s in sections if s["title"] == "下処理日報を確認して社員へ送る")
+        self.assertIn("下処理班は社員の確認前", report["check"])
         start = next(s for s in sections if s["title"] == "下処理を始める（パートさん）")
         self.assertIn("一覧から選びます", " ".join(start["steps"]))
         self.assertNotIn("標準歩留まりを設定して日報を確認する", [s["title"] for s in sections])
         boss_titles = page.evaluate("()=>V195_ROLE_GUIDES.hq_worker.sections.map(s=>s.title)")
-        self.assertIn("標準歩留まりを設定して日報を確認する", boss_titles)
+        self.assertIn("下処理日報を確認して社員へ送る", boss_titles)
 
 
 if __name__ == "__main__":
