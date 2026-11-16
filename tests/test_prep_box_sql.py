@@ -1,5 +1,7 @@
 """c123 箱の半端と手入力廃棄を019〜050のローカル使い捨てPostgreSQLで検証する。"""
 import json
+import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -8,6 +10,7 @@ from test_prep_flow_sql import PrepC120FlowSqlTests
 from test_prep_work_sql import ADMIN, LOT_1, LOT_2, OTHER, PREP, WORKER, MASTER_1, STAFF_1
 
 ROOT = Path(__file__).resolve().parents[1]
+SQL_047 = next((ROOT / "db").glob("047_*.sql"))
 SQL_050 = ROOT / "db" / "050_本社下処理_箱の半端と廃棄の手入力.sql"
 W1 = "70000000-0000-0000-0000-000000000001"
 W2 = "70000000-0000-0000-0000-000000000002"
@@ -117,6 +120,23 @@ class PrepBoxSqlTests(unittest.TestCase):
         self.sql(f"update public.hq_lots_v1400 set unit='kg',current_qty=25,received_qty=25,planned_qty=25,status='在庫あり',planned_count=3,unit_weight_kg=10,sheet_meta='{{}}'::jsonb where id='{LOT_2}'")
         result = self.use(W1, LOT_2, 1, "半端", None, None, 4, None, "72000000-0000-0000-0000-000000000030")
         self.assertEqual((result["used_qty"], result["remaining_qty"], result["unopened_cases"], result["open_box_kg"]), (6, 4, None, None))
+
+    def test_waste_patch_applies_when_old_function_uses_crlf_and_other_spacing(self):
+        # 本番のSQLエディタ経由で改行がCRLF・空白違いになった旧関数でも、050が止まらず廃棄の手入力を入れられる。
+        source = SQL_047.read_text(encoding="utf-8")
+        match = re.search(r"create or replace function public\.hq_prep_report_save_v1199c120\(.*?\nend \$f\$;", source, re.S)
+        self.assertIsNotNone(match)
+        old = match.group(0).replace("v_waste_kg:=v_raw_kg-v_yield_kg;", "v_waste_kg := v_raw_kg - v_yield_kg ;").replace("\n", "\r\n")
+        with tempfile.TemporaryDirectory() as folder:
+            old_file = Path(folder) / "old_c120_save.sql"
+            old_file.write_text(old, encoding="utf-8", newline="")
+            self.pg.file(old_file)
+        signature = "'public.hq_prep_report_save_v1199c120(uuid,uuid,timestamp with time zone,jsonb)'::regprocedure"
+        self.assertEqual(self.sql(f"select position('-- c123 manual waste v1' in pg_get_functiondef({signature}))", True), "0")
+        self.assertIn(chr(13), self.sql(f"select pg_get_functiondef({signature})", True) + chr(13))
+        self.pg.file(SQL_050)
+        self.assertEqual(self.sql(f"select (position('-- c123 manual waste v1' in pg_get_functiondef({signature}))>0)::text", True), "true")
+        self.pg.file(SQL_050)
 
     def test_manual_waste_auto_and_range_across_c120_paths(self):
         self.reset()

@@ -228,22 +228,22 @@ begin
 end $f$;
 
 -- 047のc120保存関数は、既存本体の廃棄自動計算箇所だけを再実行可能に差し替える。
+-- 本番のSQLエディタ経由で改行がCRLFになっていても、字下げが違っても探せるよう、空白・改行は問わずに探す。
 do $block$
-declare d text; old_code text; new_code text;
+declare d text; pat text:='v_waste_kg\s*:=\s*v_raw_kg\s*-\s*v_yield_kg\s*;'; hits integer; new_code text;
 begin
   d:=pg_get_functiondef('public.hq_prep_report_save_v1199c120(uuid,uuid,timestamp with time zone,jsonb)'::regprocedure);
   if position('-- c123 manual waste v1' in d)=0 then
-    old_code:='  v_waste_kg:=v_raw_kg-v_yield_kg;'||chr(10)||'  norm:=public.hq_c120_normalize_intervals(p_work_id,v_started,v_ended,p_report->''members'',coalesce(p_report->''breaks'',''[]''::jsonb));';
-    new_code:='  -- c123 manual waste v1' || chr(10) ||
+    select count(*) into hits from regexp_matches(d,pat,'g');
+    if hits<>1 then raise exception 'c120日報保存RPCの廃棄計算箇所を確認してください'; end if;
+    new_code:='-- c123 manual waste v1' || chr(10) ||
       '  if p_report ? ''waste_kg'' and p_report->''waste_kg'' <> ''null''::jsonb then' || chr(10) ||
       '    if jsonb_typeof(p_report->''waste_kg'')<>''number'' then raise exception ''廃棄（kg）は0以上の数字で入れてください''; end if;' || chr(10) ||
       '    v_waste_kg:=public.hq_c117_number(p_report->>''waste_kg'',''廃棄（kg）'');' || chr(10) ||
       '  else v_waste_kg:=v_raw_kg-v_yield_kg; end if;' || chr(10) ||
       '  if v_waste_kg<0 then raise exception ''廃棄（kg）は0以上の数字で入れてください''; end if;' || chr(10) ||
-      '  if v_yield_kg+v_waste_kg>v_raw_kg then raise exception ''出来高と廃棄の合計が、使用した原料の重さを超えています''; end if;' || chr(10) ||
-      '  norm:=public.hq_c120_normalize_intervals(p_work_id,v_started,v_ended,p_report->''members'',coalesce(p_report->''breaks'',''[]''::jsonb));';
-    if position(old_code in d)=0 then raise exception 'c120日報保存RPCの廃棄計算箇所を確認してください'; end if;
-    execute replace(d,old_code,new_code);
+      '  if v_yield_kg+v_waste_kg>v_raw_kg then raise exception ''出来高と廃棄の合計が、使用した原料の重さを超えています''; end if;';
+    execute regexp_replace(d,pat,new_code);
   end if;
 end $block$;
 
