@@ -97,7 +97,7 @@ class PrepReportBrowserTests(unittest.TestCase):
         page.evaluate("()=>c117AddMaterialFromSelect()")
         page.locator('input[name="c117Master"][value="P1"]').check()
         page.evaluate("()=>c117MasterToggle()")
-        page.locator(".c117Qty").fill("5")
+        page.locator(".c117CaseQty").fill("5")
         page.locator('[data-c117-output="P1"] input').fill("40")
         page.select_option("#c117StaffSelect", "S1")
         page.evaluate("()=>c117AddMemberFromSelect()")
@@ -136,8 +136,8 @@ class PrepReportBrowserTests(unittest.TestCase):
         page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120').length===1")
         first = page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120')[0][1]")
         page.evaluate("()=>c120NewReportPage()")
-        page.locator(".c117Qty").wait_for()
-        self.assertEqual(page.locator(".c117Qty").input_value(), "5")
+        page.locator(".c117CaseQty").wait_for()
+        self.assertEqual(page.locator(".c117CaseQty").input_value(), "5")
         page.evaluate("()=>c120Review();c120SaveDraft()")
         page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120').length===2")
         self.assertEqual(page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120')[1][1]"), first)
@@ -161,7 +161,7 @@ class PrepReportBrowserTests(unittest.TestCase):
         page.evaluate("""()=>{const original=window.__h2.h2Works;window.__h2.h2Works=async q=>(await original(q)).map(w=>w.id==='C120'?{...w,review_status:'confirmed',confirm_status:'確定'}:w)}""")
         page.evaluate("()=>c117ReportPage('C120')")
         page.locator("#c120CorrectionReason").wait_for()
-        page.locator(".c117Qty").fill("5")
+        page.locator(".c117CaseQty").fill("5")
         page.locator("#c120CorrectionReason").fill("数量を訂正")
         page.evaluate("()=>c120Review();c120SaveDraft()")
         page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120').length===1")
@@ -170,7 +170,7 @@ class PrepReportBrowserTests(unittest.TestCase):
         self.assertIn("訂正を保存しました", page.locator("body").inner_text())
         self.assertGreaterEqual(page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_available_lots_v1199c120').length"), 2)
         page.evaluate("()=>c120Edit()")
-        self.assertEqual(page.locator(".c117Qty").input_value(), "5")
+        self.assertEqual(page.locator(".c117CaseQty").input_value(), "5")
 
     def test_c120_partial_resume_keeps_original_breaks_and_work_intervals(self):
         page = self.open_app()
@@ -185,9 +185,9 @@ class PrepReportBrowserTests(unittest.TestCase):
           window.__h2.sel2=async()=>JSON.parse(JSON.stringify(pauses));
         }""")
         page.evaluate("()=>c117ReportPage('C120')")
-        page.locator(".c117Qty").wait_for()
+        page.locator(".c117CaseQty").wait_for()
         self.assertEqual(page.locator('[data-c117-member]').count(), 3)
-        page.locator(".c117Qty").fill("5")
+        page.locator(".c117CaseQty").fill("5")
         page.evaluate("()=>c120Review();c120SaveDraft()")
         payload = page.evaluate("()=>__calls.find(x=>x[0]==='hq_prep_report_save_v1199c120')[1].p_report")
         self.assertEqual([(m['start_at'],m['end_at']) for m in payload['members']], [
@@ -200,7 +200,7 @@ class PrepReportBrowserTests(unittest.TestCase):
             ('中断','2026-11-12T10:30:00+09:00','2026-11-12T10:45:00+09:00',[]),
         ])
         page.evaluate("()=>c117ReportPage('C120')")
-        page.locator(".c117Qty").wait_for()
+        page.locator(".c117CaseQty").wait_for()
         self.assertEqual(page.locator('[data-c117-member]').count(), 3)
         self.assertEqual(page.locator('[data-c117-break]').count(), 2)
 
