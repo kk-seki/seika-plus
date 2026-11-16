@@ -168,7 +168,7 @@ class PrepMaterialTests(unittest.TestCase):
 
     def test_guide_has_material_step(self):
         p=self.app()
-        self.assertTrue(p.evaluate("()=>V195_ROLE_GUIDES.hq_prep.sections.some(s=>s.title.includes('次の原料を追加'))"))
+        self.assertTrue(p.evaluate("()=>V195_ROLE_GUIDES.hq_prep.sections.some(s=>s.title.includes('パレットごとに原料を記録'))"))
 
 if __name__=='__main__':
     unittest.main()

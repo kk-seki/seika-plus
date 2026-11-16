@@ -176,7 +176,7 @@ class PrepStaffStandardTests(unittest.TestCase):
         report = next(s for s in sections if s["title"] == "下処理日報を確認して社員へ送る")
         self.assertIn("下処理班は社員の確認前", report["check"])
         start = next(s for s in sections if s["title"] == "下処理を始める（パートさん）")
-        self.assertIn("一覧から選びます", " ".join(start["steps"]))
+        self.assertIn("班の名前を押して一覧を開き", " ".join(start["steps"]))
         self.assertNotIn("標準歩留まりを設定して日報を確認する", [s["title"] for s in sections])
         boss_titles = page.evaluate("()=>V195_ROLE_GUIDES.hq_worker.sections.map(s=>s.title)")
         self.assertIn("下処理日報を確認して社員へ送る", boss_titles)
