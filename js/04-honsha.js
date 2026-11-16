@@ -294,7 +294,7 @@ function hqSheetHtml(l,pages){
  td.name{font-size:46pt;font-weight:900}td.name small.spec{font-size:20pt;font-weight:800;margin-left:5mm}td.name .nameLine{display:flex;align-items:baseline;gap:5mm;line-height:1.1}td.name .nameLine .item{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}td.name .nameLine small.spec{flex:0 1 auto;min-width:0;max-width:30%;line-height:1.1;overflow-wrap:anywhere;margin-left:0}td.date{color:#000;font-size:34pt;font-weight:900}td.small{font-size:14pt;font-weight:800;color:#000!important}td.total{font-size:34pt;font-weight:900;color:#000}.right img{width:58mm;height:58mm;image-rendering:pixelated}.right .sub{color:#000!important}
  </style></head><body><div class="bar"><button onclick="window.close()">閉じる</button><button onclick="window.print()">印刷</button></div>
  ${pages.map(pg=>`<div class="sheet${fromIshioka||via?" ishioka":""}"><div class="head"><h1>${fromIshioka?"石岡 → 本社":via?"石岡経由 → 本社":"本社入荷"}</h1><span>SEIKA＋　${fromIshioka?"石岡青果センター発":via?"本社直接入荷（石岡経由）":"本社"}</span></div><div class="main"><div class="left"><table>
- <tr><th>品名</th><td class="name">${hqSpecOf(l)?`<span class="nameLine"><span class="item">${esc(l.item_name||"-")}</span><small class="spec">${esc(hqSpecOf(l))}</small></span>`:esc(l.item_name||"-")}</td></tr>${row("本社入荷日",hqDateLabel(l.hq_received_date||l.planned_date),"date")}${pg.qty?`<tr><th>${l.unit==="kg"?"この容器":"このパレット"}</th><td class="this">${esc(pg.qty)}<small>${esc(pg.label)}</small>${pg.note&&!(big&&/^実測合計/.test(pg.note))?`<div style="font-size:15pt;font-weight:800">${esc(pg.note)}</div>`:""}</td></tr>`:""}${row("ロット合計",big&&lotCount?`${qtyLabel}（${lotCount}基）`:qtyLabel,"total")}${big?"":row("量目",l.unit==="kg"&&Number(l.sheet_meta?.per||l.unit_weight_kg)>0?`1基 ${hqQty(l.sheet_meta?.per||l.unit_weight_kg)}kg`:(hqPackOf(l)?`${hqPackOf(l)}`:"-"))}${row("仕入先",l.supplier)}${row("産地",l.origin)}${fromIshioka||via&&l.supplier?"":row("単協名",l.cooperative_name,"small")}
+ <tr><th>品名</th><td class="name">${hqSpecOf(l)?`<span class="nameLine"><span class="item">${esc(l.item_name||"-")}</span><small class="spec">${esc(hqSpecOf(l))}</small></span>`:esc(l.item_name||"-")}</td></tr>${row("本社入荷日",hqDateLabel(l.hq_received_date||l.planned_date),"date")}${pg.qty?`<tr><th>${l.unit==="kg"?"この容器":"このパレット"}</th><td class="this">${esc(pg.qty)}<small>${esc(pg.label)}</small>${pg.note&&!(big&&/^実測合計/.test(pg.note))?`<div style="font-size:15pt;font-weight:800">${esc(pg.note)}</div>`:""}</td></tr>`:""}${row("ロット合計",big&&lotCount?`${qtyLabel}（${lotCount}基）`:qtyLabel,"total")}${big?"":row("量目",l.unit==="kg"&&Number(l.sheet_meta?.per||l.unit_weight_kg)>0?`1基 ${hqQty(l.sheet_meta?.per||l.unit_weight_kg)}kg`:(hqPackOf(l)?`${hqPackOf(l)}`:"-"))}${row("仕入先",l.supplier)}${row("産地",l.origin)}
  </table></div><div class="right"><img src="${qr}" alt="QR"><div style="margin-top:4mm">本社で読み取ると<br>${fromIshioka?"入荷待ち原料":"この原料"}が開きます</div><div class="sub" style="margin-top:3mm;font-size:10pt">${fromIshioka?`元ロット No. ${esc(l.source_lot_no||"-")}<br>`:""}本社ロット No. ${esc(l.lot_no)}</div>${fromIshioka?`<div class="ishiokaDate" style="margin-top:4mm;padding-top:3mm;border-top:1.5px solid #000;width:66mm"><div style="font-size:11pt;font-weight:800">石岡入荷日</div><div style="font-size:18pt;font-weight:900;margin-top:1mm">${esc(hqDateLabel(l.ishioka_received_date)||"-")}</div></div>`:""}${via?`<div class="viaIshioka" style="margin-top:4mm;padding-top:3mm;border-top:1.5px solid #000;width:66mm"><div style="font-size:16pt;font-weight:900">石岡経由</div><div style="font-size:11pt;font-weight:800;margin-top:1mm">便</div><div style="font-size:15pt;font-weight:900">${esc(viaShip||"-")}</div><div style="font-size:11pt;font-weight:800;margin-top:1mm">出庫者</div><div style="font-size:15pt;font-weight:900">${esc(l.created_by_name||"-")}</div></div>`:""}</div></div></div>`).join("")}</body></html>`;
 }
 function qrDataUrlForPosterHq(payload){if(typeof qrcode!=="function")throw new Error("QRを作れませんでした");const q=qrcode(0,"M");q.addData(String(payload));q.make();return q.createDataURL(10,2)}
@@ -684,7 +684,7 @@ const HQ_GUIDE={
  switch:{title:"石岡と本社の画面を切り替える",where:"ホーム → いちばん上",steps:["ホームの「本社の画面へ」「石岡の画面へ」を押します。","本社社員・本社事務で石岡の画面を開いたときは、在庫を見るだけです。","石岡のアカウントで本社の画面を開いたときも、見るだけです（管理者を除く）。"],check:"ホームの上に「いまの画面」が出ます。",caution:"荷受け担当者・下処理班のアカウントは本社の画面だけで、切り替えはありません。切り替えはこの端末とこのアカウントだけに残ります。"},
  hqReceive:{title:"本社で受け入れる（品質評価と確定）",where:"本社ホーム → 入荷待ち原料 または QR読み取り（受け入れ・出庫）",steps:["届いた原料の「本社移動用」の貼り紙のQRを読み取ります。読めないときはロット番号を入力します。","入荷待ち原料は、出庫日と当日発注分／翌日発注分ごとにまとまって出ます。カードの黄色い帯で、便（例：原料便（12時着）・翌日便）と出庫した人を確認できます。","届いた数量を確認します。予定と違うときは実際の数量に直します。","品質評価（良好・要確認・不良）を選びます。要確認・不良は気になった点を選び、写真を1枚以上付けます。","「確定して本社の在庫にする」を押します。"],check:"確定すると「本社在庫」に入ります。確定するまでは本社の在庫に入りません。数量が予定と違うと「差異あり」と表示されます。本社入荷日は、受け入れが遅れて後日まとめて確定しても、石岡で出庫したときに決めた本社入荷日（本社直接入荷は登録したときに入れた入荷日）のままです（在庫表もその日に入ったものとして数えます）。",caution:"要確認・不良は社員に伝えてください。石岡から出庫を取り消した原料は、入荷待ちから自動で消えます。確定を間違えたときは、本社社員がロットの画面の「受け入れ確定を取り消す」で入荷待ちに戻せます（出庫がある場合は先に出庫を取り消します）。"},
  hqOut:{title:"使うときに出庫する",where:"本社ホーム → 在庫管理 → 使用出庫（QR読み取りからも出庫できます）",steps:["QRを読み取るか、一覧から原料を選びます（古い順に並んでいます）。","出庫先（下処理・原料出し）を選びます。","出庫する数量を入れます（小数も入れられます）。全部使うときは「全部」を押します。","「出庫する」を押すと、本社の在庫から数量が引かれます。"],check:"ロットの画面の「このロットの履歴」に出庫が残ります。間違えた出庫は、その出庫の「この出庫を取り消す」で取り消せます（本社社員・管理者。下処理班は自分がその日に出した分だけ）。使い切ったロットは「本社在庫」の「在庫なし」か「入出庫履歴」の「このロットを開く」から開きます。",caution:"網コンテナ・鉄コンテナ・パレテーナはkg、それ以外はケースで数えます。出庫を間違えたときは、履歴の「この出庫を取り消す」を押すと在庫が元に戻ります。出庫した本人はその日のうち、本社社員はいつでも取り消せます。"},
- hqDirect:{title:"本社に直接届いた原料を登録する",where:"本社ホーム → 入荷登録・品目 → 本社直接入荷",steps:["品目・荷姿・数量・量目・仕入先・産地・入荷日を入れます（必須）。網コンテナ・鉄コンテナ・パレテーナは量目を入れなくても登録できます。単協名と規格は、必要なときだけ入れます（規格は20文字まで。貼り紙の品名の右に印刷され、長い場合は文字の大きさを自動で調整します）。荷姿は、ダンボール・コンテナ・網コンテナ・鉄コンテナ・パレテーナ・紙袋・その他から選びます。","「登録して品質評価へ進む」を押します。","品質評価をして「確定して本社の在庫にする」を押します。確定した日が後日になっても、本社入荷日は登録したときに入れた入荷日のままです。","続けて出る画面で、パレットのケース数（大型容器は基数）と印刷枚数を入れて、貼り紙を印刷します。"],check:"確定すると本社在庫に入ります。",caution:"品目がないときは、本社社員が「入荷登録・品目」→「品目の追加・変更」で追加します。"},
+ hqDirect:{title:"本社に直接届いた原料を登録する",where:"本社ホーム → 入荷登録・品目 → 本社直接入荷",steps:["品目・荷姿・数量・量目・仕入先・産地・入荷日を入れます（必須）。網コンテナ・鉄コンテナ・パレテーナは量目を入れなくても登録できます。単協名と規格は、必要なときだけ入れます（単協名は貼り紙には出ません。規格は20文字まで。貼り紙の品名の右に印刷され、長い場合は文字の大きさを自動で調整します）。荷姿は、ダンボール・コンテナ・網コンテナ・鉄コンテナ・パレテーナ・紙袋・その他から選びます。","「登録して品質評価へ進む」を押します。","品質評価をして「確定して本社の在庫にする」を押します。確定した日が後日になっても、本社入荷日は登録したときに入れた入荷日のままです。","続けて出る画面で、パレットのケース数（大型容器は基数）と印刷枚数を入れて、貼り紙を印刷します。"],check:"確定すると本社在庫に入ります。",caution:"品目がないときは、本社社員が「入荷登録・品目」→「品目の追加・変更」で追加します。"},
  hqStock:{title:"本社の在庫と履歴を見る・Excelを作る",where:"本社ホーム → 在庫管理 → 本社在庫／入出庫履歴",steps:["「本社在庫」で品目ごとの合計とロットを見ます。上の「在庫あり／在庫なし／すべて」で切り替えると、使い切ったロット（最近30日に動きがあったもの）も探せます。","「入出庫履歴」で月を選ぶと、受け入れ確定・出庫・実数調整が並びます。各行の「このロットを開く」で、そのロットの画面へ進めます。","「この月のExcelを作る」で、現在の本社在庫・月の入出庫履歴・通常在庫・在庫表をExcelにします。"],check:"数量が合わないときは、本社社員がロットの画面の「実数調整」で直します。",caution:"実数調整には理由が必要です。"},
  hqItems:{title:"本社の品目を追加する",where:"本社ホーム → 入荷登録・品目 → 品目の追加・変更",steps:["上のタブで「QR品目」か「通常在庫の品目」を選びます。","QR品目：品目名・ふだんの単位・量目を入れて「追加する」を押します。","通常在庫の品目：品目名と1ケースのkgを入れて「追加する」を押します。通常在庫入力の画面の下の「通常在庫の品目を追加」からも追加できます。","使わなくなった品目は「表示しない」にします。"],check:"QR品目は本社直接入荷に、通常在庫の品目は通常在庫入力に出てきます。同じ名前をQR品目と通常在庫の品目の両方には登録できません。",caution:"加工用玉葱・皮むき人参(国産)・皮むき人参(中国)・皮むきじゃが芋は最初から入っています（保管目安は入荷日＋3日）。"},
  hqNormal:{title:"通常在庫を入力する（QRで管理しない品目）",where:"本社ホーム → 在庫管理 → 通常在庫入力",steps:["日付を確かめます（ふだんは今日）。","品目ごとにケース数とバラ（kg）を入れます。合計kgが自動で出ます。","「保存する」を押します。同じ日にもう一度保存すると上書きします。","品目がないときは、画面の下の「通常在庫の品目を追加」で追加します（本社社員・管理者）。"],check:"在庫表に、その日の数が出ます。",caution:"ケースもバラも空にして保存すると、その日の入力を消します。入力できるのは本社社員と荷受け担当者です。"},
@@ -1235,6 +1235,16 @@ async function opScan(k){
 }
 
 /* --- 作業の画面 --- */
+function h2C124PrepOpen(w){return w?.kind==='下処理'&&w?.confirm_status!=='確定'&&w?.stock_applied===false&&w?.review_status!=='confirmed'}
+function h2C124TimeEditable(w){return h2C124PrepOpen(w)&&w?.status!=='取消'}
+function h2C124CanDelete(w){return h2CanBoss()||(db.role==='hq_prep'&&h2C124PrepOpen(w))}
+function h2PauseControlsHtml(w){
+ const resume=w.pause_kind?`<button class="btn hqBtnPrep" style="width:100%;min-height:60px;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'再開'])}>${esc(w.pause_kind)}から再開する</button>`:'';
+ const add=w.pause_kind==='休憩'?`<button class="btn btn2" style="width:100%;min-height:60px;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'追加'])}>休憩に入る人を追加</button>`:'';
+ const start=!w.pause_kind?`<div class="row" style="margin-top:8px"><button class="btn btn2" ${btnAttr('h2PauseOpen',[w.id,'休憩'])}>休憩</button><button class="btn btn2" ${btnAttr('h2PauseOpen',[w.id,'中断'])}>中断（別の作業へ）</button></div>`:'';
+ return `<div class="card" id="c116PauseControls"><b>休憩・中断</b><div class="small">休憩に入らない人だけを選ぶと、残りの全員の時間を止めます。中断中は別の作業に移れます。</div>${resume}${add}${start}<div id="c116PauseBox"></div></div>`;
+}
+function h2PauseHistoryHtml(pauses,mem){return pauses.map((p,i)=>`<div class="small" style="padding:6px 0">${esc(p.kind)} ${dt2(p.start_at)}〜${p.end_at?dt2(p.end_at):'再開待ち'} ／ ${(p.staff_ids||[]).map(sid=>esc(mem.find(m=>m.staff_id===sid)?.staff_name||sid)).join('、')}${i&&p.kind==='休憩'?'（途中から）':''}</div>`).join('')||'<div class="small">まだありません</div>'}
 async function hqWorkPage(id,msg=""){
  setScreen("hqWorkPage",[id,msg]);
  pageShell("作業","",h2Loading());
@@ -1258,7 +1268,7 @@ async function hqWorkPage(id,msg=""){
   body+=`<div class="card" id="c112Materials"><b>作業中の原料・使用数</b><div class="small">原料を使い終わったら、そのロットで使った合計数を保存します。次の原料は、作業を終えずに追加できます。</div>${mats.map(m=>`<label class="label" style="margin-top:8px">${esc(m.item_name)} ${esc(m.lot_no)}（${m.unit==="kg"?"kg":"ケース"}）</label><div class="row"><input id="c112Qty_${esc(m.id)}" class="input" inputmode="decimal" data-c119="1" data-lot="${esc(m.lot_id)}" data-unit="${esc(m.unit)}" data-pack="${esc(m.pack_kg||'')}" value="${m.qty==null?"":hqQty(m.qty)}" placeholder="使った合計数"><button class="btn btn2" ${btnAttr("h2SaveMaterialQty",[w.id,m.id])}>使用数を保存</button></div><button class="btn green" style="width:100%;margin-top:6px" ${btnAttr("h2MatUseAll",[w.id,m.id,"save"])}>使い切った（残り全部・自動で入れて保存）</button><div class="small c119Kg" data-for="c112Qty_${esc(m.id)}"></div>`).join("")}<button class="btn hqBtnPrep" style="width:100%;margin-top:12px" ${btnAttr("h2AddMaterialOpen",[w.id])}>次の原料を追加（QR）</button><div id="c112AddBox"></div><div class="small" style="margin-top:8px">廃棄・出来高は、下処理全体が終わってから合計を入力します。在庫は確定時に減ります。</div></div>`;
  }
  if(w.kind==='下処理'&&w.status==='作業中'&&h2CanPrep()){
-  body+=`<div class="card" id="c116PauseControls"><b>休憩・中断</b><div class="small">休憩に入らない人だけを選ぶと、残りの全員の時間を止めます。中断中は別の作業に移れます。</div>${w.pause_kind?`<button class="btn hqBtnPrep" style="width:100%;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'再開'])}>${esc(w.pause_kind)}から再開する</button>`:`<div class="row" style="margin-top:8px"><button class="btn btn2" ${btnAttr('h2PauseOpen',[w.id,'休憩'])}>休憩</button><button class="btn btn2" ${btnAttr('h2PauseOpen',[w.id,'中断'])}>中断（別の作業へ）</button></div>`}<div id="c116PauseBox"></div></div>`;
+  body+=h2PauseControlsHtml(w);
  }
  if(w.status==="作業中"||w.status==="清掃中"){
   body+=`<div class="card"><b>いまの作業者（${open.length}名）</b>${open.map(m=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><div><b>${esc(m.staff_name)}</b><div class="small">${esc(m.team||"")} ／ ${m.phase} ${time2(m.start_at)}〜</div></div>${h2CanPrep()?`<button class="btn btn2" style="min-height:40px" ${btnAttr("h2WorkLeave",[w.id,m.staff_id,m.staff_name])}>抜ける</button>`:""}</div>`).join("")||'<div class="small">いません</div>'}
@@ -1277,13 +1287,14 @@ async function hqWorkPage(id,msg=""){
   const d=h2Diff(w,mats);
   body+=`<div class="card"><b>入力した数</b><div class="small">使用原料：${mats.map(m=>`${esc(m.lot_no)} ${m.qty==null?"—":hqQty(m.qty)}${m.unit==="kg"?"kg":"ケース"}`).join("、")}</div><div class="small">廃棄 ${kg2(w.waste_kg)}kg ／ 出来高 ${kg2(w.yield_kg)}kg${w.outputs?.length>1?`（${X.h2OutputParts(w).map(p=>`${esc(p.name)} ${kg2(p.yield_kg)}kg`).join(" ／ ")}）`:""}${d?` ／ 差 <span class="${Math.abs(d.rate)>=0.1?"h2Red":""}">${kg2(d.kg)}kg（${X.pct2(d.rate)}）</span>`:""}</div><div class="small">入力：${esc(w.inputs_saved_by_name||"")} ${dt2(w.inputs_saved_at)}${w.label_printed_at?` ／ ラベル印刷 ${dt2(w.label_printed_at)}（${w.label_print_count}回）`:""}</div></div>`;
  }
- if(w.kind==='下処理'&&w.status!=='取消'&&h2CanPrep())body+=`<div class="card" id="c116BreakHistory"><b>休憩・中断の記録</b>${pauses.map(p=>`<div class="small" style="padding:6px 0">${esc(p.kind)} ${dt2(p.start_at)}〜${p.end_at?dt2(p.end_at):'再開待ち'} ／ ${p.staff_ids.map(sid=>esc(mem.find(m=>m.staff_id===sid)?.staff_name||sid)).join('、')}</div>`).join('')||'<div class="small">まだありません</div>'}<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'後入力'])}>押し忘れた休憩を入力する</button><div id="c116BreakBox"></div></div>`;
+ if(w.kind==='下処理'&&w.status!=='取消'&&h2CanPrep())body+=`<div class="card" id="c116BreakHistory"><b>休憩・中断の記録</b>${h2PauseHistoryHtml(pauses,mem)}<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'後入力'])}>押し忘れた休憩を入力する</button><div id="c116BreakBox"></div></div>`;
  if(w.kind==='下処理'&&w.inputs_saved_at&&w.status!=='取消'&&h2CanBoss())body+=`<button class="btn hqBtnPrepCheck" style="width:100%;margin-bottom:8px" ${btnAttr('h2CorrectPrepPage',[w.id])}>使用原料・廃棄・出来高を訂正する</button>`;
  if(w.kind==='下処理'&&w.c120_flow!==true&&w.status!=='作業中'&&w.status!=='取消'&&h2CanBoss()&&typeof window.c117ReportPage==='function')body+=`<button class="btn btn2" style="width:100%;margin-bottom:8px" ${btnAttr('c117ReportPage',[w.id])}>日報全体を確認・編集する</button>`;
- body+=`<div class="card"><b>作業時間の記録</b>${mem.map(m=>`<div style="padding:6px 0;border-top:1px solid #e2e8f0"><b>${esc(m.staff_name)}</b> <span class="small">${m.phase}</span><div class="small">${time2(m.start_at)}〜${m.end_at?time2(m.end_at):"（作業中）"}　${hm2(mins2(m.start_at,m.end_at))}${m.end_reason?` ／ ${esc(m.end_reason)}`:""}${m.fixed_by_name?` ／ 修正：${esc(m.fixed_by_name)}`:""}</div>${h2CanBoss()?`<button class="btn btn2" style="min-height:36px;margin-top:4px" ${btnAttr("h2FixMember",[m.id,m.start_at,m.end_at||"",m.staff_name])}>時刻を直す</button>`:""}</div>`).join("")||'<div class="small">まだありません</div>'}
- ${h2CanBoss()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("h2AddMemberPage",[w.id])}>読み忘れた人を追加する</button>`:""}</div>`;
+ const canTimeEdit=h2CanPrep()&&h2C124TimeEditable(w),isC120=w.c120_flow===true;
+ body+=`<div class="card"><b>作業時間の記録</b>${mem.map(m=>{const pauseRow=['休憩','中断','休憩（後入力）'].includes(m.end_reason)||(!m.end_at&&w.pause_kind);const edit=canTimeEdit?`<button class="btn btn2" style="min-height:60px;margin-top:6px" ${pauseRow?'disabled':''} ${btnAttr('h2MemberTimeOpen',[w.id,m.id,m.start_at,m.end_at||'',m.staff_name,pauseRow])}>${pauseRow?'休憩から直してください':'時間を直す'}</button>`:(h2CanBoss()&&!isC120?`<button class="btn btn2" style="min-height:60px;margin-top:6px" ${btnAttr("h2FixMember",[m.id,m.start_at,m.end_at||"",m.staff_name])}>時刻を直す</button>`:'');return `<div style="padding:6px 0;border-top:1px solid #e2e8f0"><b>${esc(m.staff_name)}</b> <span class="small">${m.phase}</span><div class="small">${time2(m.start_at)}〜${m.end_at?time2(m.end_at):"（作業中）"}　${hm2(mins2(m.start_at,m.end_at))}${m.end_reason?` ／ ${esc(m.end_reason)}`:""}${m.fixed_by_name?` ／ 修正：${esc(m.fixed_by_name)}`:""}</div>${edit}</div>`}).join("")||'<div class="small">まだありません</div>'}${!canTimeEdit&&h2CanPrep()&&!h2C124TimeEditable(w)?'<div class="small" style="margin-top:8px">確定後の時刻は、日報（社員の訂正）から直してください。</div>':''}
+ ${h2CanBoss()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr("h2AddMemberPage",[w.id])}>読み忘れた人を追加する</button>`:""}<div id="c124MemberTimeBox"></div></div>`;
  if(w.status!=="取消"&&w.status!=="完了"&&(h2CanBoss()||(db.role==="hq_prep"&&w.status==="作業中")))body+=`<details class="card"><summary><b>間違えて始めた作業を取り消す</b></summary><button class="btn red" style="width:100%;margin-top:8px" ${btnAttr("h2WorkCancel",[w.id])}>この作業を取り消す</button></details>`;
- if(h2CanBoss())body+=h2DeleteWorkHtml(w);
+ if(h2C124CanDelete(w))body+=h2DeleteWorkHtml(w);
  if(h2CanBoss()&&w.kind==="下処理"&&w.status!=="作業中"&&w.status!=="取消")body+=`<button class="btn hqBtnPrepCheck" style="width:100%;margin-top:8px" ${btnAttr("hqPrepConfirmPage",[w.id])}>確認・確定の画面へ</button>`;
  body+=`<button class="btn btn2" style="width:100%;margin-top:12px" ${btnAttr("hqPrepHome",[])}>いま動いている作業の一覧へ</button>`;
  pageShell(w.kind==="下処理"?"下処理":w.kind==="清掃"?"清掃":"作業",`${esc(w.place||"")} ／ ${esc(w.status)}`,body);
@@ -1344,13 +1355,15 @@ async function h2C120WorkPage(w,mem,mats,msg='',pauses=[]){
   let palletEntries=[];try{const rows=await r2('hq_work_pallet_list_v1199c122',{p_work_ids:[w.id]});palletEntries=Array.isArray(rows)?rows:(Array.isArray(rows?.entries)?rows.entries:[])}catch(e){palletEntries=[]}
   body+=`<div class="card" id="c112Materials"><b style="font-size:22px">作業中の原料・使用数</b><div class="small">原料は、パレット（大型容器は1基）ごとに記録します。</div><button class="btn c122Read h2Big" style="margin-top:10px" ${btnAttr('h2PalletOpenReader',[w.id])}>原料のQRを読む（1パレット・1基ずつ）</button><div id="c122PalletBox"></div>${mats.map(m=>`<div class="c122Material"><b>${esc(m.item_name)}　${esc(m.lot_no)}</b>${h2PalletRecordsHtml(m,palletEntries)}</div>`).join('')}<details class="c122Manual"><summary>数を手で直す</summary><div class="small">パレット記録ができないときだけ使います。</div>${mats.map(m=>`<label class="label" style="margin-top:8px">${esc(m.item_name)} ${esc(m.lot_no)}（${m.unit==='kg'?'kg':'ケース'}）</label><div class="row"><input id="c112Qty_${esc(m.id)}" class="input" inputmode="decimal" data-c119="1" data-lot="${esc(m.lot_id)}" data-unit="${esc(m.unit)}" data-pack="${esc(m.pack_kg||'')}" value="${m.qty==null?'':hqQty(m.qty)}" placeholder="使った合計数"><button class="btn btn2" ${btnAttr('h2SaveMaterialQty',[w.id,m.id])}>使用数を保存</button></div><button class="btn green" style="width:100%;margin-top:6px" ${btnAttr('h2MatUseAll',[w.id,m.id,'save'])}>使い切った（残り全部・自動で入れて保存）</button><div class="small c119Kg" data-for="c112Qty_${esc(m.id)}"></div>`).join('')}</details></div>`;
  }
- if(active&&h2CanPrep())body+=`<div class="card" id="c116PauseControls"><b>休憩・中断</b><div class="small">休憩に入らない人だけを選ぶと、残りの全員の時間を止めます。中断中は別の作業に移れます。</div>${w.pause_kind?`<button class="btn hqBtnPrep" style="width:100%;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'再開'])}>${esc(w.pause_kind)}から再開する</button>`:`<div class="row" style="margin-top:8px"><button class="btn btn2" ${btnAttr('h2PauseOpen',[w.id,'休憩'])}>休憩</button><button class="btn btn2" ${btnAttr('h2PauseOpen',[w.id,'中断'])}>中断（別の作業へ）</button></div>`}<div id="c116PauseBox"></div></div>`;
+ if(active&&h2CanPrep())body+=h2PauseControlsHtml(w);
  if(active)body+=`<div class="card"><b>いまの作業者（${open.length}名）</b>${open.map(m=>`<div class="itemHead" style="padding:6px 0;border-top:1px solid #e2e8f0"><div><b>${esc(m.staff_name)}</b><div class="small">${esc(m.team||'')} ／ 作業 ${time2(m.start_at)}〜</div></div>${h2CanPrep()?`<button class="btn btn2" style="min-height:40px" ${btnAttr('h2WorkLeave',[w.id,m.staff_id,m.staff_name])}>抜ける</button>`:''}</div>`).join('')||'<div class="small">いません</div>'}${h2CanPrep()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${w.pause_kind?'disabled':''} ${btnAttr('h2WorkJoinOpen',[w.id])}>途中から入る人を追加</button><div id="h2JoinBox"></div>`:''}</div>`;
  if(active&&h2CanPrep())body+=`<div class="card"><b>作業終了</b><label class="label" style="margin-top:6px">終了時刻（日本時間）</label><input id="c120EndedAt" type="datetime-local" class="input" value="${esc(C120_END?.id===w.id?C120_END.endedLocal:h2JstLocalNow())}" ${w.pause_kind?'disabled':''}><div class="small">${w.pause_kind?'休憩・中断の対象者全員を再開してから終了してください。':'正しい終了時刻に直してから終了できます。開始時刻は日報で訂正します。'}</div><button id="c120EndButton" class="btn hqBtnOut h2Big" style="margin-top:10px" ${w.pause_kind?'disabled':''} ${btnAttr('h2C120End',[w.id,w.updated_at])}>作業終了して日報へ</button></div>`;
  if(ended&&h2CanPrep())body+=`<div class="card"><b>日報・確認</b><div class="small">作業時間・原料・出来高・廃棄をまとめて編集し、確認へ送ります。</div><button class="btn hqBtnPrep h2Big" style="margin-top:8px" ${btnAttr('c117ReportPage',[w.id])}>日報を入力・編集する</button></div>`;
  if(signatures.length)body+=h2C120SignatureHtml(signatures);
  if(canReview)body+=`<div class="card"><b>本社社員の確認</b><div class="small">日報と入力者サインを確認してから操作してください。</div>${w.review_status==='submitted'?`<button class="btn hqBtnConfirm" style="width:100%;margin-top:8px" ${btnAttr('h2C120Confirm',[w.id,w.updated_at])}>確認済みにする</button>`:''}${['submitted','confirmed'].includes(w.review_status)?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr('h2C120Return',[w.id,w.updated_at])}>差し戻す</button>`:''}${w.review_status==='confirmed'?`<button class="btn hqBtnPrepCheck" style="width:100%;margin-top:8px" ${btnAttr('h2C120EmployeeEdit',[w.id])}>日報を訂正する</button>`:''}</div>`;
- body+=`<div class="card"><b>休憩・中断の記録</b>${pauses.map(p=>`<div class="small" style="padding:6px 0">${esc(p.kind)} ${dt2(p.start_at)}〜${p.end_at?dt2(p.end_at):'再開待ち'} ／ ${(p.staff_ids||[]).map(sid=>esc(mem.find(m=>m.staff_id===sid)?.staff_name||sid)).join('、')}</div>`).join('')||'<div class="small">まだありません</div>'}${ended&&h2CanPrep()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'後入力'])}>押し忘れた休憩を入力する</button><div id="c116BreakBox"></div>`:''}</div><button class="btn btn2" style="width:100%;margin-top:12px" ${btnAttr('hqPrepHome',[])}>いま動いている作業の一覧へ</button>`;
+ const canTimeEdit=h2CanPrep()&&h2C124TimeEditable(w);
+ body+=`<div class="card"><b>作業時間の記録</b>${mem.map(m=>{const pauseRow=['休憩','中断','休憩（後入力）'].includes(m.end_reason)||(!m.end_at&&w.pause_kind);return `<div style="padding:6px 0;border-top:1px solid #e2e8f0"><b>${esc(m.staff_name)}</b><div class="small">${time2(m.start_at)}〜${m.end_at?time2(m.end_at):'（作業中）'}${m.end_reason?` ／ ${esc(m.end_reason)}`:''}</div>${canTimeEdit?`<button class="btn btn2" style="min-height:60px;margin-top:6px" ${pauseRow?'disabled':''} ${btnAttr('h2MemberTimeOpen',[w.id,m.id,m.start_at,m.end_at||'',m.staff_name,pauseRow])}>${pauseRow?'休憩から直してください':'時間を直す'}</button>`:''}</div>`}).join('')||'<div class="small">まだありません</div>'}${!canTimeEdit&&h2CanPrep()&&!h2C124TimeEditable(w)?'<div class="small" style="margin-top:8px">確定後の時刻は、日報（社員の訂正）から直してください。</div>':''}<div id="c124MemberTimeBox"></div></div>`;
+ body+=`<div class="card"><b>休憩・中断の記録</b>${h2PauseHistoryHtml(pauses,mem)}${ended&&h2CanPrep()?`<button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr('h2PauseOpen',[w.id,'後入力'])}>押し忘れた休憩を入力する</button><div id="c116BreakBox"></div>`:''}</div>${h2C124CanDelete(w)?h2DeleteWorkHtml(w):''}<button class="btn btn2" style="width:100%;margin-top:12px" ${btnAttr('hqPrepHome',[])}>いま動いている作業の一覧へ</button>`;
  pageShell('下処理',`${esc(w.place||'')} ／ ${esc(ended?'作業終了':w.status||'')}`,body);
  h2MatKgRefresh();
  document.querySelectorAll('#c112Materials input').forEach(el=>el.addEventListener('input',()=>{document.getElementById('c112Materials').dataset.dirty='1'}));
@@ -1391,8 +1404,14 @@ async function h2CleanEnd(id){
  try{await r2("hq_work_clean_end_v1500",{p_work_id:id});H2.busy=false;return hqPrepHome("清掃を終えました。次の作業に進めます")}catch(e){H2.busy=false;alert(h2Err(e))}
 }
 async function h2WorkLeave(id,staffId,name){
- if(!confirm(`${name}さんが、この作業から抜けます。よろしいですか？`))return;
- try{await r2("hq_work_leave_v1500",{p_work_id:id,p_staff_id:staffId});return hqWorkPage(id,`${name}さんが抜けました`)}catch(e){alert(h2Err(e))}
+ if(!h2CanPrep()||H2.busy)return;
+ const mem=(await h2Members([id])).find(m=>m.staff_id===staffId&&!m.end_at);if(!mem)return alert('この人は、この作業に入っていません');
+ const box=document.createElement('div');box.className='card';box.id='c124LeaveBox';box.innerHTML=`<b>${esc(name)}さんが抜ける時刻</b><label class="label" style="margin-top:8px">抜けた時刻（日本時間）</label><input id="c124LeaveAt" type="datetime-local" class="input" min="${esc(h2C120JstLocal(mem.start_at))}" value="${esc(h2JstLocalNow())}"><div class="row" style="margin-top:10px"><button class="btn red" style="min-height:60px" ${btnAttr('h2WorkLeaveSave',[id,staffId,name])}>この時刻で抜ける</button><button class="btn btn2" style="min-height:60px" ${btnAttr('h2WorkLeaveClose',[])}>やめる</button></div>`;document.getElementById('c124LeaveBox')?.remove();document.querySelector('.wrap')?.append(box);box.scrollIntoView({block:'center'});
+}
+function h2WorkLeaveClose(){if(!H2.busy)document.getElementById('c124LeaveBox')?.remove()}
+async function h2WorkLeaveSave(id,staffId,name){
+ const leave=h2JstIso(h2Val('c124LeaveAt'));if(!leave)return alert('抜けた時刻を正しく入れてください');if(!confirm(`${name}さんが、この時刻で抜けます。よろしいですか？`))return;H2.busy=true;
+ try{const r=await r2('hq_work_leave_v1199c124',{p_work_id:id,p_staff_id:staffId,p_leave_at:leave});if(!r?.ok)throw new Error(r?.message||'保存できませんでした');return hqWorkPage(id,`${name}さんが抜けました`)}catch(e){alert(h2Err(e))}finally{H2.busy=false}
 }
 async function h2WorkJoinOpen(id){
  if(!h2CanPrep())return;
@@ -1544,18 +1563,19 @@ async function h2PauseOpen(id,kind){
   const [works,mem,pauses]=await Promise.all([h2Works(`select=*&id=eq.${id}`),h2Members([id]),sel2('hq_work_pauses_v1199c116',`select=*&work_id=eq.${id}&end_at=is.null&order=start_at.desc`)]);
   const w=works[0];if(!w||w.kind!=='下処理'||w.status==='取消')throw new Error('この下処理は操作できません');
   const box=document.getElementById(kind==='後入力'?'c116BreakBox':'c116PauseBox');if(!box)return;
-  const latest=pauses[0];
-  const resumed=new Set(latest?.resumed_staff_ids||[]);
-  const rows=kind==='再開'?mem.filter(m=>latest?.staff_ids.includes(m.staff_id)&&!resumed.has(m.staff_id)):kind==='後入力'?mem.filter(m=>m.phase==='作業'):mem.filter(m=>!m.end_at&&m.phase==='作業');
+  const latest=pauses[0],resumed=new Set(latest?.resumed_staff_ids||[]);
+  const waiting=new Map();pauses.forEach(p=>(p.staff_ids||[]).filter(sid=>!(p.resumed_staff_ids||[]).includes(sid)).forEach(sid=>waiting.set(sid,p)));
+  const rows=kind==='再開'?mem.filter(m=>waiting.has(m.staff_id)):kind==='追加'?mem.filter(m=>!m.end_at&&m.phase==='作業'):kind==='後入力'?mem.filter(m=>m.phase==='作業'):mem.filter(m=>!m.end_at&&m.phase==='作業');
   const people=[...new Map(rows.map(m=>[m.staff_id,m])).values()];
   if(!people.length)throw new Error('対象の作業者がいません');
-  if(kind==='再開'&&!latest)throw new Error('再開待ちの休憩・中断が見つかりません');
+  if(kind==='再開'&&!waiting.size)throw new Error('再開待ちの休憩・中断が見つかりません');
   C116_PAUSE={id,kind,op:newId(),attempt:null};
-  box.innerHTML=`<div class="notice" style="margin-top:8px"><b>${esc(kind==='後入力'?'押し忘れた休憩':kind)}</b><div class="small">${kind==='再開'?'この作業に戻る人を選んでください。別の作業中の人は、先にそちらから抜けてください。':kind==='中断'?'参加中の全員の時間を止めます。中断後は、別の作業を始められます。':'休憩に入らない人だけにチェックしてください。何も選ばなければ全員が休憩します。'}</div>
+  const atField=kind==='追加'?`<label class="label" style="margin-top:8px">休憩に入った時刻（日本時間）</label><input id="c124PauseAt" type="datetime-local" class="input" value="${esc(h2JstLocalNow())}">`:'';
+  box.innerHTML=`<div class="notice" style="margin-top:8px"><b>${esc(kind==='後入力'?'押し忘れた休憩':kind)}</b><div class="small">${kind==='再開'?'この作業に戻る人を選んでください。別の作業中の人は、先にそちらから抜けてください。':kind==='追加'?'いま作業中の人を選び、休憩に入った時刻を入れてください。':kind==='中断'?'参加中の全員の時間を止めます。中断後は、別の作業を始められます。':'休憩に入らない人だけにチェックしてください。何も選ばなければ全員が休憩します。'}</div>${atField}
    ${kind==='後入力'?`<div class="row" style="margin-top:8px"><div><label class="label">休憩の開始</label><input id="c116BreakStart" type="datetime-local" class="input" value=""></div><div><label class="label">休憩の終了</label><input id="c116BreakEnd" type="datetime-local" class="input" value=""></div></div>`:''}
-   ${kind==='中断'?'':`<div style="margin-top:8px"><b>${kind==='再開'?'再開する人':'休憩に入らない人'}</b>${people.map(m=>`<label style="display:block;padding:8px 0"><input type="checkbox" class="c116PausePerson" value="${esc(m.staff_id)}" ${kind==='再開'?'checked':''}> ${esc(m.staff_name)}</label>`).join('')}</div>`}
-   <button class="btn hqBtnPrep" style="width:100%;margin-top:8px" ${btnAttr('h2PauseSave',[])}>${kind==='再開'?'選んだ人で再開':kind==='後入力'?'休憩時間を保存':kind==='休憩'?'選んだ人を除いて休憩':'全員の作業を中断'}</button>
-   <button class="btn btn2" style="width:100%;margin-top:8px" ${btnAttr('h2PauseClose',[])}>やめる</button></div>`;
+   ${kind==='中断'?'':`<div style="margin-top:8px"><b>${kind==='再開'?'再開する人':kind==='追加'?'休憩に入る人':'休憩に入らない人'}</b>${people.map(m=>`<label style="display:block;padding:10px 0;font-size:20px"><input type="checkbox" class="c116PausePerson" value="${esc(m.staff_id)}" ${kind==='再開'?'checked':''}> ${esc(m.staff_name)}${kind==='再開'?`（${time2(waiting.get(m.staff_id)?.start_at)}から）`:''}</label>`).join('')}</div>`}
+   <button class="btn hqBtnPrep" style="width:100%;min-height:60px;margin-top:8px" ${btnAttr('h2PauseSave',[])}>${kind==='再開'?'選んだ人で再開':kind==='追加'?'選んだ人を休憩にする':kind==='後入力'?'休憩時間を保存':kind==='休憩'?'選んだ人を除いて休憩':'全員の作業を中断'}</button>
+   <button class="btn btn2" style="width:100%;min-height:60px;margin-top:8px" ${btnAttr('h2PauseClose',[])}>やめる</button></div>`;
   box.scrollIntoView({block:'center'});
  }catch(e){alert(h2Err(e))}
 }
@@ -1564,7 +1584,8 @@ async function h2PauseSave(){
  const s=C116_PAUSE;if(!s||!h2CanPrep()||H2.busy)return;
  const people=[...document.querySelectorAll('.c116PausePerson:checked')].map(el=>el.value);
  const args={p_work_id:s.id,p_operation_id:s.op};let rpc;
- if(s.kind==='再開'){if(!people.length)return alert('再開する人を選んでください');rpc='hq_work_resume_v1199c116';args.p_staff_ids=people}
+ if(s.kind==='再開'){if(!people.length)return alert('再開する人を選んでください');rpc='hq_work_resume_v1199c124';args.p_staff_ids=people}
+ else if(s.kind==='追加'){if(!people.length)return alert('休憩に入る人を選んでください');const at=h2JstIso(h2Val('c124PauseAt'));if(!at)return alert('休憩に入った時刻を正しく入れてください');rpc='hq_work_pause_add_v1199c124';Object.assign(args,{p_staff_ids:people,p_at:at})}
  else if(s.kind==='後入力'){
   const start=new Date(h2Val('c116BreakStart')),end=new Date(h2Val('c116BreakEnd'));
   if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||end<=start)return alert('休憩の開始と終了を正しく入れてください');
@@ -1572,9 +1593,9 @@ async function h2PauseSave(){
  }else{rpc='hq_work_pause_v1199c116';Object.assign(args,{p_kind:s.kind,p_excluded_staff_ids:people})}
  const fingerprint=JSON.stringify(args);
  if(s.attempt&&s.attempt!==fingerprint)return alert('通信結果を確認するため、同じ内容で再試行してください。変更する場合は画面を開き直してください');
- if(!confirm(s.kind==='再開'?'選んだ人で作業を再開します。よろしいですか？':s.kind==='中断'?'全員の作業を中断します。よろしいですか？':'選んだ人を除いて休憩を記録します。よろしいですか？'))return;
+ if(!confirm(s.kind==='再開'?'選んだ人で作業を再開します。よろしいですか？':s.kind==='追加'?'選んだ人を休憩にします。よろしいですか？':s.kind==='中断'?'全員の作業を中断します。よろしいですか？':'選んだ人を除いて休憩を記録します。よろしいですか？'))return;
  H2.busy=true;s.attempt=fingerprint;
- try{const r=await r2(rpc,args);if(!r?.ok)throw new Error(r?.message||'保存できませんでした');C116_PAUSE=null;await hqWorkPage(s.id,s.kind==='再開'?'再開しました':s.kind==='後入力'?'休憩時間を保存しました':`${s.kind}を開始しました`)}catch(e){alert(h2Err(e))}finally{H2.busy=false}
+ try{const r=await r2(rpc,args);if(!r?.ok)throw new Error(r?.message||'保存できませんでした');C116_PAUSE=null;await hqWorkPage(s.id,s.kind==='再開'?'再開しました':s.kind==='追加'?'休憩に入りました':s.kind==='後入力'?'休憩時間を保存しました':`${s.kind}を開始しました`)}catch(e){alert(h2Err(e))}finally{H2.busy=false}
 }
 async function h2CorrectPrepPage(id,msg=""){
  if(!h2CanBoss())return hqHome();
@@ -1622,18 +1643,27 @@ async function h2CorrectSave(){
 }
 Object.assign(window,{h2PauseOpen,h2PauseSave,h2PauseClose,h2CorrectPrepPage,h2CorrectAddMaterial,h2CorrectSave});
 
-function h2DeleteWorkHtml(w){return `<details class="card"><summary><b>この記録を完全に削除する（本社社員・管理者）</b></summary><div class="small" style="margin-top:6px">試しに入力した作業などを、一覧からも完全に消します。作業時間の記録も一緒に消えます。確定して在庫を減らしていた場合は、在庫と下処理ロスを元に戻してから消します。印刷した仕掛品ラベルは捨ててください。</div><button class="btn red" style="width:100%;margin-top:8px" ${btnAttr("h2DeleteWork",[w.id,w.work_date||"",w.kind||"",w.raw_item_name||"",w.product_name||w.task_name||""])}>完全に削除する</button></details>`}
+function h2DeleteWorkHtml(w){const prep=db.role==='hq_prep';return `<details class="card"><summary><b>この記録を完全に削除する${prep?'':'（本社社員・管理者）'}</b></summary><div class="small" style="margin-top:6px">${prep?'元に戻せません。':''}試しに入力した作業などを、一覧からも完全に消します。作業時間の記録も一緒に消えます。確定して在庫を減らしていた場合は、在庫と下処理ロスを元に戻してから消します。印刷した仕掛品ラベルは捨ててください。</div><button class="btn red" style="width:100%;min-height:60px;margin-top:8px" ${btnAttr("h2DeleteWork",[w.id,w.work_date||"",w.kind||"",w.raw_item_name||"",w.product_name||w.task_name||""])}>完全に削除する</button></details>`}
 async function h2DeleteWork(id,date,kind,item,product){
  const info=`作業日：${date}\n種類：${kind}${item?`\n原料：${item}`:""}${product?`\n内容：${product}`:""}`;
  if(!confirm(`【完全に削除】\n${info}\n\nこの記録を完全に削除します。元に戻せません。よろしいですか？`))return;
  if(!confirm(`もう一度確認します。\n${info}\n\n本当に削除しますか？`))return;
- try{const r=await r2("hq_work_delete_v1500",{p_work_id:id});return hqPrepHome(r&&r.restored?"削除しました（在庫と下処理ロスを元に戻しました）":"削除しました")}catch(e){alert(h2Err(e))}
+ try{const r=await r2("hq_work_delete_v1199c124",{p_work_id:id});return hqPrepHome(r&&r.restored?"削除しました（在庫と下処理ロスを元に戻しました）":"削除しました")}catch(e){alert(h2Err(e))}
 }
 async function h2WorkCancel(id){
  const reason=prompt("取り消す理由を入れてください（例：間違えて開始）");if(reason==null)return;
  try{await r2("hq_work_cancel_v1500",{p_work_id:id,p_reason:reason});return hqPrepHome("作業を取り消しました")}catch(e){alert(h2Err(e))}
 }
 function toLocalInput(t){if(!t)return"";const d=new Date(t);const p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`}
+function h2MemberTimeClose(){if(!H2.busy)document.getElementById('c124MemberTimeBox')?.replaceChildren()}
+function h2MemberTimeOpen(workId,memberId,start,end,name,pauseRow){
+ if(pauseRow)return alert('休憩の時間は「休憩の追加」や「押し忘れた休憩」から直してください');const box=document.getElementById('c124MemberTimeBox');if(!box)return;
+ box.innerHTML=`<div class="notice" style="margin-top:10px"><b>${esc(name)}さんの時間を直す</b><label class="label" style="margin-top:8px">入った時刻（日本時間）</label><input id="c124MemberStart" type="datetime-local" class="input" value="${esc(h2C120JstLocal(start))}"><label class="label" style="margin-top:8px">抜けた時刻（空欄は作業中）</label><input id="c124MemberEnd" type="datetime-local" class="input" value="${esc(end?h2C120JstLocal(end):'')}"><div class="row" style="margin-top:10px"><button class="btn hqBtnPrep" style="min-height:60px" ${btnAttr('h2MemberTimeSave',[workId,memberId])}>この時間で保存</button><button class="btn btn2" style="min-height:60px" ${btnAttr('h2MemberTimeClose',[])}>やめる</button></div></div>`;box.scrollIntoView({block:'center'});
+}
+async function h2MemberTimeSave(workId,memberId){
+ const start=h2JstIso(h2Val('c124MemberStart')),rawEnd=h2Val('c124MemberEnd'),end=rawEnd?h2JstIso(rawEnd):null;if(!start||(rawEnd&&!end))return alert('時刻を正しく入れてください');H2.busy=true;
+ try{const r=await r2('hq_work_member_time_fix_v1199c124',{p_member_id:memberId,p_start:start,p_end:end});if(!r?.ok)throw new Error(r?.message||'保存できませんでした');return hqWorkPage(workId,r.unchanged?'同じ時間です':'時間を直しました')}catch(e){alert(h2Err(e))}finally{H2.busy=false}
+}
 async function h2FixMember(mid,start,end,name){
  const s=prompt(`${name}さんの開始（例：2026-10-25 09:05）`,toLocalInput(start).replace("T"," "));if(s==null)return;
  const e=prompt(`${name}さんの終了（空欄＝まだ作業中／「削除」と入れるとこの記録を消します）`,end?toLocalInput(end).replace("T"," "):"");if(e==null)return;
@@ -1653,7 +1683,7 @@ async function h2AddMemberSave(workId){
  const a=h2Val("h2AmA"),b=h2Val("h2AmB");if(!a||!b)return alert("開始と終了を入れてください");
  try{await r2("hq_member_add_v1500",{p_work_id:workId,p_staff_id:h2Val("h2AmS"),p_phase:h2Val("h2AmP"),p_start:new Date(a).toISOString(),p_end:new Date(b).toISOString()});return hqWorkPage(workId,"追加しました")}catch(e){alert(h2Err(e))}
 }
-Object.assign(window,{h2StaffPickChanged,h2StaffPickAdd,h2NwMaterialCamera,h2NwMaterialCameraClose,h2NwStaffCamera,h2JoinStaffCamera,h2OpStaffSelected,h2OpStaffCamera,h2OpCamera,h2DeleteWorkHtml,h2DeleteWork,hqPrepHome,hqPrepNew,h2NwAddLot,h2NwDelLot,h2NwAddStaff,h2NwDelStaff,h2NwSet,h2NwPair,h2NwToggleOutput,h2NwSetCustomOutput,h2NwStartedAt,h2NwStart,hqOpScanPage,hqWorkPage,h2WorkEnd,h2CleanEnd,h2WorkLeave,h2WorkJoinOpen,h2AddMaterialOpen,h2AddMaterialClose,h2AddMaterialSelected,h2AddMaterial,h2SaveMaterialQty,h2MatUseAll,h2SaveInputs,h2WasteReset,h2PrintLabel,h2ToClean,h2WorkCancel,h2FixMember,h2AddMemberPage,h2AddMemberSave,h2C120WorkPage,h2C120End,h2C120Confirm,h2C120Return,h2C120EmployeeEdit,h2C120AddMaterialOpen,h2C120AddMaterialCamera,h2C120AddMaterial,h2C120AddMaterialClose,h2PalletOpen,h2PalletOpenReader,h2PalletOpenSelected,h2PalletChooseOpen,h2PalletChoose,h2PalletMode,h2PalletSave,h2PalletCancel,h2PalletClose});
+Object.assign(window,{h2StaffPickChanged,h2StaffPickAdd,h2NwMaterialCamera,h2NwMaterialCameraClose,h2NwStaffCamera,h2JoinStaffCamera,h2OpStaffSelected,h2OpStaffCamera,h2OpCamera,h2DeleteWorkHtml,h2DeleteWork,h2C124CanDelete,hqPrepHome,hqPrepNew,h2NwAddLot,h2NwDelLot,h2NwAddStaff,h2NwDelStaff,h2NwSet,h2NwPair,h2NwToggleOutput,h2NwSetCustomOutput,h2NwStartedAt,h2NwStart,hqOpScanPage,hqWorkPage,h2WorkEnd,h2CleanEnd,h2WorkLeave,h2WorkLeaveSave,h2WorkLeaveClose,h2WorkJoinOpen,h2AddMaterialOpen,h2AddMaterialClose,h2AddMaterialSelected,h2AddMaterial,h2SaveMaterialQty,h2MatUseAll,h2SaveInputs,h2WasteReset,h2PrintLabel,h2ToClean,h2WorkCancel,h2FixMember,h2MemberTimeOpen,h2MemberTimeSave,h2MemberTimeClose,h2AddMemberPage,h2AddMemberSave,h2C120WorkPage,h2C120End,h2C120Confirm,h2C120Return,h2C120EmployeeEdit,h2C120AddMaterialOpen,h2C120AddMaterialCamera,h2C120AddMaterial,h2C120AddMaterialClose,h2PalletOpen,h2PalletOpenReader,h2PalletOpenSelected,h2PalletChooseOpen,h2PalletChoose,h2PalletMode,h2PalletSave,h2PalletCancel,h2PalletClose});
 Object.assign(X,{labelPages,LABEL_CSS,workCard,liveData,h2JstLocalNow,h2JstIso,h2NewOutputId,h2C120WorkPage,h2C120End,h2C120Confirm,h2C120Return,h2C120EmployeeEdit,h2C120AddMaterialOpen,h2C120AddMaterialCamera,h2C120AddMaterial,h2C120AddMaterialClose});
 })();
 
@@ -1723,7 +1753,7 @@ async function hqPrepConfirmPage(id,msg=""){
  ${H2_LABEL_ON?"":"<!--"}<div class="card"><b>仕掛品ラベル</b><div class="small">${w.label_printed_at?`印刷 ${dt2(w.label_printed_at)}（${w.label_print_count}回）`:"まだ印刷していません"}</div><label class="label" style="margin-top:6px">枚数</label><input id="h2LabelN" class="input" inputmode="numeric" value="8"><button class="btn hqBtnPrint" style="width:100%;margin-top:8px" ${btnAttr("h2PrintLabel",[w.id,false])}>ラベルを印刷する</button></div>${H2_LABEL_ON?"":"-->"}
  ${w.history?.length?`<div class="card"><b>確定・修正・取消の記録</b>${w.history.map(h=>`<div class="small" style="padding:4px 0;border-top:1px solid #e2e8f0">${dt2(h.at)} ${esc(h.by||"")}：${esc(h.action||"")}${h.reason?`（${esc(h.reason)}）`:""}${h.stock===true?" ／ 在庫に反映":h.stock===false?" ／ 在庫には反映なし":""}</div>`).join("")}</div>`:""}
  <details class="card"><summary><b>この下処理を取り消す</b></summary><div class="small" style="margin-top:6px">確定済みなら、減らした原料の在庫と下処理ロスを元に戻します。印刷したラベルは使わないでください。</div><input id="h2CxR" class="input" style="margin-top:6px" placeholder="取消の理由（必須）"><button class="btn red" style="width:100%;margin-top:8px" ${btnAttr("h2CancelPrep",[w.id])}>取り消す</button></details>
- ${window.h2DeleteWorkHtml(w)}
+ ${window.h2C124CanDelete?.(w)?window.h2DeleteWorkHtml(w):''}
  <button class="btn btn2" style="width:100%" ${btnAttr("hqWorkPage",[w.id])}>作業時間の記録を見る・直す</button>`);
 }
 async function h2ConfirmPrep(id,again,expectedUpdatedAt,masterId){

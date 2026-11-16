@@ -308,26 +308,19 @@ class HqDirectTests(unittest.TestCase):
                 self.assertEqual(page["frameOverflow"], [], page)
                 self.assertEqual(page["overflow"], [], page)
 
-    def test_via_sheet_omits_cooperative_when_supplier_exists(self):
+    def test_sheets_never_print_cooperative(self):
         page = self.open_app("hq_worker")
         both = self.sheet(page)
         self.assertIn("仕入先", both["text"])
-        self.assertIn("JA水戸", both["text"])
         self.assertNotIn("単協名", both["text"])
         self.assertEqual(both["rows"], 7)
         self.assert_pdf_layout_fits({"pages": both["pages"], "status": both["status"]})
-
-    def test_via_sheet_keeps_cooperative_without_supplier(self):
-        page = self.open_app("hq_worker")
         only_coop = self.sheet(page, supplier="")
-        self.assertIn("単協名", only_coop["text"])
-        self.assertEqual(only_coop["rows"], 8)
-
-    def test_other_sheets_are_unchanged(self):
-        page = self.open_app("hq_worker")
+        self.assertNotIn("単協名", only_coop["text"])
+        self.assertEqual(only_coop["rows"], 7)
         direct = self.sheet(page, via_ishioka=False)
-        self.assertIn("単協名", direct["text"])
-        self.assertEqual(direct["rows"], 8)
+        self.assertNotIn("単協名", direct["text"])
+        self.assertEqual(direct["rows"], 7)
         from_ishioka = self.sheet(page, source_kind="石岡から", via_ishioka=False)
         self.assertNotIn("単協名", from_ishioka["text"])
 
@@ -400,7 +393,7 @@ class HqDirectTests(unittest.TestCase):
         self.assertIn("品名の右", text)
         self.assertIn("20文字", text)
         self.assertIn("自動で調整", text)
-        self.assertIn("単協名", text)
+        self.assertIn("単協名は貼り紙には出ません", text)
         self.assertIn("コンテナ", text)
 
 
