@@ -82,7 +82,7 @@ SETUP = r"""()=>{
       paused.forEach(m=>m.end_at=new Date().toISOString());x.pause_kind=a.p_kind;
       T.hq_work_pauses_v1199c116.push({id:'P'+T.hq_work_pauses_v1199c116.length,operation_id:a.p_operation_id,work_id:x.id,kind:a.p_kind,start_at:new Date().toISOString(),end_at:null,staff_ids:paused.map(m=>m.staff_id),resumed_staff_ids:[],excluded_staff_ids:clone(a.p_excluded_staff_ids)});return {ok:true};
     }
-    if(n==='hq_work_resume_v1199c116'){
+    if(n==='hq_work_resume_v1199c116'||n==='hq_work_resume_v1199c124'){
       const x=w(a.p_work_id), conflict=T.hq_work_members_v1500.some(m=>a.p_staff_ids.includes(m.staff_id)&&!m.end_at&&m.work_id!==x.id);
       if(conflict)throw new Error('別の作業中の人は再開できません');
       a.p_staff_ids.forEach((sid,i)=>{const s=T.hq_staff_v1500.find(q=>q.id===sid);T.hq_work_members_v1500.push({id:'R'+Date.now()+i,work_id:x.id,staff_id:sid,staff_name:s.name,team:s.team,phase:'作業',start_at:new Date().toISOString()})});
@@ -210,14 +210,14 @@ class PrepWorkTests(unittest.TestCase):
         page.get_by_role("button", name="休憩から再開する", exact=True).click()
         page.locator(".c116PausePerson[value='S2']").wait_for()
         page.get_by_role("button", name="選んだ人で再開", exact=True).click()
-        page.wait_for_function("()=>__calls.filter(c=>c.n==='hq_work_resume_v1199c116').length===1")
+        page.wait_for_function("()=>__calls.filter(c=>c.n==='hq_work_resume_v1199c124').length===1")
         self.assertEqual(page.locator(".c116PausePerson[value='S2']").is_checked(), True)
         self.assertIn("別の作業中", page.evaluate("()=>__alerts.at(-1)"))
-        first = self.calls(page, "hq_work_resume_v1199c116")[0]["a"]
+        first = self.calls(page, "hq_work_resume_v1199c124")[0]["a"]
         page.evaluate("()=>__T.hq_work_members_v1500.find(x=>x.work_id==='W4').end_at=new Date().toISOString()")
         page.get_by_role("button", name="選んだ人で再開", exact=True).click()
-        page.wait_for_function("()=>__calls.filter(c=>c.n==='hq_work_resume_v1199c116').length===2")
-        self.assertEqual(self.calls(page, "hq_work_resume_v1199c116")[1]["a"]["p_operation_id"], first["p_operation_id"])
+        page.wait_for_function("()=>__calls.filter(c=>c.n==='hq_work_resume_v1199c124').length===2")
+        self.assertEqual(self.calls(page, "hq_work_resume_v1199c124")[1]["a"]["p_operation_id"], first["p_operation_id"])
 
     def test_interruption_is_all_people_and_backdated_pause_sends_start_end_and_exclusions(self):
         page = self.app("hq_prep")
@@ -387,7 +387,7 @@ class PrepWorkTests(unittest.TestCase):
         self.assertEqual(page.locator(".c116PausePerson[value='S1']").count(), 0)
         page.get_by_role("button", name="選んだ人で再開", exact=True).click()
         page.get_by_role("button", name="作業終了", exact=True).wait_for()
-        calls = self.calls(page, "hq_work_resume_v1199c116")
+        calls = self.calls(page, "hq_work_resume_v1199c124")
         self.assertEqual([c["a"]["p_staff_ids"] for c in calls], [["S1"], ["S2"]])
         self.assertNotEqual(calls[0]["a"]["p_operation_id"], calls[1]["a"]["p_operation_id"])
 
