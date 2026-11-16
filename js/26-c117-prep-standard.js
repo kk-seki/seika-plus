@@ -64,6 +64,7 @@ const shared={title:'下処理日報を確認して社員へ送る',where:'下�
 const standardGuide={title:'標準歩留まりを設定して日報を確認する',where:'下処理マスタ → 標準歩留まりの設定／下処理の確認',steps:['仕掛品ごとに標準歩留まり率と許容差を設定します。許容差の初期値は±5ポイントです。','キャベツ1/4芯＋1/4葉は、合計出来高の専用標準を設定します。','日報の歩留まりは、出来高÷合計使用原料kg×100です。範囲内は緑、範囲外は赤、未設定は灰色で説明も表示されます。','原料の詳細・入力内容・標準からの差を確認して確定します。標準範囲外でも自動で確定を禁止しません。'],check:'標準は日報の保存時に記録され、設定変更だけで過去の日報の基準は変わりません。',caution:'設定は本社社員・管理者だけが変更できます。この確認で使うのは歩留まり率で、歩留まり原価ではありません。'};
 for(const role of ['admin','hq_worker','hq_prep']){
  const guide=V195_ROLE_GUIDES[role];if(!guide?.sections)continue;
+ guide.sections=guide.sections.map(section=>section?.title==='パレットごとに原料を記録する（パートさん）'?{...section,steps:['作業中は「原料のQRを読む」を押し、使うパレット（大型容器は1基）の貼り紙を読みます。','残りがあるパレットが先に選ばれます。違うときは「別のパレットにする」を押します。','「全部使った」または「半端が残った」を選び、半端なら残りの数を入れて「これで記録する」を押します。','間違いは一覧の「取り消す」を押してから、もう一度記録します。手で数を直す必要があるときだけ「数を手で直す」を開きます。']}:section);
  if(!guide.sections.some(s=>s.title===shared.title))guide.sections.push({...shared});
  if(role!=='hq_prep'&&!guide.sections.some(s=>s.title===standardGuide.title))guide.sections.push({...standardGuide});
  guide.sections=guide.sections.map(section=>{
