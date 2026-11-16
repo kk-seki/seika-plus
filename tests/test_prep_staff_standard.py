@@ -136,7 +136,7 @@ class PrepStaffStandardTests(unittest.TestCase):
         page.evaluate("()=>hqPrepCheckPage()")
         self.assertGreater(page.locator(".c117StandardBadge").count(), 0)
         page.evaluate("()=>hqPrepConfirmPage('W3')")
-        self.assertTrue(page.locator("#h2CfW").evaluate("el=>el.readOnly"))
+        self.assertFalse(page.locator("#h2CfW").evaluate("el=>el.readOnly"))
         fields = page.locator(".h2OutputQty")
         fields.nth(0).fill("30")
         fields.nth(1).fill("30")
@@ -145,6 +145,10 @@ class PrepStaffStandardTests(unittest.TestCase):
         self.assertIn("標準範囲外", page.locator(".c117StandardBadge").inner_text())
         fields.nth(0).fill("100")
         self.assertEqual(page.locator("#h2CfW").input_value(), "")
+        page.locator("#h2CfW").fill("5")
+        fields.nth(0).fill("30")
+        self.assertEqual(page.locator("#h2CfW").input_value(), "5")
+        self.assertIn("計量差", page.locator("#h2CfDiff").inner_text())
 
     def test_failed_standard_save_is_not_reported_as_success(self):
         page = self.app("hq_worker")
