@@ -71,7 +71,7 @@ class PrepReportBrowserTests(unittest.TestCase):
           const mats=[{id:'WM1',work_id:'W1',lot_id:'L1',lot_no:'LOT-1',item_name:'キャベツ',unit:'case',pack_kg:10,qty:null}];
           window.__h2.num2=v=>{const s=String(v??'').trim();return s===''?NaN:Number(s)}; window.__h2.h2Loading=()=>'<div>読み込んでいます…</div>'; window.__h2.h2CanPrep=()=>['admin','hq_worker','hq_prep'].includes(db.role); window.__h2.h2CanBoss=()=>['admin','hq_worker'].includes(db.role); window.__h2.h2Err=e=>String(e?.message||e||'');
           window.__h2.h2UsedKg=mats=>{let kg=0,unknown=false;for(const m of mats){const q=Number(m.qty),v=m.unit==='kg'?q:q*Number(m.pack_kg);if(!Number.isFinite(v))unknown=true;else kg+=v}return {kg,unknown}};
-          window.__h2.r2=async(name,args)=>{window.__calls.push([name,args]); if(name==='hq_prep_available_lots_v1199c117'||name==='hq_prep_available_lots_v1199c120') return JSON.parse(JSON.stringify(lots)); if(name==='hq_prep_report_save_v1199c120'||name==='hq_prep_report_save_v1199c120'||name==='hq_prep_submit_v1199c120') return window.__rpc ? window.__rpc(name,args) : {ok:true,id:args.p_work_id||'NEW',updated_at:'2026-11-12T03:00:00Z',review_status:name.includes('submit')?'submitted':'draft'}; throw new Error('unexpected rpc '+name)};
+          window.__h2.r2=async(name,args)=>{window.__calls.push([name,args]); if(name==='hq_prep_available_lots_v1199c117'||name==='hq_prep_available_lots_v1199c120') return JSON.parse(JSON.stringify(lots)); if(name==='hq_prep_report_save_v1199c120'||name==='hq_prep_report_save_v1199c120'||name==='hq_prep_submit_v1199c120'||name==='hq_prep_confirm_v1199c120') return window.__rpc ? window.__rpc(name,args) : {ok:true,id:args.p_work_id||'NEW',updated_at:'2026-11-12T03:00:00Z',review_status:name.includes('submit')?'submitted':'draft'}; throw new Error('unexpected rpc '+name)};
           window.__h2.h2Staff=async()=>JSON.parse(JSON.stringify(staff)); window.__h2.h2Places=async()=>[{name:'作業台A'},{name:'作業台B'}]; window.__h2.h2Masters=async()=>JSON.parse(JSON.stringify(masters));
           window.__h2.h2Works=async q=>q.includes('id=eq.C120')?[JSON.parse(JSON.stringify(c120work))]:[JSON.parse(JSON.stringify(work))];
           window.__h2.h2Materials=async()=>JSON.parse(JSON.stringify(mats)); window.__h2.h2Members=async()=>JSON.parse(JSON.stringify(members));
@@ -213,6 +213,42 @@ class PrepReportBrowserTests(unittest.TestCase):
         page.locator("#c120Submit").wait_for()
         page.evaluate("()=>c120Edit()")
         self.assertEqual(page.locator("#c120Submit").count(), 0)
+
+
+    def test_boss_can_confirm_draft_in_one_step(self):
+        page = self.open_app("admin")
+        self.open_new(page)
+        page.evaluate("()=>c120Review()")
+        page.locator("#c120ConfirmNow").wait_for()
+        page.evaluate("()=>c120ConfirmNow()")
+        calls = page.evaluate("()=>__calls.map(c=>c[0]).filter(n=>/report_save|submit|confirm/.test(n))")
+        self.assertEqual(calls, ["hq_prep_report_save_v1199c120", "hq_prep_submit_v1199c120", "hq_prep_confirm_v1199c120"])
+        confirm = page.evaluate("()=>__calls.find(c=>c[0]==='hq_prep_confirm_v1199c120')[1]")
+        self.assertEqual(confirm["p_expected_updated_at"], "2026-11-12T03:00:00Z")
+        self.assertEqual(page.evaluate("()=>currentScreen"), "hqWorkPage")
+
+    def test_prep_team_has_no_confirm_now_button(self):
+        page = self.open_app("hq_prep")
+        self.open_new(page)
+        page.evaluate("()=>c120Review()")
+        page.locator("#c120DraftSave").wait_for()
+        self.assertEqual(page.locator("#c120ConfirmNow").count(), 0)
+
+    def test_confirm_now_retry_keeps_operation_and_reports_submitted(self):
+        page = self.open_app("admin")
+        self.open_new(page)
+        page.evaluate("""()=>{window.__fail=true;window.__rpc=(name,args)=>{if(name==='hq_prep_confirm_v1199c120'&&window.__fail)throw new Error('通信できません');return {ok:true,id:args.p_work_id||'NEW',updated_at:'2026-11-12T03:00:00Z',review_status:name.includes('submit')?'submitted':'draft'}}}""")
+        page.evaluate("()=>c120Review()")
+        page.evaluate("()=>c120ConfirmNow()")
+        self.assertIn("社員の確認待ちにはなりましたが", page.locator("#c117Error").inner_text())
+        page.evaluate("()=>{window.__fail=false}")
+        page.evaluate("()=>c120ConfirmNow()")
+        ops = page.evaluate("()=>__calls.filter(c=>c[0]==='hq_prep_confirm_v1199c120').map(c=>c[1].p_operation_id)")
+        self.assertEqual(len(ops), 2)
+        self.assertEqual(ops[0], ops[1])
+        names = page.evaluate("()=>__calls.map(c=>c[0]).filter(n=>/submit/.test(n))")
+        self.assertEqual(names, ["hq_prep_submit_v1199c120"])
+        self.assertEqual(page.evaluate("()=>currentScreen"), "hqWorkPage")
 
 
 if __name__ == "__main__":
