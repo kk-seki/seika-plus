@@ -91,7 +91,7 @@ class PrepSignatureSqlTests(unittest.TestCase):
         )
         report = prep_flow_sql.PrepC120FlowSqlTests.report_payload(
             self, qty=10, expected=20, started=started_at, ended=ended_at,
-            work_date="(now() at time zone 'Asia/Tokyo')::date::text",
+            work_date=f"(({started_at}) at time zone 'Asia/Tokyo')::date::text",
         )
         saved = self.call(
             PREP, "public.hq_prep_report_save_v1199c120", f"'{started['id']}'::uuid", f"'{operation(3)}'::uuid",
