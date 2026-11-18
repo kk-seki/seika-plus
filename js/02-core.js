@@ -577,22 +577,53 @@ const result=dateValue(a).localeCompare(dateValue(b));if(result)return sort==="o
 }),sort,!!alertOnly),selectedLabel=selected||"すべての品目",sortLabel=sort==="alert"?"アラートが高い順":sort==="oldest"?"入庫日が古い順":"入庫日が新しい順",stockLabel=stock==="outOfStock"?"在庫なし":stock==="all"?"すべて":"在庫あり",description=`${stockLabel} ${filteredLots.length}件`,fifo='',listControls=`<div class="card"><div class="row"><div><label class="label" for="qrLotItemFilter">品目で切替</label><select id="qrLotItemFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="">すべての品目</option>${itemNames.map(name=>`<option value="${esc(name)}" ${name===v1200QrCanonName(selected)?"selected":""}>${esc(name)}</option>`).join("")}</select></div><div><label class="label" for="qrLotStockFilter">在庫状態</label><select id="qrLotStockFilter" class="input" ${seikaEventAttrs('change','seikaQrLotFilter',[])}><option value="inStock" ${stock==="inStock"?"selected":""}>在庫あり</option><option value="outOfStock" ${stock==="outOfStock"?"selected":""}>在庫なし</option><option value="all" ${stock==="all"?"selected":""}>すべて</option></select></div><div><label class="label" for="qrLotSortOrder">表示順</label><select id="qrLotSortOrder" class="input" ${seikaEventAttrs('change','seikaQrLotSort',[limit])}><option value="newest" ${sort==="newest"?"selected":""}>入庫日が新しい順</option><option value="oldest" ${sort==="oldest"?"selected":""}>入庫日が古い順</option><option value="alert" ${sort==="alert"?"selected":""}>アラートが高い順</option></select></div></div></div>`,tools=operate?`<button class="btn green" style="width:100%" data-seika-click-action="qrCreatePage" data-seika-click-args="%5B%5D">QR入庫</button><button class="btn blue" style="width:100%;margin-top:8px" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button><button class="btn btn2" style="width:100%;margin-top:8px" data-seika-click-action="qrManagedItemsPage" data-seika-click-args="%5B%5D">QR対象品目設定</button>`:`<div class="small" style="margin-bottom:8px">${qrReadOnlyMessage()}</div><button class="btn blue" style="width:100%" data-seika-click-action="qrManualSearchPage" data-seika-click-args="%5B%22detail%22%5D">検索する</button>`,more=hasMore?`<button class="btn btn2 qrLoadMore" ${seikaEventAttrs('click','qrLotListPage',[selected,sort,stock,limit+100,!!alertOnly])}>さらに100件読み込む</button>`:`<div class="small" style="text-align:center;margin:16px 0">すべて読み込みました</div>`
 ;pageShell(`QRロット一覧（${esc(selectedLabel)}）`,esc(description),`${listControls}<div class="card">${tools}</div>${fifo}${v1290OldBar()}${v1260PartyBar()}${v1250ListBar(sort,!!alertOnly,v1250Full)}${filteredLots.map(lot=>qrLotCard(lot,true,true)).join("")||'<div class="notice">該当するロットがありません。</div>'}${more}`)
 }catch(e){pageShell("QRロット一覧","エラー",`<div class="err">${esc(e.message)}</div>`)}}const MESH_CONTAINER_ITEMS=[{id:"bluePurple",name:"せき青紫"},{
-id:"orange",name:"せきオレンジ"},{id:"newContainer",name:"せき(新)"},{id:"nikken",name:"日建せき"}];function seikaLogoHtml(size=""){
+id:"orange",name:"せきオレンジ"},{id:"newContainer",name:"せき(新)"},{id:"nikken",name:"日建せき"},{id:"orangeFoot",name:"新オレンジ足"}];function seikaLogoHtml(size=""){
 return`<div class="seikaLogo ${size}" aria-label="SEIKA plus logo"><span class="word">SEIKA</span><span class="plusWrap">+<svg class="seikaLeaf" viewBox="0 0 64 64" aria-hidden="true"><path class="leafFill" d="M14 48C16 25 32 12 55 9C54 32 39 49 17 51C16 51 15 50 14 48Z"/><path class="leafVein" d="M22 43C31 33 40 24 51 15"/></svg></span></div>`
-}function ensureMeshContainers(){db.meshContainers=db.meshContainers||{}
-;db.meshContainers.records=(db.meshContainers.records||[]).filter(r=>r.checkedAt&&withinDays(r.checkedAt,MESH_RETENTION_DAYS))}
-function meshContainerLatest(){ensureMeshContainers()
-;return db.meshContainers.records.slice().sort((a,b)=>new Date(b.checkedAt||0)-new Date(a.checkedAt||0))[0]||null}function meshShortDate(iso){
-const d=iso?new Date(iso):new Date("2026-07-15T12:00:00+09:00");return d.toLocaleDateString("ja-JP",{month:"2-digit",day:"2-digit"})}
+}function ensureMeshContainers(){db.meshContainers=db.meshContainers||{};
+if(!Array.isArray(db.meshContainers.types))db.meshContainers.types=MESH_CONTAINER_ITEMS.map(it=>({...it,active:true}));
+db.meshContainers.records=(db.meshContainers.records||[]).filter(r=>r.checkedAt&&withinDays(r.checkedAt,MESH_RETENTION_DAYS));}
+function meshContainerLatest(){ensureMeshContainers();return db.meshContainers.records.slice().sort((a,b)=>new Date(b.checkedAt||0)-new Date(a.checkedAt||0))[0]||null}
+function meshShortDate(iso){const d=iso?new Date(iso):new Date("2026-07-15T12:00:00+09:00");return d.toLocaleDateString("ja-JP",{month:"2-digit",day:"2-digit"})}
 function meshFullDate(iso){const d=iso?new Date(iso):new Date;return d.toLocaleDateString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit"})}
-function meshContainerHomeCard(){const latest=meshContainerLatest()
-;return`<button class="btn meshHomeCard subBtn" data-seika-click-action="meshContainerPage" data-seika-click-args="%5B%5D"><span class="left"><span><span class="meshTitle">網コンテナ</span><span class="meshSub">最終確認 ${meshShortDate(latest&&latest.checkedAt)}</span></span></span></button>`
-}function meshContainerPage(msg=""){setScreen("meshContainerPage",[msg]);ensureMeshContainers();const latest=meshContainerLatest()
-;const values=latest&&latest.values?latest.values:{},editable=db.role==="admin"||db.role==="worker"
-;pageShell("網コンテナ在庫",`最終確認 ${meshFullDate(latest&&latest.checkedAt)} / ${esc(latest&&latest.user||db.user||"")}`,`${okHtml(msg)}<div class="card"><div class="grid"><div class="box"><span class="small">最終確認</span><b>${meshFullDate(latest&&latest.checkedAt)}</b></div><div class="box"><span class="small">入力者</span><b>${esc(latest&&latest.user||db.user||"")}</b></div></div></div><div class="card">${MESH_CONTAINER_ITEMS.map(it=>`<label class="meshRow"><span class="meshRowName">${esc(it.name)}</span><input id="mesh_${it.id}" class="input meshQty" inputmode="numeric" type="number" min="0" placeholder="0" value="${esc(values[it.id]??"")}" ${editable?"":"disabled"}></label>`).join("")}<label class="label" style="margin-top:14px">メモ</label><textarea id="meshMemo" class="textarea" placeholder="必要があればメモを入力" ${editable?"":"disabled"}>${esc(latest&&latest.memo||"")}</textarea>${editable?'<button class="btn green" style="width:100%;margin-top:16px" data-seika-click-action="saveMeshContainer" data-seika-click-args="%5B%5D">保存する</button>':'<div class="notice" style="margin-top:16px">閲覧専用です。数量・メモの変更はできません。</div>'}</div>`)
-}function saveMeshContainer(){if(db.role!=="admin"&&db.role!=="worker")return alert("網コンテナ在庫を更新する権限がありません");ensureMeshContainers();const values={}
-;for(const it of MESH_CONTAINER_ITEMS){values[it.id]=document.getElementById("mesh_"+it.id).value}db.meshContainers.records.push({id:newId(),values,
-memo:document.getElementById("meshMemo").value.trim(),user:db.user,userId:db.userId,checkedAt:nowIso()});save();meshContainerPage("保存しました。")}
+function meshContainerHomeCard(){const latest=meshContainerLatest();return`<button class="btn meshHomeCard subBtn" data-seika-click-action="meshContainerPage" data-seika-click-args="%5B%5D"><span class="left"><span><span class="meshTitle">網コンテナ</span><span class="meshSub">最終確認 ${meshShortDate(latest&&latest.checkedAt)}</span></span></span></button>`}
+let meshContainerDraft=null;
+function meshCanEdit(){return db.role==="admin"||db.role==="worker"}
+function meshCaptureDraft(){
+ const latest=meshContainerLatest(),values={...(latest?.values||{}),...(meshContainerDraft?.values||{})};
+ for(const it of db.meshContainers.types){const input=document.getElementById("mesh_"+it.id);if(input)values[it.id]=input.value}
+ meshContainerDraft={values,memo:document.getElementById("meshMemo")?.value??meshContainerDraft?.memo??latest?.memo??""};
+}
+function meshContainerPage(msg="",keepDraft=false){
+ setScreen("meshContainerPage",[]);ensureMeshContainers();if(!keepDraft)meshContainerDraft=null;
+ const latest=meshContainerLatest(),values=meshContainerDraft?.values||latest?.values||{},memo=meshContainerDraft?.memo??latest?.memo??"",editable=meshCanEdit();
+ const rows=db.meshContainers.types.filter(it=>it.active!==false).map(it=>`<label class="meshRow"><span class="meshRowName">${esc(it.name)}</span><input id="mesh_${esc(it.id)}" class="input meshQty" inputmode="numeric" type="number" min="0" step="1" placeholder="未入力" value="${esc(values[it.id]??"")}" ${editable?"":"disabled"}></label>`).join("");
+ const types=editable?`<details id="meshTypeManager" class="card" ${keepDraft?"open":""}><summary><b>種類を管理する</b></summary><div class="small" style="margin:8px 0">種類の設定は個別に保存されます。入力中の数量・メモはこの画面に残りますが、「保存する」を押すまで保存されません。停止した種類は数量入力から隠れ、再開できます。</div>${db.meshContainers.types.map(it=>`<div class="card" style="margin:8px 0"><label class="label" for="meshType_${esc(it.id)}">名称 ${it.active===false?"（使用停止中）":"（使用中）"}</label><input id="meshType_${esc(it.id)}" class="input" maxlength="60" value="${esc(it.name)}"><div class="mini" style="margin-top:8px"><button class="btn blue" ${seikaEventAttrs('click','meshRenameType',[it.id])}>名称変更</button><button class="btn btn2" ${seikaEventAttrs('click','meshToggleType',[it.id])}>${it.active===false?"使用を再開":"使用停止"}</button></div></div>`).join("")}<label class="label" for="meshTypeNew">新しい種類の名称</label><input id="meshTypeNew" class="input" maxlength="60" placeholder="種類名"><button class="btn green" style="margin-top:8px" ${seikaEventAttrs('click','meshAddType',[])}>種類を追加</button></details>`:"";
+ pageShell("網コンテナ在庫",`最終確認 ${meshFullDate(latest&&latest.checkedAt)} / ${esc(latest&&latest.user||db.user||"")}`,`${okHtml(msg)}<div class="card"><div class="grid"><div class="box"><span class="small">最終確認</span><b>${meshFullDate(latest&&latest.checkedAt)}</b></div><div class="box"><span class="small">入力者</span><b>${esc(latest&&latest.user||db.user||"")}</b></div></div></div><div class="card">${rows||'<div class="notice">使用中の種類はありません。</div>'}<div class="small">空欄は未入力、0は在庫なしです。</div><label class="label" style="margin-top:14px">メモ</label><textarea id="meshMemo" class="textarea" placeholder="必要があればメモを入力" ${editable?"":"disabled"}>${esc(memo)}</textarea>${editable?'<button class="btn green" style="width:100%;margin-top:16px" data-seika-click-action="saveMeshContainer" data-seika-click-args="%5B%5D">保存する</button>':'<div class="notice" style="margin-top:16px">閲覧専用です。数量・メモの変更はできません。</div>'}</div>${types}`);
+}
+function meshTypeNameValid(name,id=""){
+ if(!name||name.length>60){alert("種類名を1〜60文字で入力してください");return false}
+ if(db.meshContainers.types.some(it=>it.id!==id&&String(it.name).trim()===name)){alert("同じ種類名が既にあります。停止中の場合は使用を再開してください");return false}return true;
+}
+function meshAddType(){
+ if(!meshCanEdit())return alert("種類を設定する権限がありません");ensureMeshContainers();const name=(document.getElementById("meshTypeNew")?.value||"").trim();if(!meshTypeNameValid(name))return;
+ meshCaptureDraft();db.meshContainers.types.push({id:newId(),name,active:true});save();meshContainerPage("種類を追加しました。数量・メモは別途保存してください。",true);
+}
+function meshRenameType(id){
+ if(!meshCanEdit())return alert("種類を設定する権限がありません");ensureMeshContainers();const it=db.meshContainers.types.find(x=>x.id===id);if(!it)return;
+ const name=(document.getElementById("meshType_"+id)?.value||"").trim();if(!meshTypeNameValid(name,id))return;if(it.name===name)return;
+ meshCaptureDraft();it.name=name;save();meshContainerPage("名称を変更しました。数量・メモは別途保存してください。",true);
+}
+function meshToggleType(id){
+ if(!meshCanEdit())return alert("種類を設定する権限がありません");ensureMeshContainers();const it=db.meshContainers.types.find(x=>x.id===id);if(!it)return;
+ if(!confirm(`${it.name}の使用を${it.active===false?"再開":"停止"}しますか？`))return;
+ meshCaptureDraft();it.active=it.active===false;save();meshContainerPage("種類の使用状態を変更しました。数量・メモは別途保存してください。",true);
+}
+function saveMeshContainer(){
+ if(!meshCanEdit())return alert("網コンテナ在庫を更新する権限がありません");ensureMeshContainers();
+ for(const it of db.meshContainers.types.filter(it=>it.active!==false)){const input=document.getElementById("mesh_"+it.id);if(!input||!input.validity.valid)return alert("数量は0以上の整数で入力してください")}
+ meshCaptureDraft();db.meshContainers.records.push({id:newId(),values:{...meshContainerDraft.values},memo:meshContainerDraft.memo.trim(),user:db.user,userId:db.userId,checkedAt:nowIso()});
+ meshContainerDraft=null;save();meshContainerPage("保存しました。");
+}
 function hasOptimalStockSetting(s){
 return!!s&&s.min!==null&&s.min!==""&&s.min!==undefined&&s.max!==null&&s.max!==""&&s.max!==undefined&&Number.isFinite(Number(s.min))&&Number.isFinite(Number(s.max))
 }function judge(total,s){if(!hasOptimalStockSetting(s))return"unset";if(total<Number(s.min))return"shortage";if(total>Number(s.max))return"excess"
@@ -2758,7 +2789,8 @@ title:"QR在庫を確認する",where:"ホーム → QR在庫管理",steps:["QR�
 caution:"QRの更新操作・ロット編集・QR月次Excel出力はできません。"},{title:"廃棄一覧を確認する",where:"ホーム → 廃棄一覧",steps:["対象期間を選びます。","日付・品名・数量・理由・仕入先を確認します。","必要なら再読込します。"],
 check:"期間と件数を確認します。",caution:"廃棄入力・単価入力・Excel出力はできません。"},{title:"不具合を管理者へ伝える",where:"ホーム下部 → 不具合・エラー報告",
 steps:["種類と件名を選びます。","どの画面で何をしたかを入力します。","期待した結果と実際の結果を具体的に入力します。","内容を確認して送信します。"],check:"送信完了メッセージを確認します。",caution:"パスワードや個人情報は入力しないでください。"}]}}
-;function v195GuideSectionHtml(section,index){
+;for(const role of ["admin","worker"])V195_ROLE_GUIDES[role].sections.push({title:"網コンテナ在庫と種類を管理する",where:"ホーム → 網コンテナ在庫",steps:["数量と必要なメモを入力し、「保存する」を押します。空欄は未入力、0は在庫なしです。","「種類を管理する」で新しい種類の追加、名称変更、使用停止・使用再開ができます。","種類の設定は個別に保存されます。数量・メモは入力を確認して別途「保存する」を押します。"],check:"画面上部が保存済みになり、数量と種類が正しいことを確認します。",caution:"停止中の数量は保持され、再開すると再び表示されます。履歴の保持期間は従来どおり31日です。数量・設定を変更できるのは管理者と青果社員のみです。"});
+function v195GuideSectionHtml(section,index){
 const steps=(section.steps||[]).map((step,i)=>`<li><span class="guideStepNo">${i+1}</span><span>${esc(step)}</span></li>`).join("")
 ;return`<details class="card v1100GuideCard" ${index===0?"open":""}><summary><span>${index+1}. ${esc(section.title)}</span><span class="badge normal">手順を見る</span></summary><div class="v1100GuideBody"><div class="notice"><b>開く場所</b><div class="small">${esc(section.where||"ホーム")}</div></div><ol class="v1100GuideSteps">${steps}</ol>${section.check?`<div class="ok"><b>最後に確認</b><div class="small">${esc(section.check)}</div></div>`:""}${section.caution?`<div class="warn"><b>注意</b><div class="small">${esc(section.caution)}</div></div>`:""}</div></details>`
 }function v195RoleGuidePage(){setScreen("v195RoleGuidePage")

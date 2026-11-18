@@ -23,3 +23,8 @@
 .hqGrades{display:flex;gap:8px}.hqGrade{flex:1;border:2px solid #cbd5e1;border-radius:12px;padding:12px 6px;text-align:center;font-weight:800;font-size:17px}
 .hqGrade_good:has(input:checked){border-color:#16a34a;background:#dcfce7}.hqGrade_review:has(input:checked){border-color:#d97706;background:#fef3c7}.hqGrade_bad:has(input:checked){border-color:#dc2626;background:#fee2e2}
 .hqIssues{display:flex;flex-wrap:wrap;gap:8px 14px}.badge.danger{background:#fee2e2;color:#991b1b}.badge.warn{background:#fef3c7;color:#92400e}
+.hqBtnReceiveHub{background:linear-gradient(135deg,#b45309,#78350f)!important;color:#fff!important}
+.hqBtnOperationsHub{background:linear-gradient(135deg,#be123c,#881337)!important;color:#fff!important}
+.hqBtnRecordsHub{background:linear-gradient(135deg,#0369a1,#0c4a6e)!important;color:#fff!important}
+.hqBtnStockOpen{background:linear-gradient(135deg,#10b981,#047857)!important;color:#fff!important}
+.hqStockListTitle{font-size:18px;margin:18px 0 8px}
