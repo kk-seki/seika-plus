@@ -259,18 +259,29 @@ async def assert_allowed_analysis(page, role, fails):
 
 async def assert_receiver_operations(page, fails):
     """荷受け担当者の通常業務が、制限追加で消えていないこと。"""
-    await page.evaluate("()=>hqHome()")
-    await page.wait_for_timeout(150)
-    home_text = await value(page, "()=>document.body.innerText")
-    for label in ["入荷待ち原料", "QR読み取り", "在庫管理", "品質評価一覧"]:
-        if label not in home_text:
-            fail(fails, "hq_receiver", "荷受け通常業務", f"ホームに「{label}」がありません")
-    await page.evaluate("()=>hqStockHub()")
-    await page.wait_for_timeout(100)
-    stock_text = await value(page, "()=>document.body.innerText")
-    for label in ["在庫入力", "入出庫履歴"]:
-        if label not in stock_text:
-            fail(fails, "hq_receiver", "荷受け通常業務", f"在庫管理に「{label}」がありません")
+    routes = [
+        ("hqReceiveHub", "hqPendingPage", "入荷待ち原料"),
+        ("hqReceiveHub", "hqScanPage", "QR読み取り"),
+        ("hqStockHub", "hqTablePage", "在庫表"),
+        ("hqStockHub", "hqStockPage", "品目別在庫・ロット"),
+        ("hqOperationsHub", "hqNormalPage", "在庫入力"),
+        ("hqRecordsHub", "hqQualityPage", "品質評価一覧"),
+        ("hqRecordsHub", "hqHistoryPage", "入出庫履歴"),
+    ]
+    for hub, target, label in routes:
+        try:
+            await page.evaluate("()=>hqHome()")
+            await page.locator(f'[data-seika-click-action="{hub}"]').click(timeout=5000)
+            await page.locator(f'[data-seika-click-action="{target}"]').click(timeout=5000)
+            await page.wait_for_function("screen => currentScreen === screen", arg=target, timeout=5000)
+            if label not in await value(page, "()=>document.body.innerText"):
+                fail(fails, "hq_receiver", "荷受け通常業務", f"{target}に「{label}」がありません")
+            await page.wait_for_timeout(200)
+            if target == "hqScanPage":
+                await page.evaluate("()=>goBack()")
+                await page.wait_for_function("()=>currentScreen === 'hqReceiveHub'", timeout=5000)
+        except Exception as error:
+            fail(fails, "hq_receiver", "荷受け通常業務", f"{hub} → {target}: {error}")
 
 
 async def main():
