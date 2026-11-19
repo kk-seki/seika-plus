@@ -3,10 +3,10 @@
    選んだ日のQR出庫（取消を除く）から、埼玉・深谷は1枚、本社は便ごとに1枚の伝票（A4横・左が納品書、右が請求書）を作る。
    納品書側の各行に小さなQR（読むとロット画面）。手書き用の空き行3行。伝票Excel・月の一覧Excelも出力。保存はしない（SQLなし）。 */
 (()=>{
-const C84_TO={"埼玉":"㈱せき　埼玉工場","深谷":"㈱せき　深谷青果センター","本社":"㈱せき　本社工場","荻沼":"㈱せき　荻沼"};
-/* c130：本社工場と荻沼は「入荷日（予定）＋便ごと」の納品書。荻沼の宛名は納品先マスタの正式名があればそれを使う */
+const C84_TO={"埼玉":"㈱せき　埼玉工場","深谷":"㈱せき　深谷青果センター","本社":"㈱せき　本社工場","荻沼":"荻沼"};
+/* c130：本社工場と荻沼は「入荷日（予定）＋便ごと」の納品書。荻沼の宛名は「荻沼」だけ */
 const C84_HQ=["本社","荻沼"],c84Hq=d=>C84_HQ.includes(String(d||""));
-function c84To(d){if(d==="荻沼"){try{const r=(typeof v194EnsureDestinations==="function"?v194EnsureDestinations():[]).find(x=>x&&x.name==="荻沼");if(r&&String(r.formal||"").trim())return String(r.formal).trim()}catch(_){}}return C84_TO[d]||d}
+function c84To(d){return C84_TO[d]||d}
 const C84_FROM="㈱せき　石岡営業所",C84_ADDR="〒315-0073<br>茨城県かすみがうら市西野寺730-17<br>TEL　0299-23-0997<br>FAX　0299-35-8181";
 const C84_BIG=["網コンテナ","鉄コンテナ","パレテーナ"],C84_ROWS=12,C84_BLANK=3;
 const C84_RUNS_DEFAULT=["配送便","原料便","市場便"];

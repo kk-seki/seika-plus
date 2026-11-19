@@ -219,21 +219,14 @@ class PartyGapBrowserTests(unittest.TestCase):
         ])
         html = page.evaluate("()=>document.getElementById('app').innerHTML")
         self.assertIn('<span class="gp">JGAP</span>', html)
-        self.assertIn("㈱せき　荻沼", html)
+        self.assertIn("荻沼　御中", html)
+        self.assertNotIn("せき　荻沼", html)
         self.assertIn("<td>GAP</td>", html)
         self.assertIn("伝票発行（埼玉・深谷・本社工場・荻沼）", page.inner_text("#app"))
         ogi = page.evaluate("()=>c84Collect(ymdKey(new Date()),new Map).then(it=>c84TicketPages(c84Build(it,ymdKey(new Date())).find(x=>x.dest==='荻沼'))[0])")
         self.assertIn("納　品　書", ogi)
         self.assertNotIn("請　求　書", ogi)
         self.assertEqual(ogi.count('<tr class="r">') + ogi.count('<tr class="b'), 15)
-
-    def test_oginuma_uses_destination_master_formal_name_when_set(self):
-        lots, moves, history = self.slip_data()
-        page = self.open_app(lots=lots, moves=moves, history=history)
-        page.evaluate("()=>{const r=v194EnsureDestinations().find(x=>x.name==='荻沼');r.formal='株式会社せき 荻沼工場'}")
-        page.evaluate("()=>c84SlipPage(ymdKey(new Date()))")
-        page.wait_for_selector("text=すべての伝票を印刷")
-        self.assertIn("株式会社せき 荻沼工場", page.evaluate("()=>document.getElementById('app').innerHTML"))
 
     # ---------- 荻沼へのQR出庫 ----------
     def test_oginuma_outbound_asks_run_like_honsha(self):
