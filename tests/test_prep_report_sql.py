@@ -354,7 +354,7 @@ class PrepReportSqlRuntimeTests(unittest.TestCase):
         ), f"'{work_id}'::uuid", f"'{removed['updated_at']}'::timestamptz")
         self.assertTrue(changed["ok"])
         self.assertEqual(self.sql(f"select sum(extract(epoch from end_at-start_at))/60 from public.hq_work_members_v1500 where work_id='{work_id}' and phase='作業'", True), "45.0000000000000000")
-        self.assertEqual(self.sql(f"select start_at::text||':'||end_at::text from public.hq_work_pauses_v1199c116 where work_id='{work_id}' and kind='休憩'", True), "2026-11-10 08:15:00+00:2026-11-10 08:30:00+00")
+        self.assertEqual(self.sql(f"select to_char(start_at at time zone 'UTC','YYYY-MM-DD HH24:MI:SS')||':'||to_char(end_at at time zone 'UTC','YYYY-MM-DD HH24:MI:SS') from public.hq_work_pauses_v1199c116 where work_id='{work_id}' and kind='休憩'", True), "2026-11-10 08:15:00:2026-11-10 08:30:00")
 
     def test_cleaning_open_member_is_preserved_then_editable_after_clean_end(self):
         self.reset()
