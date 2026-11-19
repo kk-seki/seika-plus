@@ -2741,12 +2741,15 @@ function c50ShipStore(){try{return JSON.parse(localStorage.getItem(C50_SHIP_KEY)
 function c50RememberShip(opId,ship){const m=c50ShipStore();m[opId]={...ship,at:Date.now()};for(const[k,v]of Object.entries(m))if(Date.now()-Number(v.at||0)>7*86400000)delete m[k];try{localStorage.setItem(C50_SHIP_KEY,JSON.stringify(m))}catch(e){}}
 function c50ShipBoxHtml(){
  return `<div id="c50ShipBox" style="display:none;margin-top:12px;padding:10px;border:2px solid #f59e0b;border-radius:12px;background:#fffbeb">
- <label class="label" style="margin-top:0">本社への便（必須）</label><select id="c50ShipRun" class="input"><option value="">選択してください</option>${c50Runs().map((r,i)=>`<option value="${i}">${esc(c50RunLabel(r))}</option>`).join("")}</select>
+ <label id="c50ShipLabel" class="label" style="margin-top:0">本社への便（必須）</label><select id="c50ShipRun" class="input"><option value="">選択してください</option>${c50Runs().map((r,i)=>`<option value="${i}">${esc(c50RunLabel(r))}</option>`).join("")}</select>
  <label class="label" style="margin-top:10px">当日便・翌日便（必須）</label><select id="c50ShipDay" class="input"><option value="">選択してください</option><option value="当日便">当日便</option><option value="翌日便">翌日便</option></select>
- <div class="small" style="margin-top:6px">本社の画面に「原料便（12時着）・翌日便」のように出ます。</div></div>`;
+ <div id="c50ShipNote" class="small" style="margin-top:6px">本社の画面に「原料便（12時着）・翌日便」のように出ます。</div></div>`;
 }
 function c50RelabelTimings(root=document){root.querySelectorAll("#qrShipTiming option,#v135ShipTiming option").forEach(o=>{if(C50_TIMING_LABEL[o.value])o.textContent=C50_TIMING_LABEL[o.value]})}
-function c50ToggleShipBox(){const box=document.getElementById("c50ShipBox");if(!box)return;box.style.display=(document.getElementById("qrMoveDestination")?.value||"")==="本社"?"block":"none"}
+/* c130：荻沼へも本社と同じように便と当日便・翌日便を選ぶ（荻沼の伝票の便と入荷日に使う。本社移動用の貼り紙はない） */
+const C50_SHIP_DESTS=["本社","荻沼"],c50ShipDest=d=>C50_SHIP_DESTS.includes(String(d||""));
+function c50ShipLabel(d){const l=document.getElementById("c50ShipLabel"),n=document.getElementById("c50ShipNote");if(l)l.textContent=`${d==="荻沼"?"荻沼":"本社"}への便（必須）`;if(n)n.textContent=d==="荻沼"?"荻沼の伝票の便と入荷日（当日便は出庫した日、翌日便は次の日）に使います。":"本社の画面に「原料便（12時着）・翌日便」のように出ます。"}
+function c50ToggleShipBox(){const box=document.getElementById("c50ShipBox");if(!box)return;const d=document.getElementById("qrMoveDestination")?.value||"";box.style.display=c50ShipDest(d)?"block":"none";c50ShipLabel(d)}
 const c50OpPageBase=qrOperationLotPage;
 qrOperationLotPage=async function(kind,q){
  const r=await c50OpPageBase.apply(this,arguments);
@@ -2757,14 +2760,14 @@ window.qrOperationLotPage=qrOperationLotPage;
 function c50ReadShip(){
  const runEl=document.getElementById("c50ShipRun"),dayEl=document.getElementById("c50ShipDay");if(!runEl||!dayEl)return null;
  const r=c50Runs()[Number(runEl.value)];
- if(runEl.value===""||!r){typeof v161FocusField==="function"?v161FocusField("c50ShipRun","本社への便を選択してください。"):alert("本社への便を選択してください。");return false}
+ if(runEl.value===""||!r){typeof v161FocusField==="function"?v161FocusField("c50ShipRun","便を選択してください。"):alert("便を選択してください。");return false}
  if(!dayEl.value){typeof v161FocusField==="function"?v161FocusField("c50ShipDay","当日便か翌日便かを選択してください。"):alert("当日便か翌日便かを選択してください。");return false}
  return{run:r.name,time:r.time,day:dayEl.value};
 }
 const c50SaveBase=qrSaveLotMovement;
 qrSaveLotMovement=async function(kind,q){
  c50Pending=null;
- if(kind==="out"&&(document.getElementById("qrMoveDestination")?.value||"")==="本社"){const ship=c50ReadShip();if(ship===false)return;if(ship)c50Pending=ship}
+ if(kind==="out"&&c50ShipDest(document.getElementById("qrMoveDestination")?.value||"")){const ship=c50ReadShip();if(ship===false)return;if(ship)c50Pending=ship}
  try{return await c50SaveBase.apply(this,arguments)}finally{c50Pending=null}
 };
 window.qrSaveLotMovement=qrSaveLotMovement;
@@ -2772,14 +2775,14 @@ function c50Dest(args){return String(args?.p_destination??args?.p_args?.destinat
 const c50RpcBase=callRpc;
 callRpc=async function(name,args){
  let hq=false;
- if(/qr_lot.*operation/.test(String(name))&&c50Dest(args)==="本社"){
-  hq=true;
+ if(/qr_lot.*operation/.test(String(name))&&c50ShipDest(c50Dest(args))){
+  hq=c50Dest(args)==="本社";
   const inner=args?.p_args&&typeof args.p_args==="object"?args.p_args:args,opKey=inner===args?"p_operation_meta":"operation_meta",idKey=inner===args?"p_operation_id":"operation_id";
   const opId=String(inner[idKey]||"");let ship=opId?c50ShipStore()[opId]:null;
   if(!ship&&c50Pending&&opId){ship=c50Pending;c50RememberShip(opId,ship)}
   if(!ship&&inner[opKey]?.batchId&&typeof v135GetBatch==="function")ship=v135GetBatch(inner[opKey].batchId)?.defaults?.hqShip||null;
   if(ship){const m=inner[opKey]&&typeof inner[opKey]==="object"?inner[opKey]:{};inner[opKey]={...m,hqShip:{run:ship.run,time:ship.time,day:ship.day}}}
-  if(c50Pending)c50SuppressToastUntil=Date.now()+8000;
+  if(hq&&c50Pending)c50SuppressToastUntil=Date.now()+8000;
  }
  const r=await c50RpcBase(name,args);
  if(hq&&c50Pending&&r&&r.ok!==false){
@@ -2817,13 +2820,13 @@ const c50DefHtmlBase=v135DefaultsHtml;
 v135DefaultsHtml=function(kind,values={}){const h=c50DefHtmlBase.apply(this,arguments);return kind==="out"?h+c50ShipBoxHtml().replace('id="c50ShipBox"','id="c50ShipBox" data-c50-batch="1"'):h};
 window.v135DefaultsHtml=v135DefaultsHtml;
 const c50BatchCreateBase=v135BatchCreatePage;
-v135BatchCreatePage=async function(kind){const r=await c50BatchCreateBase.apply(this,arguments);if(kind==="out"){const d=document.getElementById("v135Destination"),f=()=>{const b=document.getElementById("c50ShipBox");if(b)b.style.display=d?.value==="本社"?"block":"none"};d?.addEventListener("change",f);f()}return r};
+v135BatchCreatePage=async function(kind){const r=await c50BatchCreateBase.apply(this,arguments);if(kind==="out"){const d=document.getElementById("v135Destination"),f=()=>{const b=document.getElementById("c50ShipBox");if(b)b.style.display=c50ShipDest(d?.value)?"block":"none";c50ShipLabel(d?.value||"")};d?.addEventListener("change",f);f()}return r};
 window.v135BatchCreatePage=v135BatchCreatePage;
 const c50ReadDefBase=v135ReadDefaults;
-v135ReadDefaults=function(kind){const d=c50ReadDefBase.apply(this,arguments);if(kind==="out"&&d.destination==="本社"){const r=c50Runs()[Number(document.getElementById("c50ShipRun")?.value)],day=document.getElementById("c50ShipDay")?.value||"";if(document.getElementById("c50ShipRun")?.value!==""&&r&&day)d.hqShip={run:r.name,time:r.time,day}}return d};
+v135ReadDefaults=function(kind){const d=c50ReadDefBase.apply(this,arguments);if(kind==="out"&&c50ShipDest(d.destination)){const r=c50Runs()[Number(document.getElementById("c50ShipRun")?.value)],day=document.getElementById("c50ShipDay")?.value||"";if(document.getElementById("c50ShipRun")?.value!==""&&r&&day)d.hqShip={run:r.name,time:r.time,day}}return d};
 window.v135ReadDefaults=v135ReadDefaults;
 const c50CreateBatchBase=v135CreateBatch;
-v135CreateBatch=async function(kind){if(kind==="out"&&document.getElementById("v135Destination")?.value==="本社"&&c50ReadShip()===false)return;return c50CreateBatchBase.apply(this,arguments)};
+v135CreateBatch=async function(kind){if(kind==="out"&&c50ShipDest(document.getElementById("v135Destination")?.value)&&c50ReadShip()===false)return;return c50CreateBatchBase.apply(this,arguments)};
 window.v135CreateBatch=v135CreateBatch;
 function c50ShipText(sh){return sh?`${sh.run}（${sh.time}着）・${sh.day}`:""}
 const c50ScanBase=v135BatchScanPage;
@@ -2897,7 +2900,7 @@ async function c50BatchPrintPage(qrKeys){
  }catch(e){document.getElementById("c50PrintList").innerHTML=`<div class="err">${esc(e.message||e)}</div>`}
 }
 Object.assign(window,{c50LotPickPage,c50PickFilter,c50PickAll,c50PickAdd,c50FillAll,c50BatchPrintPage});
-Object.assign(window,{c50ShipRunsPage,c50SaveRuns,c50AddRun,c50RemoveRun});
+Object.assign(window,{c50ShipRunsPage,c50SaveRuns,c50AddRun,c50RemoveRun,c50ShipBoxHtml,c50ToggleShipBox,c50ReadShip,c50ShipDest});
 })();
 
 (function(){

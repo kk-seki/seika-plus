@@ -423,7 +423,7 @@ class HqPackBrowserTests(unittest.TestCase):
         page = self.open_app("admin")
         text = page.evaluate("""()=>{const g=[];for(const r of Object.keys(V195_ROLE_GUIDES))for(const s of V195_ROLE_GUIDES[r].sections||[])g.push(s.title+'\\n'+(s.steps||[]).join('\\n'));
           for(const k of Object.keys(window.V198_GUIDE_SECTIONS||{})){const s=V198_GUIDE_SECTIONS[k];g.push(s.title+'\\n'+(s.steps||[]).join('\\n'))}return g.join('\\n')}""")
-        for expected in ("出庫先「本社」を選ぶと出る「入数」欄", "入数を保存", "出庫したケース数で減ります", "本社工場の伝票は「入数を直す」"):
+        for expected in ("出庫先「本社」を選ぶと出る「入数」欄", "入数を保存", "出庫したケース数で減ります", "本社工場・荻沼の伝票は「入数を直す」"):
             self.assertIn(expected, text)
 
 
