@@ -151,8 +151,8 @@ let v1178RegisteredUsers=[];
 /* SQL適用後はprofilesの有効利用者一覧を正本にする。取得失敗時だけ既存の端末内候補を使う。 */
 window.v1144PurchaseStaffCandidates=function(){const byId=new Map();const add=(id,name,active=true,profileId=null)=>{id=String(id||'').trim();if(!id||active===false)return;const formal=(V188_FULL_NAMES&&V188_FULL_NAMES[id])||String(name||'').trim();if(!formal)return;const prior=byId.get(id);if(!prior||profileId)byId.set(id,{legacy_user_id:id,display_name:formal,profile_id:profileId||prior?.profile_id||null});};for(const u of v1178RegisteredUsers||[])add(u.legacy_user_id,u.display_name,u.active,u.profile_id);for(const u of db?.users||[])add(u.id,u.name,u.active,u.profile_id||u.id_uuid||null);for(const [id,name] of (typeof v188LoginUsers==='function'?v188LoginUsers():[]))add(id,name,true);for(const u of v188AdminUsers||[])add(u.legacy_user_id,u.display_name,u.active,u.id);return [...byId.values()].sort((a,b)=>a.display_name.localeCompare(b.display_name,'ja'));};
 async function v1178LoadRegisteredUsers(){try{const ans=await callRpc('list_active_registered_users_v1178',{});const rows=Array.isArray(ans?.users)?ans.users:[];v1178RegisteredUsers=rows.filter(x=>x&&x.active!==false&&x.legacy_user_id&&x.display_name);return rows.length}catch(_){return 0}}
-window.v1144PurchaseStaffOptionHtml=function(selectedLegacy='',selectedName=''){const rows=v1144PurchaseStaffCandidates(),selected=v1144CandidateForReference(selectedLegacy,rows)||v1144CandidateForReference(selectedName,rows);return `<option value="">選択してください</option>${rows.map(x=>`<option value="${esc(x.legacy_user_id)}" ${x.legacy_user_id===selected?.legacy_user_id?'selected':''}>${esc(x.display_name)}</option>`).join('')}`;};
-window.v1144ReplacePurchaseStaffControl=function(){const old=document.getElementById('qrPurchaseStaff');if(!old)return null;const prior=String(old.value||'').trim();const select=document.createElement('select');select.id='qrPurchaseStaff';select.className=old.className||'input';select.required=true;select.innerHTML=v1144PurchaseStaffOptionHtml('',prior);select.onchange=()=>{select.dataset.manual='1';const n=document.getElementById('qrStaffNote');if(n)n.textContent=select.value?'選択した担当者を入庫ロットと品質評価へ連携します。':'仕入れ担当者を選択してください。';};old.replaceWith(select);return select;};
+/* c135：v1144PurchaseStaffOptionHtml の古い定義は、後の定義（js/03-inventory.js:238）で置き換わって使われないため削除 */
+/* c135：v1144ReplacePurchaseStaffControl の古い定義は、後の定義（js/03-inventory.js:340）で置き換わって使われないため削除 */
 window.qrAutoFillStaff=function(){const item=document.getElementById('qrItemName'),staff=document.getElementById('qrPurchaseStaff');if(!item||!staff)return;const name=String(item.value||'').trim();if(staff.dataset.itemName===name)return;const auto=typeof v1144AutoPurchaseStaffForItemName==='function'?v1144AutoPurchaseStaffForItemName(name):null;if(auto)staff.value=auto.legacy_user_id;else staff.value='';staff.dataset.itemName=name;staff.dataset.manual='';const n=document.getElementById('qrStaffNote');if(n)n.textContent=auto?'品目担当を自動設定しました。必要な場合のみ変更してください。':'この品目の仕入れ担当者が未設定です。登録ユーザーから選択してください。';const m=document.getElementById('qrManagedNotice');if(m)m.innerHTML=qrManagedNotice(name);};
 const v1178CreateCore=window.qrCreatePage;window.qrCreatePage=async function(){const r=await v1178CreateCore();await v1178LoadRegisteredUsers();v1144ReplacePurchaseStaffControl();qrAutoFillStaff();return r;};
 
@@ -239,12 +239,8 @@ window.v1144PurchaseStaffOptionHtml=function(selectedLegacy='',selectedName=''){
   const rows=v1144PurchaseStaffCandidates(),selected=v1179ReferenceCandidate(selectedLegacy,rows)||v1179ReferenceCandidate(selectedName,rows);
   return `<option value="">選択してください</option>${rows.map(x=>`<option value="${esc(x.legacy_user_id)}" ${x.legacy_user_id===selected?.legacy_user_id?'selected':''}>${esc(x.display_name)}</option>`).join('')}`;
 };
-window.v1144ReadPurchaseStaffFrom=function(el){
-  const candidate=v1179ReferenceCandidate(el?.value);
-  if(candidate&&el)el.value=candidate.legacy_user_id;
-  return candidate?{legacy_user_id:candidate.legacy_user_id,profile_id:candidate.profile_id||null,display_name:candidate.display_name}:{legacy_user_id:null,profile_id:null,display_name:null};
-};
-window.v1144ReadPurchaseStaff=function(){return v1144ReadPurchaseStaffFrom(document.getElementById('qrPurchaseStaff'));};
+/* c135：v1144ReadPurchaseStaffFrom の古い定義は、後の定義（js/03-inventory.js:327）で置き換わって使われないため削除 */
+/* c135：v1144ReadPurchaseStaff の古い定義は、後の定義（js/03-inventory.js:338）で置き換わって使われないため削除 */
 /* 最終保存経路も必ず正式氏名を使う。旧ラッパーの内部実装差異に依存しない。 */
 const v1179QrSaveLotFinalCore=window.qrSaveLot;
 window.qrSaveLot=async function(){
@@ -253,12 +249,7 @@ window.qrSaveLot=async function(){
   if(!info.display_name){alert('仕入れ担当者を選択してください。');staff?.focus();return;}
   return v1179QrSaveLotFinalCore();
 };
-window.v1144ReplacePurchaseStaffControl=function(){
-  const old=document.getElementById('qrPurchaseStaff');if(!old)return null;
-  const previous=old.tagName==='SELECT'?(old.options?.[old.selectedIndex]?.value||old.value):old.value,selected=v1179ReferenceCandidate(previous);
-  const select=document.createElement('select');select.id='qrPurchaseStaff';select.className=old.className||'input';select.required=true;select.innerHTML=v1144PurchaseStaffOptionHtml(selected?.legacy_user_id||'',previous);
-  select.onchange=()=>{select.dataset.manual='1';const note=document.getElementById('qrStaffNote');if(note)note.textContent=select.value?'選択した担当者を入庫ロットと品質評価へ連携します。':'仕入れ担当者を選択してください。';};old.replaceWith(select);return select;
-};
+/* c135：v1144ReplacePurchaseStaffControl の古い定義は、後の定義（js/03-inventory.js:340）で置き換わって使われないため削除 */
 window.qrAutoFillStaff=function(){
   const item=document.getElementById('qrItemName'),staff=document.getElementById('qrPurchaseStaff');if(!item||!staff)return;const itemName=String(item.value||'').trim();if(staff.dataset.itemName===itemName)return;
   const candidate=v1144AutoPurchaseStaffForItemName(itemName);staff.value=candidate?.legacy_user_id||'';staff.dataset.itemName=itemName;staff.dataset.manual='';
@@ -2238,7 +2229,7 @@ v138LanguageKey=function(){const id=v200CurrentUserId();return id?v200Key(id):""
 v138ApplyLanguage=function(language){const allow=v200Lang();if(!allow){v139ForceJapanese();return}v138Language=language===allow?allow:"ja";document.documentElement.lang=v138Language;const id=v200CurrentUserId();if(id){try{localStorage.setItem(v200Key(id),v138Language)}catch(_){}}};
 v138RestoreLanguage=function(){if(!v200WorkerLang()){v139ForceJapanese();return}v138Language=v200Read();document.documentElement.lang=v138Language};
 v138LanguageSwitchHtml=function(){const allow=v200Lang();if(!allow)return"";const btn=(code,label)=>`<button type="button" class="${v138Language===code?"on":""}" data-seika-click-action="v138SetLanguage" data-seika-click-args="${encodeURIComponent(JSON.stringify([code]))}">${label}</button>`;return`<div class="v138LangSwitch" role="group" aria-label="Language">${btn("ja",V200_LANG_LABELS.ja)}${btn(allow,V200_LANG_LABELS[allow])}</div>`};
-v138SetLanguage=function(language){const allow=v200Lang();if(!allow){v139ForceJapanese();return}const id=v200CurrentUserId();v138ApplyLanguage(language);if(db?.user){renderCurrent();return}login();const select=document.getElementById("loginUser");if(select&&id)select.value=id;v139RefreshLoginLanguageSwitch()};
+/* c135：v138SetLanguage の古い定義は、後の定義（js/03-inventory.js:2368）で置き換わって使われないため削除 */
 v138TextNode=function(node){if(!v139CanUseLanguage())return;const d=v200Dict();if(!d)return;const source=node.nodeValue,trimmed=source.trim();if(!trimmed||!d[trimmed])return;node.nodeValue=source.replace(trimmed,d[trimmed])};
 v138TranslateElement=function(el){if(!el||!v139CanUseLanguage()||!v200Dict())return;const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);nodes.forEach(v138TextNode)};
 v138TranslateScreen=function(){if(!v139CanUseLanguage()){v139ForceJapanese();return}document.documentElement.lang=v138Language;const dict=v200Dict();const common=[...document.querySelectorAll(".headAction,.title,.head .sub,#syncInfo")];common.forEach(v138TranslateElement);const screens=["login","home","qrHome","qrCreatePage","v1102QualityPage"];if(!screens.includes(currentScreen))return;const selectors=".opsLoginScreen h1,.opsLoginScreen h2,.opsLoginScreen .small,.opsLoginScreen .opsLogoSub,.homeSummary .summaryLabel,.homePrimary button,.qrCreateForm h2,.qrCreateForm .label,.qrCreateForm .small,.qrCreateForm button,.qrCreateForm .qrReadOnlyField,.qrCreateForm .notice,#v1102ProblemFields,.wrap > .notice,.wrap > .card > .label,.wrap > .card > .small,.wrap > .card > button,.wrap > .card > .grid label,.wrap > .card > .grid .box";document.querySelectorAll(selectors).forEach(v138TranslateElement);document.querySelectorAll(".qrCreateForm input[placeholder],.qrCreateForm textarea[placeholder],#v1102QualityMemo,#v1102CorrectionReason").forEach(el=>{const placeholder=el.getAttribute("placeholder");if(dict&&dict[placeholder])el.setAttribute("placeholder",dict[placeholder])});if(currentScreen==="v1102QualityPage"){const memo=document.getElementById("v1102QualityMemo"),note=V200_MEMO_NOTE[v138Language];if(memo&&note){memo.setAttribute("placeholder",note);let hint=document.getElementById("v138JapaneseMemoNote");if(!hint){hint=document.createElement("div");hint.id="v138JapaneseMemoNote";hint.className="small";hint.textContent=note;memo.insertAdjacentElement("beforebegin",hint)}else hint.textContent=note}}};
@@ -2301,7 +2292,7 @@ const v201LoginUsersBase=v188LoginUsers;
 v188LoginUsers=function(){const rows=v201LoginUsersBase();if(!rows.some(r=>r[0]==="hiep"))rows.push(["hiep","ヒェップ","青果社員"]);return rows};
 /* v1.138/v1.139 の切替UIは無効化し、担当者ごとに自動で言語を決める */
 v138LanguageSwitchHtml=function(){return""};
-v138SetLanguage=function(){};
+/* c135：v138SetLanguage の古い定義は、後の定義（js/03-inventory.js:2368）で置き換わって使われないため削除 */
 v138TranslateScreen=function(){v201Apply()};
 v138T=function(value){const lang=v201Lang();const t=String(value==null?"":value);if(!lang)return t;return v201Text(t,lang)||t};
 v138RestoreLanguage=function(){document.documentElement.lang=v201Lang()||"ja"};
@@ -2693,7 +2684,7 @@ v1113DeleteWasteHistoryRow=async function(id){
    const a=kind==="supplier"?db.qrSupplierHidden:db.qrCooperativeHidden;
    return new Set(a.map(v=>qrNormalizeName(v)));
  }
- window.v1208IsHidden=(kind,name)=>v1208Hidden(kind).has(qrNormalizeName(name));
+ /* c135：v1208IsHidden の古い定義は、後の定義（js/03-inventory.js:5138）で置き換わって使われないため削除 */
 
  const v1208SupListBase=qrSupplierList;
  qrSupplierList=async function(){
@@ -3531,9 +3522,7 @@ window.v1208ShowCandidate=v1208ShowCandidate;window.v1208RenameCandidate=v1208Re
   try{if(v1214JaOn())localStorage.removeItem(V1214_KEY(db.userId));else localStorage.setItem(V1214_KEY(db.userId),"1")}catch(e){}
   document.documentElement.lang=v202Lang()||"ja";
   try{const r=renderCurrent();if(r&&typeof r.catch==="function")r.catch(()=>home())}catch(e){home()}};
- window.v1214GoHome=function(){const s=currentScreen;
-  if((s==="qrCameraPage"||s==="qrCountCameraPage")&&typeof qrStopActiveCamera==="function")return qrStopActiveCamera().finally(()=>home());
-  return home()};
+ /* c135：v1214GoHome の古い定義は、後の定義（js/03-inventory.js:3575）で置き換わって使われないため削除 */
  function v1214Button(action,label,cls){const b=document.createElement("button");b.type="button";b.className="headAction "+(cls||"");
   b.setAttribute("data-seika-click-action",action);b.setAttribute("data-seika-click-args","%5B%5D");b.textContent=label;return b}
  function v1214Decorate(){const bar=document.querySelector(".topBtns");if(!bar||!db||!db.user)return;
@@ -4582,18 +4571,7 @@ function v1250ListBar(sort,alertOnly,full){
 }
 function v1250ToggleAlertOnly(){const s=qrLotListState;return qrLotListPage(s.selectedItem,s.sortOrder,s.stockFilter,s.displayLimit,!s.alertOnly)}
 function v1250SortAlert(){const s=qrLotListState;return qrLotListPage(s.selectedItem,"alert",s.stockFilter,s.displayLimit,!!s.alertOnly)}
-async function v1250ConfirmQuality(lotId,qrKey){
-  if(!v1250CanConfirm())return alert("品質確認は管理者・青果社員が行います。");
-  if(!confirm("実物を確認し、品質に問題がないことを確認しましたか？\n確認済みにすると、本日中は「優先使用」として扱います。"))return;
-  try{
-    const ans=await callRpc("confirm_qr_lot_storage_check_v1250",{p_lot_id:lotId,p_note:""});
-    if(!ans?.ok)throw new Error(ans?.message||"品質確認を保存できませんでした");
-    await v1250LoadChecks(true);
-    if(currentScreen==="qrLotListPage")return qrReturnToLotList();
-    if(currentScreen==="qrOperationLotPage"&&qrKey)return qrOperationLotPage("out",qrKey);
-    alert("品質確認済みにしました。");
-  }catch(e){alert(/PGRST202|Could not find the function|qr_lot_storage_checks_v1250/.test(String(e.message||e))?"品質確認の保存先がまだ準備されていません（SQL 007 の実行が必要です）。":(e.message||e))}
-}
+/* c135：v1250ConfirmQuality の古い定義は、後の定義（js/03-inventory.js:5467）で置き換わって使われないため削除 */
 const v1250ListPageBase=qrLotListPage;
 qrLotListPage=async function(...args){await v1250LoadChecks();return v1250ListPageBase.apply(this,args)};
 window.qrLotListPage=qrLotListPage;
@@ -4657,7 +4635,7 @@ window.v195AddTrimLotObject=v195AddTrimLotObject;
 })();
 
 /* ===== v1.199-c31 保管期限マスタ画面（QR在庫管理ホームから変更） ===== */
-function v1250CanEditLimits(){return["admin","worker"].includes(db?.role)}
+/* c135：v1250CanEditLimits の古い定義は、後の定義（js/03-inventory.js:5381）で置き換わって使われないため削除 */
 function v1250LevelGuide(d){
   d=Number(d);const watch=Math.ceil(d*0.5),parts=[];
   if(watch<d-1)parts.push(`要観察 ${watch}〜${d-2}日`);
