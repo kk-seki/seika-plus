@@ -262,7 +262,7 @@ async function c130ReadFile(input){
  if(typeof XLSX==="undefined")return alert("Excelの部品が読み込まれていません。");
  c130Busy(true,"Excelを読み込んでいます");
  try{
-  const wb=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true});
+  const wb=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:false});
   const name=wb.SheetNames.includes("GAP一覧")?"GAP一覧":wb.SheetNames.find(s=>s!=="書き方")||wb.SheetNames[0];
   const aoa=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:""});
   const [m,cur]=await Promise.all([c130Master(true),c130Gap(true)]);
