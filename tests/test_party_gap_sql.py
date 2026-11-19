@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SQL_010 = next((ROOT / 'db').glob('010_*.sql')).read_text(encoding='utf-8')
 SQL_052 = next((ROOT / 'db').glob('052_*.sql')).read_text(encoding='utf-8')
 SQL_053 = next((ROOT / 'db').glob('053_*.sql')).read_text(encoding='utf-8')
+SQL_055 = next((ROOT / 'db').glob('055_*.sql')).read_text(encoding='utf-8')
 SCRATCH = Path('/tmp/jai-scratch/c130')
 TIMEOUT = 30
 ADMIN = '00000000-0000-0000-0000-000000000001'
@@ -41,8 +42,10 @@ declare v text; begin select role into v from public.profiles where id=auth.uid(
 if v is null or not (v = any(p_roles)) then raise exception '権限がありません' using errcode='42501'; end if; end $$;
 create table public.app_state(id text primary key, data jsonb);
 create table public.qr_lots(id uuid primary key default gen_random_uuid(), lot_no text, item_name text, supplier text, cooperative_name text,
-  certification text, received_date date, current_qty numeric, active boolean default true, updated_at timestamptz default now());
-create table public.qr_lot_movements(id uuid primary key default gen_random_uuid(), lot_id uuid, supplier text, cooperative_name text, user_name text);
+  certification text, received_date date, current_qty numeric, active boolean default true, updated_at timestamptz default now(), created_at timestamptz default now());
+create function public.set_updated_at() returns trigger language plpgsql as $$begin new.updated_at = now(); return new; end$$;
+create trigger qr_lots_set_updated_at before update on public.qr_lots for each row execute function public.set_updated_at();
+create table public.qr_lot_movements(id uuid primary key default gen_random_uuid(), lot_id uuid, supplier text, cooperative_name text, user_name text, occurred_at timestamptz, created_at timestamptz default now());
 create table public.hq_lots_v1400(id uuid primary key default gen_random_uuid(), supplier text, cooperative_name text);
 insert into public.profiles values ('00000000-0000-0000-0000-000000000001','admin',true,'管理者'),
  ('00000000-0000-0000-0000-000000000002','worker',true,'社員'),('00000000-0000-0000-0000-000000000003','buyer',true,'仕入');
@@ -101,6 +104,8 @@ class PartyGapSqlRuntimeTests(unittest.TestCase):
         cls.psql(SQL_052)  # 2回実行しても同じ
         cls.psql(SQL_053)
         cls.psql(SQL_053)
+        cls.psql(SQL_055)
+        cls.psql(SQL_055)
 
     @classmethod
     def command(cls, command):
@@ -205,6 +210,14 @@ class PartyGapSqlRuntimeTests(unittest.TestCase):
           ('C','レタス','水戸大同','JA水戸','2026-11-10',5),('D','レタス','水戸大同','',' 2026-11-10',5),('E','人参','丸西産業','','2026-11-10',5)""")
         self.assertEqual(self.rpc('public.qr_gap_backfill_v1199c130(true)')['count'], 3)
         self.assertEqual(self.val("select string_agg(lot_no||':'||coalesce(certification,'-'),',' order by lot_no) from public.qr_lots"), 'A:JGAP,B:GGAP,C:GGAP,D:-,E:-')
+
+    def test_merge_keeps_last_moved_time_but_normal_updates_still_stamp_it(self):
+        self.psql("""insert into public.qr_lots(id,item_name,cooperative_name,received_date,current_qty,updated_at) values
+          ('20000000-0000-0000-0000-000000000001','キャベツ','JA水戸市','2026-01-01',0,'2026-01-05 00:00:00+00')""")
+        self.rpc("public.qr_party_merge_v1199c130('cooperative','JA水戸市','JA水戸')")
+        self.assertEqual(self.val("select cooperative_name||'|'||to_char(updated_at at time zone 'UTC','YYYY-MM-DD') from public.qr_lots"), 'JA水戸|2026-01-05')
+        self.psql("update public.qr_lots set current_qty = 1")
+        self.assertEqual(self.val("select (updated_at > now() - interval '1 minute')::text from public.qr_lots"), 'true')
 
     def test_usage_counts_active_lots_by_normalized_name(self):
         self.psql("""insert into public.qr_lots(item_name,supplier,cooperative_name,received_date,active) values

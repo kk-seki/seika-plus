@@ -193,18 +193,37 @@ function c84Excel(){
  for(const t of c84Tickets){let n=c84Title(t).replace(/[\\\/?*\[\]:]/g,"").slice(0,28);while(used.has(n))n+="_";used.add(n);const ws=XLSX.utils.aoa_to_sheet(c84Aoa(t));ws["!cols"]=[{wch:30},{wch:8},{wch:9},{wch:6},{wch:10},{wch:12},{wch:14},{wch:8},{wch:12},{wch:16},{wch:22}];XLSX.utils.book_append_sheet(wb,ws,n)}
  XLSX.writeFile(wb,`伝票_${c84Date}.xlsx`);
 }
-async function c84MonthExcel(){
+/* c134：期間と出庫先を選んで、伝票の明細をExcelに出す（伝票の抜けの確認・社内売り用）。すべてを選ぶと出庫先ごとのシート */
+const C84_RANGE_MAX=93,C84_DEST_LABEL=d=>d==="本社"?"本社工場":d;
+function c84PackKg(pack){const m=String(pack||"").normalize("NFKC").match(/^\s*(\d+(?:\.\d+)?)\s*kg\s*$/i);return m?Number(m[1]):null}
+function c84LineKg(g){if(g.big)return g.kgOk&&g.kg>0?Math.round(g.kg*10)/10:"";const k=c84PackKg(g.pack),q=Number(g.qty);return k&&Number.isFinite(q)?Math.round(k*q*10)/10:""}
+async function c84RangeExcel(){
  if(c84Busy)return;if(typeof XLSX==="undefined")return alert("Excel出力の部品が読み込まれていません。");
- const month=document.getElementById("c84Month")?.value||String(c84Date||todayKey()).slice(0,7);if(!/^\d{4}-\d{2}$/.test(month))return alert("月を選んでください。");
+ let from=document.getElementById("c84From")?.value||"",to=document.getElementById("c84To")?.value||"";const dest=document.getElementById("c84XDest")?.value||"";
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to))return alert("期間（はじめと終わりの日付）を選んでください。");
+ if(from>to)[from,to]=[to,from];
+ const limit=c84Add(todayKey(),2);if(to>limit)to=limit;
+ const span=Math.round((new Date(to+"T00:00:00")-new Date(from+"T00:00:00"))/864e5)+1;
+ if(span>C84_RANGE_MAX)return alert(`期間は${C84_RANGE_MAX}日以内で選んでください（今は${span}日です）。`);
  const box=document.getElementById("c84MonthStatus");c84Busy=true;
- try{const a=[["伝票の日付","出庫先","便","区分","品名","単協・仕入先","GAP","入数","数量","単位","産地","入荷日","出庫日","ロットNo."]];const [y,m]=month.split("-").map(Number),last=new Date(y,m,0).getDate(),limit=c84Add(todayKey(),2),cache=new Map;
-  for(let d=1;d<=last;d++){const day=`${month}-${String(d).padStart(2,"0")}`;if(day>limit)break;if(box)box.innerHTML=`<div class="notice">${d}日の伝票を読み込み中です…</div>`;
-   for(const t of c84Build(await c84Collect(day,cache),day))for(const g of t.lines){const c=c84Cells(g);a.push([t.date,t.dest==="本社"?"本社工場":t.dest,c84Hq(t.dest)?t.run:"",c84Kind(g),g.item,g.party,g.cert||"",c.pack,c.qty===""?"":Number(String(c.qty).replace(/,/g,"")),c.unit,g.origin,g.received||"",g.ship,g.lot_no])}}
-  const wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet(a);ws["!cols"]=[{wch:12},{wch:9},{wch:9},{wch:16},{wch:22},{wch:14},{wch:8},{wch:8},{wch:9},{wch:6},{wch:10},{wch:12},{wch:12},{wch:22}];XLSX.utils.book_append_sheet(wb,ws,"伝票の一覧");XLSX.writeFile(wb,`伝票の一覧_${month}.xlsx`);
-  if(box)box.innerHTML=`<div class="ok">${a.length-1}行を出力しました。</div>`}
+ const head=["伝票の日付","出庫先","便","区分","品名","単協・仕入先","GAP","入数","数量","単位","重量kg","産地","入荷日","出庫日","ロットNo."];
+ try{const by=new Map,cache=new Map;let n=0;
+  for(let day=from;day<=to;day=c84Add(day,1)){if(box)box.innerHTML=`<div class="notice">${esc(day)} の伝票を読み込み中です…</div>`;
+   for(const t of c84Build(await c84Collect(day,cache),day)){if(dest&&t.dest!==dest)continue;
+    for(const g of t.lines){const c=c84Cells(g),q=c.qty===""?"":Number(String(c.qty).replace(/,/g,""));
+     if(!by.has(t.dest))by.set(t.dest,[]);by.get(t.dest).push([t.date,C84_DEST_LABEL(t.dest),c84Hq(t.dest)?t.run:"",c84Kind(g),g.item,g.party,g.cert||"",c.pack,q,c.unit,c84LineKg(g),g.origin,g.received||"",g.ship,g.lot_no]);n++}}}
+  const wb=XLSX.utils.book_new(),cols=[{wch:12},{wch:9},{wch:9},{wch:16},{wch:22},{wch:16},{wch:8},{wch:8},{wch:8},{wch:6},{wch:9},{wch:10},{wch:12},{wch:12},{wch:22}];
+  const order=["本社","埼玉","深谷","荻沼"].filter(d=>!dest||d===dest);
+  for(const d of order){const rows=by.get(d)||[];const kg=rows.reduce((a,r)=>a+(typeof r[10]==="number"?r[10]:0),0);
+   const aoa=[[`${C84_DEST_LABEL(d)}へ送った荷物（${from}〜${to}・伝票の日付）`],[],head,...rows,[],["合計",`${rows.length}行`,"","","","","","","","",Math.round(kg*10)/10,"重量kgは分かる分だけ（入数が「○kg」の行と、総重量を入れた大型容器）"]];
+   const ws=XLSX.utils.aoa_to_sheet(aoa);ws["!cols"]=cols;ws["!autofilter"]={ref:`A3:O${Math.max(3,rows.length+3)}`};
+   XLSX.utils.book_append_sheet(wb,ws,C84_DEST_LABEL(d))}
+  XLSX.writeFile(wb,`送った荷物の明細_${dest?C84_DEST_LABEL(dest)+"_":""}${from}_${to}.xlsx`);
+  if(box)box.innerHTML=`<div class="ok">${n}行を出力しました（${order.map(C84_DEST_LABEL).join("・")}）。</div>`}
  catch(e){if(box)box.innerHTML=`<div class="err">出力できませんでした。${esc(e?.message||String(e))}</div>`}
  finally{c84Busy=false}
 }
+const c84MonthExcel=c84RangeExcel;
 function c86CanEdit(){return["admin","worker"].includes(String(db?.role||""))}
 function c86EditHtml(t,i){
  if(!c86CanEdit())return"";
@@ -256,12 +275,15 @@ async function c84SlipPage(date){
  ${sat?`<div class="notice" style="margin-top:8px"><b>今日は土曜日です</b><div class="small">日曜日の伝票（今日積む分）と、月曜日の伝票（日曜積込分）を今日のうちに印刷できます。</div><div style="display:flex;gap:6px;margin-top:6px">${c84DayBtn("日曜日の伝票",c84Add(today,1))}${c84DayBtn("月曜日の伝票",c84Add(today,2))}</div></div>`:""}
  <div class="small" style="margin-top:6px">この日付の伝票に載る出庫（取消したものを除く）を集めます。<br>・埼玉・深谷：前の日の出庫。月曜日の伝票には、土曜日に「日曜積込分」で出庫した分も入ります（土曜日の「日曜積込分」は日曜日の伝票には入りません）。<br>・本社工場：本社入荷日（予定）がこの日の出庫。便ごとに1枚です。本社直接入荷（石岡経由）は載りません。<br>・荻沼：入荷日（当日便は出庫した日、翌日便は次の日）がこの日の出庫。便ごとに1枚です。</div></div>
  ${c84Tickets.length?`<div class="card"><button class="btn homeBtnSlip" style="width:100%" ${seikaEventAttrs("click","c84Pdf",[null])}>すべての伝票を印刷（PDF・${c84Tickets.length}件）</button><button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c84Excel",[])}>この日の伝票をExcelで出力</button><div id="c84Status" style="margin-top:8px"></div></div>${cards}`:`<div class="notice">この日付の埼玉・深谷・本社工場・荻沼の伝票に載る出庫はありません。</div>`}
- <div class="card"><b>月の伝票の一覧（Excel）</b><div class="small">選んだ月の伝票（伝票の日付で集計）の中身を1つの表にまとめて出力します（事務所での確認用）。</div><input id="c84Month" type="month" class="input" style="margin-top:6px" value="${esc(c84Date.slice(0,7))}"><button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c84MonthExcel",[])}>月の一覧をExcelで出力</button><div id="c84MonthStatus" style="margin-top:8px"></div></div>`);
+ <div class="card"><b>送った荷物の明細（Excel）</b><div class="small">期間と出庫先を選ぶと、その期間の伝票（伝票の日付で集計）の明細を出力します。伝票の抜けの確認（事務所のコピーとの照合）や社内売りに使えます。「すべて」は出庫先ごとにシートを分けます。</div>
+ <div class="row" style="margin-top:6px"><div style="flex:1"><label class="label" style="margin-top:0">はじめ</label><input id="c84From" type="date" class="input" value="${esc(c84Date.slice(0,8)+"01")}"></div><div style="flex:1"><label class="label" style="margin-top:0">終わり</label><input id="c84To" type="date" class="input" value="${esc(c84Date)}"></div></div>
+ <label class="label">出庫先</label><select id="c84XDest" class="input"><option value="">すべて（本社工場・埼玉・深谷・荻沼）</option><option value="本社">本社工場</option><option value="埼玉">埼玉</option><option value="深谷">深谷</option><option value="荻沼">荻沼</option></select>
+ <button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c84RangeExcel",[])}>明細をExcelで出力</button><div id="c84MonthStatus" style="margin-top:8px"></div></div>`);
  c87FitAll(document);
 }
 
 function c84DateChanged(){const v=document.getElementById("c84Date")?.value;if(v)return c84SlipPage(v)}
-Object.assign(window,{c87FitAll,c86EditKg,c86EditPack,c84SlipPage,c84DateChanged,c84Pdf,c84Excel,c84MonthExcel,c84Build,c84Collect,c84Title,c84TicketPages,C84_CSS});
+Object.assign(window,{c87FitAll,c86EditKg,c86EditPack,c84SlipPage,c84DateChanged,c84Pdf,c84Excel,c84MonthExcel,c84RangeExcel,c84Build,c84Collect,c84Title,c84TicketPages,C84_CSS});
 const st=document.createElement("style");st.textContent='.homeBtnSlip{background:linear-gradient(90deg,#4a044e 0%,#a21caf 52%,#f0abfc 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.3) !important;border-color:transparent !important;}';document.head.appendChild(st);
 const base=qrHome;
 qrHome=async function(...a){
@@ -294,7 +316,7 @@ try{
    "同じロットを何回かに分けて出庫したときは1行にまとめます。先送り分は「【○/○ 納品分 先送り】」の下にまとめます。",
    "「この伝票を印刷」または「すべての伝票を印刷」でPDFを作り、開いて印刷します。Android端末は縦向きの紙に回したPDFになります。",
    "QR品目にないものは、表の下の空いた3行に手書きで書き足します。"],
-  check:"納品書の各行の右端の小さなQRを読むと、そのロットの画面が開きます（ログインが必要です）。「この日の伝票をExcelで出力」「月の一覧をExcelで出力」で、事務所でパソコンに打ち込まずに使えます。",
+  check:"納品書の各行の右端の小さなQRを読むと、そのロットの画面が開きます（ログインが必要です）。「この日の伝票をExcelで出力」と「送った荷物の明細（Excel）」（期間と出庫先を選ぶ。すべてなら出庫先ごとのシート）で、事務所でパソコンに打ち込まずに使えます。",
   caution:"伝票はアプリに保存しません。出庫を取消・修正したあとは、もう一度印刷してください。本社直接入荷（石岡経由）は載りません。"};
  if(typeof V198_GUIDE_SECTIONS!=="undefined")V198_GUIDE_SECTIONS.c84Slip=sec;
  if(typeof V195_ROLE_GUIDES!=="undefined")for(const r of ["admin","worker","clerk"]){const g=V195_ROLE_GUIDES[r];if(g&&Array.isArray(g.sections)&&!g.sections.some(x=>x.title===sec.title))g.sections.push(sec)}
