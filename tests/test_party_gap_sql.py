@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SQL_010 = next((ROOT / 'db').glob('010_*.sql')).read_text(encoding='utf-8')
 SQL_052 = next((ROOT / 'db').glob('052_*.sql')).read_text(encoding='utf-8')
+SQL_053 = next((ROOT / 'db').glob('053_*.sql')).read_text(encoding='utf-8')
 SCRATCH = Path('/tmp/jai-scratch/c130')
 TIMEOUT = 30
 ADMIN = '00000000-0000-0000-0000-000000000001'
@@ -57,6 +58,11 @@ class PartyGapSqlStaticTests(unittest.TestCase):
         self.assertNotRegex(SQL_052, r'set\s+current_qty')
         self.assertNotIn('delete from public.qr_lots', SQL_052)
 
+    def test_053_deletes_with_a_where_clause(self):
+        body = SQL_053[SQL_053.index('function public.replace_qr_gap_certs_v1199c130'):]
+        self.assertIn('delete from public.qr_gap_certs_v1199c130 where true;', body)
+        self.assertNotRegex(body, r'delete from public\.qr_gap_certs_v1199c130\s*;')
+
     def test_tables_are_read_only_for_the_app(self):
         self.assertIn('grant select on public.qr_gap_certs_v1199c130 to authenticated', SQL_052)
         self.assertIn('revoke all on public.qr_gap_certs_v1199c130 from public, anon, authenticated', SQL_052)
@@ -93,6 +99,8 @@ class PartyGapSqlRuntimeTests(unittest.TestCase):
         cls.psql(SQL_010)
         cls.psql(SQL_052)
         cls.psql(SQL_052)  # 2回実行しても同じ
+        cls.psql(SQL_053)
+        cls.psql(SQL_053)
 
     @classmethod
     def command(cls, command):
@@ -188,6 +196,15 @@ class PartyGapSqlRuntimeTests(unittest.TestCase):
           ('C','葉付き大根','カルゲン会さしま','2026-11-10',5),('D','人参','カルゲン会さしま','2026-11-10',5)""")
         self.assertEqual(self.rpc('public.qr_gap_backfill_v1199c130(true)')['count'], 3)
         self.assertEqual(self.val("select string_agg(lot_no||':'||coalesce(certification,'-'),',' order by lot_no) from public.qr_lots"), 'A:JGAP,B:GGAP,C:JGAP,D:-')
+
+    def test_backfill_uses_supplier_when_the_cooperative_does_not_match(self):
+        self.gap([{'coop_name': '丸西産業', 'item_name': 'レタス', 'certification': 'JGAP', 'expires_on': '2028-01-01'},
+                  {'coop_name': 'JA水戸', 'item_name': 'レタス', 'certification': 'GGAP', 'expires_on': '2028-01-01'}])
+        self.psql("""insert into public.qr_lots(lot_no,item_name,supplier,cooperative_name,received_date,current_qty) values
+          ('A','レタス','丸西産業',null,'2026-11-10',5),('B','レタス','丸西産業','JA水戸','2026-11-10',5),
+          ('C','レタス','水戸大同','JA水戸','2026-11-10',5),('D','レタス','水戸大同','',' 2026-11-10',5),('E','人参','丸西産業','','2026-11-10',5)""")
+        self.assertEqual(self.rpc('public.qr_gap_backfill_v1199c130(true)')['count'], 3)
+        self.assertEqual(self.val("select string_agg(lot_no||':'||coalesce(certification,'-'),',' order by lot_no) from public.qr_lots"), 'A:JGAP,B:GGAP,C:GGAP,D:-,E:-')
 
     def test_usage_counts_active_lots_by_normalized_name(self):
         self.psql("""insert into public.qr_lots(item_name,supplier,cooperative_name,received_date,active) values
