@@ -80,6 +80,14 @@ class PartyGapBrowserTests(unittest.TestCase):
                 {"coop_norm": "カルゲン会さしま", "item_norm": "葉付大根", "certification": "GGAP", "expires_on": "2028-03-27"}]
         found = page.evaluate("(r)=>['カット大根','葉付大根','葉付き大根','人参'].map(i=>{const g=c130Find(r,'カルゲン会さしま',i,'2026-11-19');return g?g.certification:''})", rows)
         self.assertEqual(found, ["JGAP", "GGAP", "JGAP", ""])
+        sup = page.evaluate("""async()=>{window.__T.qr_party_names_v1280.push({kind:'supplier',name:'丸西産業',status:'active'});const m=await c130Master(true);
+          return c130Check([['単協名・仕入先','品目','認証区分','有効期限'],['丸西産業','レタス','JGAP','2028/1/1'],['無い名前','レタス','JGAP','2028/1/1']],m)}""")
+        self.assertEqual([(r["coop_name"], r["item_name"]) for r in sup["rows"]], [("丸西産業", "レタス")])
+        self.assertIn("単協名・仕入先がマスタにありません", sup["errors"][0]["reason"])
+        g2 = [{"coop_norm": "丸西産業", "item_norm": "レタス", "certification": "JGAP", "expires_on": "2028-01-01"},
+              {"coop_norm": "JA水戸", "item_norm": "レタス", "certification": "GGAP", "expires_on": "2028-01-01"}]
+        self.assertEqual(page.evaluate("(r)=>[['','丸西産業'],['JA水戸','丸西産業'],['JA不明','丸西産業'],['','水戸大同']].map(([c,s])=>{const g=c130Find(r,c,'レタス','2026-11-19',s);return g?g.certification:''})", g2),
+                         ["JGAP", "GGAP", "JGAP", ""])
         out = page.evaluate("""async()=>{const m=await c130Master(true);
           const aoa=[['GAP一覧'],['単協名','品目','認証区分','有効期限','備考'],
            ['JA水戸','キャベツ','JGAP','2027/3/31','a'],
@@ -97,7 +105,7 @@ class PartyGapBrowserTests(unittest.TestCase):
                                 (5, "ＪＡつくば", "キャベツ", "JGAP", "2027-03-31")})
         reasons = {e["line"]: e["reason"] for e in out["errors"]}
         self.assertEqual(set(reasons), {6, 7, 8, 9, 10})
-        self.assertIn("単協名がマスタにありません", reasons[6])
+        self.assertIn("単協名・仕入先がマスタにありません", reasons[6])
         self.assertIn("品目がSEIKA＋の品目", reasons[7])
         self.assertIn("認証区分", reasons[8])
         self.assertIn("有効期限", reasons[9])

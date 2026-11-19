@@ -4,7 +4,7 @@
    ・管理者は、ロットに入っている表記を正式名にまとめ、過去のロット・履歴の表記も直せる（SQL 052）。
    ・GAP一覧（単協＋品目、認証区分、有効期限）をExcelで取り込む（全部置き換え）。QR入庫で認証区分を自動で入れる。 */
 (()=>{
-const CERTS=["JGAP","GGAP","ASIAGAP"],SOON_DAYS=30,HEAD=["単協名","品目","認証区分","有効期限","備考"];
+const CERTS=["JGAP","GGAP","ASIAGAP"],SOON_DAYS=30,HEAD=["単協名・仕入先","品目","認証区分","有効期限","備考"],NAME_HEADS=["単協名・仕入先","単協名","仕入先"];
 const KIND_LABEL={supplier:"仕入先",cooperative:"単協名"};
 const sqlMissing=e=>/PGRST202|PGRST205|schema cache|does not exist|404|qr_gap_certs_v1199c130|_v1199c130/.test(String(e?.message||e||""));
 const NEED_SQL="この機能の準備がまだです（SQL 052 の実行が必要です）。";
@@ -162,9 +162,11 @@ async function c130Gap(force=false){
  return gap;
 }
 function c130AddDays(d,k){const t=new Date(String(d).slice(0,10)+"T00:00:00");t.setDate(t.getDate()+k);return ymdKey(t)}
-function c130Find(rows,coop,item,date){
- if(!rows||!coop||!item)return null;
- const c=n(coop),name=c130Item(item)||item,i=n(name),fam=n(c130Family(name)),g=rows.find(r=>r.coop_norm===c&&r.item_norm===i)||(fam?rows.find(r=>r.coop_norm===c&&r.item_norm===fam):null);
+function c130Find(rows,coop,item,date,supplier){
+ if(!rows||!item)return null;
+ const name=c130Item(item)||item,i=n(name),fam=n(c130Family(name));
+ const hit=c=>c?(rows.find(r=>r.coop_norm===c&&r.item_norm===i)||(fam?rows.find(r=>r.coop_norm===c&&r.item_norm===fam):null)):null;
+ const g=hit(n(coop))||hit(n(supplier));
  if(!g)return null;
  const d=String(date||todayKey()).slice(0,10);
  return{...g,valid:d<=String(g.expires_on).slice(0,10)};
@@ -177,23 +179,23 @@ let autoSeq=0;
 async function c130GapAuto(){
  const sel=document.getElementById("qrCertification");if(!sel)return;
  const seq=++autoSeq;
- const item=document.getElementById("qrItemName")?.value||"",coopRaw=document.getElementById("qrCooperativeName")?.value||"",date=document.getElementById("qrReceivedDate")?.value||todayKey();
+ const item=document.getElementById("qrItemName")?.value||"",coopRaw=document.getElementById("qrCooperativeName")?.value||"",supRaw=document.getElementById("qrSupplier")?.value||"",date=document.getElementById("qrReceivedDate")?.value||todayKey();
  let note=document.getElementById("c130GapNote");
  if(!note){sel.insertAdjacentHTML("afterend",'<div id="c130GapNote" class="small" style="margin-top:5px"></div>');note=document.getElementById("c130GapNote")}
- if(!coopRaw.trim()||!item){if(sel.dataset.c130Auto==="1"){sel.value="";sel.dataset.c130Auto=""}note.textContent="";return}
- const [rows,res]=await Promise.all([c130Gap(),c130Resolve("cooperative",coopRaw)]);
+ if((!coopRaw.trim()&&!supRaw.trim())||!item){if(sel.dataset.c130Auto==="1"){sel.value="";sel.dataset.c130Auto=""}note.textContent="";return}
+ const [rows,res,sup]=await Promise.all([c130Gap(),c130Resolve("cooperative",coopRaw),c130Resolve("supplier",supRaw)]);
  if(seq!==autoSeq||!document.getElementById("qrCertification"))return;
- const g=c130Find(rows,res.name,item,date);
+ const g=c130Find(rows,res.name,item,date,sup.name);
  if(g&&g.valid){
   if(sel.value===""||sel.dataset.c130Auto==="1"){sel.value=g.certification;sel.dataset.c130Auto="1";note.textContent=`GAP一覧から「${g.certification}」を自動で入れました（有効期限 ${c130Md(g.expires_on)}）。違うときは選び直してください。`}
   else note.textContent=`GAP一覧では「${g.certification}」です（有効期限 ${c130Md(g.expires_on)}）。`;
   return;
  }
  if(sel.dataset.c130Auto==="1"){sel.value="";sel.dataset.c130Auto=""}
- note.textContent=g?`GAP一覧ではこの単協・品目の有効期限が ${c130Md(g.expires_on)} で切れているため、自動では入れていません。`:"";
+ note.textContent=g?`GAP一覧ではこの単協・仕入先と品目の有効期限が ${c130Md(g.expires_on)} で切れているため、自動では入れていません。`:"";
 }
-document.addEventListener("change",e=>{const id=e.target?.id;if(id==="qrCertification"){e.target.dataset.c130Auto="";const nt=document.getElementById("c130GapNote");if(nt)nt.textContent=""}else if(id==="qrItemName"||id==="qrReceivedDate"||id==="qrCooperativeName")c130GapAuto()},true);
-document.addEventListener("focusout",e=>{if(e.target?.id==="qrCooperativeName")c130GapAuto()},true);
+document.addEventListener("change",e=>{const id=e.target?.id;if(id==="qrCertification"){e.target.dataset.c130Auto="";const nt=document.getElementById("c130GapNote");if(nt)nt.textContent=""}else if(id==="qrItemName"||id==="qrReceivedDate"||id==="qrCooperativeName"||id==="qrSupplier")c130GapAuto()},true);
+document.addEventListener("focusout",e=>{if(e.target?.id==="qrCooperativeName"||e.target?.id==="qrSupplier")c130GapAuto()},true);
 if(typeof qrUpdateCooperativeSuggestions==="function"){
  const sugBase=qrUpdateCooperativeSuggestions;
  const sug=async function(...a){const r=await sugBase.apply(this,a);if(document.getElementById("qrCertification"))c130GapAuto();return r};
@@ -208,7 +210,7 @@ function c130Template(){
  const hs={font:{bold:true,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"1F4E78"}},alignment:{horizontal:"center"}};
  HEAD.forEach((_,i)=>{const c=XLSX.utils.encode_cell({r:0,c:i});if(ws[c])ws[c].s=hs});
  XLSX.utils.book_append_sheet(wb,ws,"GAP一覧");
- const how=XLSX.utils.aoa_to_sheet([["GAP一覧の書き方（このシートは取り込みません）"],[],["列","書き方"],["単協名","SEIKA＋の「仕入先・単協マスタ」の単協名と同じ名前で書く。「さしま農場（カルゲン会さしま）」のように書いたときは、かっこの中の名前もマスタと照らし合わせます（どちらもマスタにない行は取り込みません）"],["品目","SEIKA＋の品目と同じ名前で書く（例：キャベツ、さつま芋）。「大根」と書くと、カット大根・葉付大根にも当てはまります"],["認証区分","JGAP・GGAP・ASIAGAP（AGAP と書いても可）"],["有効期限","日付で書く（例：2027/3/31）。入荷日がこの日までなら、QR入庫で自動で入ります"],["備考","自由に書く（取り込みます）"],[],["・1行に「単協＋品目」1つ。同じ単協・品目を2行書かない"],["・取り込むと、今の一覧は全部この内容に置き換わります（取り込む前に、追加・変更・削除の件数を確認できます）"],["・仕入先ではひも付けません（市場の仕入先は複数の単協を扱うため）"],[],["記入例"],HEAD,["JA新ひたち野","キャベツ","JGAP","2027/3/31","第三者認証"]]);
+ const how=XLSX.utils.aoa_to_sheet([["GAP一覧の書き方（このシートは取り込みません）"],[],["列","書き方"],["単協名・仕入先","SEIKA＋の「仕入先・単協マスタ」の単協名か仕入先と同じ名前で書く。「さしま農場（カルゲン会さしま）」のように書いたときは、かっこの中の名前もマスタと照らし合わせます（どれもマスタにない行は取り込みません）"],["品目","SEIKA＋の品目と同じ名前で書く（例：キャベツ、さつま芋）。「大根」と書くと、カット大根・葉付大根にも当てはまります"],["認証区分","JGAP・GGAP・ASIAGAP（AGAP と書いても可）"],["有効期限","日付で書く（例：2027/3/31）。入荷日がこの日までなら、QR入庫で自動で入ります"],["備考","自由に書く（取り込みます）"],[],["・1行に「単協＋品目」1つ。同じ単協・品目を2行書かない"],["・取り込むと、今の一覧は全部この内容に置き換わります（取り込む前に、追加・変更・削除の件数を確認できます）"],["・ロットの単協名と同じ名前の行を先に使い、なければ仕入先と同じ名前の行を使います"],[],["記入例"],HEAD,["JA新ひたち野","キャベツ","JGAP","2027/3/31","第三者認証"]]);
  how["!cols"]=[{wch:24},{wch:80},{wch:10},{wch:13},{wch:20}];
  XLSX.utils.book_append_sheet(wb,how,"書き方");
  XLSX.writeFile(wb,"GAP一覧_取り込み用ひな形.xlsx");
@@ -230,21 +232,24 @@ function c130Family(v){const k=n(v);for(const [root,list] of Object.entries(C130
 /* 品目：QR対象品目、品目設定の品目、またはまとめた品目（大根）。名前の書き方の違いは吸収 */
 function c130Item(v){const raw=String(v??"").trim();if(!raw)return"";for(const root of Object.keys(C130_FAMILY))if(loose(root)===loose(raw))return root;const q=qrStrictItemName(raw);if(q)return q;const k=loose(raw);try{for(const it of activeItems()){const nm=String(it?.name||"").trim();if(nm&&loose(nm)===k)return nm}}catch(_){}return""}
 /* GAP一覧の単協名：そのままマスタにないときは、かっこの中の名前（例：さしま農場（カルゲン会さしま）→ カルゲン会さしま）も照らし合わせる */
-function c130CoopIn(m,raw){const r=c130ResolveIn(m,"cooperative",raw);if(r.ok)return r;const k=String(raw).normalize("NFKC").match(/^(.*?)\(([^()]+)\)\s*$/);if(k){const inner=c130ResolveIn(m,"cooperative",k[2].trim());if(inner.ok)return inner}return r}
+/* c131：単協マスタになければ仕入先マスタとも照らし合わせる */
+function c130CoopIn(m,raw){const k=String(raw).normalize("NFKC").match(/^(.*?)\(([^()]+)\)\s*$/),names=[raw,...(k?[k[2].trim()]:[])];
+ for(const kind of ["cooperative","supplier"])for(const nm of names){const r=c130ResolveIn(m,kind,nm);if(r.ok)return{...r,kind}}
+ return{name:String(raw).trim(),ok:false}}
 /* 行（配列の配列）を調べる。単協はマスタの正式名、品目は品目マスタの名前に直す */
 function c130Check(aoa,m){
  const rows=[],errors=[];
  let h=-1,col={};
- for(let i=0;i<Math.min(aoa.length,20);i++){const r=(aoa[i]||[]).map(x=>String(x??"").normalize("NFKC").replace(/\s/g,""));if(r.includes("単協名")&&r.includes("品目")){h=i;HEAD.forEach(k=>col[k]=r.indexOf(k));break}}
- if(h<0)return{rows,errors:[{line:"-",reason:"見出しの行（単協名・品目・認証区分・有効期限・備考）が見つかりません。ひな形を使ってください。"}]};
+ for(let i=0;i<Math.min(aoa.length,20);i++){const r=(aoa[i]||[]).map(x=>String(x??"").normalize("NFKC").replace(/\s/g,""));const nc=NAME_HEADS.map(x=>r.indexOf(x)).find(x=>x>=0);if(nc!==undefined&&r.includes("品目")){h=i;HEAD.forEach(k=>col[k]=r.indexOf(k));col[HEAD[0]]=nc;break}}
+ if(h<0)return{rows,errors:[{line:"-",reason:"見出しの行（単協名・仕入先、品目、認証区分、有効期限、備考）が見つかりません。ひな形を使ってください。"}]};
  for(const k of ["認証区分","有効期限"])if(col[k]<0)return{rows,errors:[{line:"-",reason:`見出し「${k}」の列がありません。`}]};
  const seen=new Map;
  for(let i=h+1;i<aoa.length;i++){
   const r=aoa[i]||[],get=k=>col[k]>=0?r[col[k]]:"";
-  const coopIn=String(get("単協名")??"").trim(),itemIn=String(get("品目")??"").trim(),certIn=get("認証区分"),expIn=get("有効期限"),note=String(get("備考")??"").trim();
+  const coopIn=String(get(HEAD[0])??"").trim(),itemIn=String(get("品目")??"").trim(),certIn=get("認証区分"),expIn=get("有効期限"),note=String(get("備考")??"").trim();
   if(!coopIn&&!itemIn&&!String(certIn??"").trim()&&!String(expIn??"").trim())continue;
   const line=i+1,why=[],res=coopIn?c130CoopIn(m,coopIn):{ok:false},item=itemIn?c130Item(itemIn):"";
-  if(!coopIn)why.push("単協名が空です");else if(!m)why.push("単協マスタを読み込めません");else if(!res.ok)why.push("単協名がマスタにありません");
+  if(!coopIn)why.push("単協名・仕入先が空です");else if(!m)why.push("単協マスタを読み込めません");else if(!res.ok)why.push("単協名・仕入先がマスタにありません");
   if(!itemIn)why.push("品目が空です");else if(!item)why.push("品目がSEIKA＋の品目（品目設定・QR対象品目）にありません");
   const cert=c130Cert(certIn);if(!cert)why.push("認証区分は JGAP・GGAP・ASIAGAP（AGAP）のどれかで書いてください");
   const exp=c130Date(expIn);if(!exp)why.push("有効期限が日付ではありません");
@@ -283,8 +288,8 @@ function c130PreviewPage(){
  const p=c130Pending;if(!p)return c130GapPage();
  setScreen("c130GapPage",[]);
  const d=p.diff,row=(r,extra="")=>`<tr><td>${esc(r.coop_name)}</td><td>${esc(r.item_name)}</td><td>${esc(r.certification)}</td><td>${esc(c130Md(r.expires_on))}</td><td>${extra}</td></tr>`;
- const tbl=(title,body,open=false)=>`<details ${open?"open":""} style="margin-top:8px"><summary style="font-weight:800;cursor:pointer">${title}</summary><div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>単協名</th><th>品目</th><th>認証</th><th>有効期限</th><th></th></tr>${body}</table></div></details>`;
- const errs=p.errors.length?`<div class="card err"><b>取り込まない行（${p.errors.length}件）</b><div class="small">単協名・品目がSEIKA＋のマスタと合わない行などです。マスタに登録するか、Excelを直してから取り込み直してください。</div><div style="overflow:auto;margin-top:6px"><table class="table" style="font-size:13px"><tr><th>行</th><th>単協名</th><th>品目</th><th>理由</th></tr>${p.errors.map(e=>`<tr><td>${esc(e.line)}</td><td>${esc(e.coop||"")}</td><td>${esc(e.item||"")}</td><td>${esc(e.reason)}</td></tr>`).join("")}</table></div></div>`:"";
+ const tbl=(title,body,open=false)=>`<details ${open?"open":""} style="margin-top:8px"><summary style="font-weight:800;cursor:pointer">${title}</summary><div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>単協名・仕入先</th><th>品目</th><th>認証</th><th>有効期限</th><th></th></tr>${body}</table></div></details>`;
+ const errs=p.errors.length?`<div class="card err"><b>取り込まない行（${p.errors.length}件）</b><div class="small">単協名・仕入先や品目がSEIKA＋のマスタと合わない行などです。マスタに登録するか、Excelを直してから取り込み直してください。</div><div style="overflow:auto;margin-top:6px"><table class="table" style="font-size:13px"><tr><th>行</th><th>単協名・仕入先</th><th>品目</th><th>理由</th></tr>${p.errors.map(e=>`<tr><td>${esc(e.line)}</td><td>${esc(e.coop||"")}</td><td>${esc(e.item||"")}</td><td>${esc(e.reason)}</td></tr>`).join("")}</table></div></div>`:"";
  const renamed=p.rows.filter(r=>r.renamed);
  const ren=renamed.length?`<div class="card"><b>表記を正式名に直して取り込む行（${renamed.length}件）</b>${renamed.map(r=>`<div class="small">${esc(r.line)}行目：${esc(r.renamed)}</div>`).join("")}</div>`:"";
  const ok=p.rows.length>0;
@@ -310,7 +315,7 @@ async function c130BackfillPage(){
  pageShell("在庫が残るロットにGAPを入れる","読み込んでいます",'<div class="card"><div class="notice">対象のロットを探しています。</div></div>');
  let a;try{a=await callRpc("qr_gap_backfill_v1199c130",{p_apply:false})}catch(e){return pageShell("在庫が残るロットにGAPを入れる","エラー",`<div class="err">${esc(sqlMissing(e)?NEED_SQL:(e?.message||e))}</div><button class="btn btn2" style="width:100%" ${seikaEventAttrs("click","c130GapPage",[""])}>戻る</button>`)}
  const rows=Array.isArray(a?.rows)?a.rows:[];
- pageShell("在庫が残るロットにGAPを入れる",`対象 ${rows.length}件`,`<div class="card"><div class="small">在庫が残っていて、認証区分が空のロットのうち、単協＋品目がGAP一覧にあり、入荷日が有効期限内のものに入れます。認証区分がすでに入っているロットは変えません。</div></div>${rows.length?`<div class="card" style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>品目</th><th>ロット番号</th><th>単協名</th><th>入荷日</th><th>入れる認証</th></tr>${rows.map(r=>`<tr><td>${esc(r.item_name)}</td><td>${esc(r.lot_no||"")}</td><td>${esc(r.cooperative_name)}</td><td>${esc(r.received_date||"")}</td><td><b>${esc(r.certification)}</b></td></tr>`).join("")}</table></div><button class="btn green" style="width:100%" ${seikaEventAttrs("click","c130BackfillRun",[rows.length])}>この${rows.length}件に入れる</button>`:'<div class="notice">入れるロットはありません。</div>'}<button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c130GapPage",[""])}>戻る</button>`);
+ pageShell("在庫が残るロットにGAPを入れる",`対象 ${rows.length}件`,`<div class="card"><div class="small">在庫が残っていて、認証区分が空のロットのうち、単協名（なければ仕入先）＋品目がGAP一覧にあり、入荷日が有効期限内のものに入れます。認証区分がすでに入っているロットは変えません。</div></div>${rows.length?`<div class="card" style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>品目</th><th>ロット番号</th><th>単協名・仕入先</th><th>入荷日</th><th>入れる認証</th></tr>${rows.map(r=>`<tr><td>${esc(r.item_name)}</td><td>${esc(r.lot_no||"")}</td><td>${esc(r.cooperative_name||r.supplier||"")}</td><td>${esc(r.received_date||"")}</td><td><b>${esc(r.certification)}</b></td></tr>`).join("")}</table></div><button class="btn green" style="width:100%" ${seikaEventAttrs("click","c130BackfillRun",[rows.length])}>この${rows.length}件に入れる</button>`:'<div class="notice">入れるロットはありません。</div>'}<button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c130GapPage",[""])}>戻る</button>`);
 }
 async function c130BackfillRun(cnt){
  if(!canAdmin()||!confirm(`${cnt}件のロットに認証区分を入れます。よろしいですか？`))return;
@@ -328,8 +333,8 @@ async function c130GapPage(msg=""){
  const today=todayKey(),exp=rows.filter(g=>c130Status(g,today)==="expired"),soon=rows.filter(g=>c130Status(g,today)==="soon");
  const last=rows.reduce((a,g)=>!a||String(g.imported_at)>String(a.imported_at)?g:a,null);
  const tr=(g,cls="")=>`<tr class="${cls}"><td>${esc(g.coop_name)}</td><td>${esc(g.item_name)}</td><td>${esc(g.certification)}</td><td>${esc(c130Md(g.expires_on))}</td><td>${esc(g.note||"")}</td></tr>`;
- const tbl=list=>`<div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>単協名</th><th>品目</th><th>認証</th><th>有効期限</th><th>備考</th></tr>${list.map(g=>tr(g)).join("")}</table></div>`;
- pageShell("GAP一覧（認証）","単協＋品目ごとの認証区分と有効期限。QR入庫で自動で入ります",`${okHtml(msg)}
+ const tbl=list=>`<div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>単協名・仕入先</th><th>品目</th><th>認証</th><th>有効期限</th><th>備考</th></tr>${list.map(g=>tr(g)).join("")}</table></div>`;
+ pageShell("GAP一覧（認証）","単協名・仕入先＋品目ごとの認証区分と有効期限。QR入庫で自動で入ります",`${okHtml(msg)}
  <div class="card"><b>登録 ${rows.length}件</b>${last?`<div class="small">最後の取り込み：${esc(String(last.imported_at).slice(0,16).replace("T"," "))}（${esc(last.imported_by_name||"-")}）</div>`:""}
   <input id="c130File" type="file" accept=".xlsx,.xls" style="display:none" ${seikaEventAttrs("change","c130ReadFile",[{__seikaElement:true}])}>
   <button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","c130PickFile",[])}>Excelを取り込む（全部置き換え）</button>
@@ -369,14 +374,14 @@ try{
    "「名称修正」で直した元の表記は、次からは保存のときに自動で正式名に直ります（「自動で正式名に直す表記」に出ます）。",
    "「マスタにない○○（ロットに入っている表記）」に、過去のロットに入っている表記のうちマスタにないものが件数つきで出ます。正しい名前は「マスタに登録」を押します。",
    "管理者は、間違えて入れた表記を「正式名にまとめる」で正式名を選ぶと、過去のロット・入出庫の履歴・本社の入荷記録の表記もまとめて直せます。「名称修正」でも、ロットに同じ表記があれば、ロットの表記も直すか聞かれます。"],
-  check:"GAP一覧は、ここに登録した単協の正式名でひも付けます。先に単協名を整えておくと、GAPが正しく入ります。",
+  check:"GAP一覧は、ここに登録した単協・仕入先の正式名でひも付けます。先に名前を整えておくと、GAPが正しく入ります。",
   caution:"表記をまとめると、過去の伝票・Excel・品質評価の集計に出る名前も正式名に変わります。元に戻すときは、もう一度まとめ直します。"};
  const gapSec={title:"GAP一覧を取り込む・有効期限を確認する",where:"QR在庫管理 → GAP一覧（認証）（管理者）",
-  steps:["「取り込み用のひな形をダウンロード」でExcelのひな形を出し、単協名・品目・認証区分（JGAP／GGAP）・有効期限・備考を1行ずつ書きます。ひも付けは単協＋品目です（仕入先ではひも付けません）。",
+  steps:["「取り込み用のひな形をダウンロード」でExcelのひな形を出し、単協名・仕入先、品目、認証区分（JGAP／GGAP）・有効期限・備考を1行ずつ書きます。ひも付けは「単協名か仕入先」＋品目です（ロットの単協名で当たる行が先、なければ仕入先）。",
    "「Excelを取り込む（全部置き換え）」でファイルを選ぶと、追加・変更・削除の件数と中身が出ます。確認して「この内容で置き換える」を押します。",
-   "単協名が仕入先・単協マスタにない行、品目が品目マスタにない行、認証区分や有効期限が正しくない行は取り込まず、「取り込まない行」に理由つきで出ます。",
-   "単協名が「さしま農場（カルゲン会さしま）」のようにかっこ付きのときは、かっこの中の名前（カルゲン会さしま）がマスタにあれば、その名前で取り込みます。品目の「大根」は、カット大根・葉付大根のロットにも当てはまります。",
-   "QR入庫で単協名と品目を入れると、GAP一覧にあり入荷日が有効期限内なら、認証区分が自動で入ります。違うときは選び直せます。単協がないロット、一覧にないもの、期限が切れたものには入りません。",
+   "単協名・仕入先が仕入先・単協マスタにない行、品目が品目マスタにない行、認証区分や有効期限が正しくない行は取り込まず、「取り込まない行」に理由つきで出ます。",
+   "単協名が「さしま農場（カルゲン会さしま）」のようにかっこ付きのときは、かっこの中の名前（カルゲン会さしま）が単協名か仕入先のマスタにあれば、その名前で取り込みます。品目の「大根」は、カット大根・葉付大根のロットにも当てはまります。",
+   "QR入庫で単協名（または仕入先）と品目を入れると、GAP一覧にあり入荷日が有効期限内なら、認証区分が自動で入ります。違うときは選び直せます。一覧にないもの、期限が切れたものには入りません。",
    "取り込む前に入庫したロットに入れるときは「在庫が残るロットに入れる」を押し、対象を確認してから「この○件に入れる」を押します（認証区分が空で、在庫が残っているロットだけ）。",
    "画面の上に「期限切れ」と「30日以内に期限が切れる」ものが出ます。QR在庫管理のボタンにも件数が出ます。"],
   check:"伝票（埼玉・深谷・本社工場・荻沼）には、ロットの認証区分が出ます。",
