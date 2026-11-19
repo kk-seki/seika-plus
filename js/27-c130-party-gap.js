@@ -164,7 +164,7 @@ async function c130Gap(force=false){
 function c130AddDays(d,k){const t=new Date(String(d).slice(0,10)+"T00:00:00");t.setDate(t.getDate()+k);return ymdKey(t)}
 function c130Find(rows,coop,item,date){
  if(!rows||!coop||!item)return null;
- const c=n(coop),i=n(c130Item(item)||item),g=rows.find(r=>r.coop_norm===c&&r.item_norm===i);
+ const c=n(coop),name=c130Item(item)||item,i=n(name),fam=n(c130Family(name)),g=rows.find(r=>r.coop_norm===c&&r.item_norm===i)||(fam?rows.find(r=>r.coop_norm===c&&r.item_norm===fam):null);
  if(!g)return null;
  const d=String(date||todayKey()).slice(0,10);
  return{...g,valid:d<=String(g.expires_on).slice(0,10)};
@@ -208,7 +208,7 @@ function c130Template(){
  const hs={font:{bold:true,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"1F4E78"}},alignment:{horizontal:"center"}};
  HEAD.forEach((_,i)=>{const c=XLSX.utils.encode_cell({r:0,c:i});if(ws[c])ws[c].s=hs});
  XLSX.utils.book_append_sheet(wb,ws,"GAP一覧");
- const how=XLSX.utils.aoa_to_sheet([["GAP一覧の書き方（このシートは取り込みません）"],[],["列","書き方"],["単協名","SEIKA＋の「仕入先・単協マスタ」の単協名と同じ名前で書く（マスタにない名前の行は取り込みません）"],["品目","SEIKA＋の品目マスタと同じ名前で書く（例：キャベツ、さつま芋）"],["認証区分","JGAP・GGAP・ASIAGAP（AGAP と書いても可）"],["有効期限","日付で書く（例：2027/3/31）。入荷日がこの日までなら、QR入庫で自動で入ります"],["備考","自由に書く（取り込みます）"],[],["・1行に「単協＋品目」1つ。同じ単協・品目を2行書かない"],["・取り込むと、今の一覧は全部この内容に置き換わります（取り込む前に、追加・変更・削除の件数を確認できます）"],["・仕入先ではひも付けません（市場の仕入先は複数の単協を扱うため）"],[],["記入例"],HEAD,["JA新ひたち野","キャベツ","JGAP","2027/3/31","第三者認証"]]);
+ const how=XLSX.utils.aoa_to_sheet([["GAP一覧の書き方（このシートは取り込みません）"],[],["列","書き方"],["単協名","SEIKA＋の「仕入先・単協マスタ」の単協名と同じ名前で書く。「さしま農場（カルゲン会さしま）」のように書いたときは、かっこの中の名前もマスタと照らし合わせます（どちらもマスタにない行は取り込みません）"],["品目","SEIKA＋の品目と同じ名前で書く（例：キャベツ、さつま芋）。「大根」と書くと、カット大根・葉付大根にも当てはまります"],["認証区分","JGAP・GGAP・ASIAGAP（AGAP と書いても可）"],["有効期限","日付で書く（例：2027/3/31）。入荷日がこの日までなら、QR入庫で自動で入ります"],["備考","自由に書く（取り込みます）"],[],["・1行に「単協＋品目」1つ。同じ単協・品目を2行書かない"],["・取り込むと、今の一覧は全部この内容に置き換わります（取り込む前に、追加・変更・削除の件数を確認できます）"],["・仕入先ではひも付けません（市場の仕入先は複数の単協を扱うため）"],[],["記入例"],HEAD,["JA新ひたち野","キャベツ","JGAP","2027/3/31","第三者認証"]]);
  how["!cols"]=[{wch:24},{wch:80},{wch:10},{wch:13},{wch:20}];
  XLSX.utils.book_append_sheet(wb,how,"書き方");
  XLSX.writeFile(wb,"GAP一覧_取り込み用ひな形.xlsx");
@@ -224,8 +224,13 @@ function c130Date(v){
  return t.getFullYear()===y&&t.getMonth()===mo-1&&t.getDate()===d?ymdKey(t):"";
 }
 function c130Cert(v){const s=String(v??"").normalize("NFKC").toUpperCase().replace(/[\s\-.・]/g,"");if(s==="GLOBALGAP")return"GGAP";if(s==="AGAP")return"ASIAGAP";return CERTS.includes(s)?s:""}
-/* 品目：QR対象品目、または品目設定の品目（名前の書き方の違いは吸収） */
-function c130Item(v){const raw=String(v??"").trim();if(!raw)return"";const q=qrStrictItemName(raw);if(q)return q;const k=loose(raw);try{for(const it of activeItems()){const nm=String(it?.name||"").trim();if(nm&&loose(nm)===k)return nm}}catch(_){}return""}
+/* 品目のまとめ方：GAP一覧の「大根」は、カット大根・葉付大根のロットにも当てはめる（SQL 052 と同じ） */
+const C130_FAMILY={"大根":["カット大根","葉付大根","葉付き大根"]};
+function c130Family(v){const k=n(v);for(const [root,list] of Object.entries(C130_FAMILY))if(list.some(x=>n(x)===k))return root;return""}
+/* 品目：QR対象品目、品目設定の品目、またはまとめた品目（大根）。名前の書き方の違いは吸収 */
+function c130Item(v){const raw=String(v??"").trim();if(!raw)return"";for(const root of Object.keys(C130_FAMILY))if(loose(root)===loose(raw))return root;const q=qrStrictItemName(raw);if(q)return q;const k=loose(raw);try{for(const it of activeItems()){const nm=String(it?.name||"").trim();if(nm&&loose(nm)===k)return nm}}catch(_){}return""}
+/* GAP一覧の単協名：そのままマスタにないときは、かっこの中の名前（例：さしま農場（カルゲン会さしま）→ カルゲン会さしま）も照らし合わせる */
+function c130CoopIn(m,raw){const r=c130ResolveIn(m,"cooperative",raw);if(r.ok)return r;const k=String(raw).normalize("NFKC").match(/^(.*?)\(([^()]+)\)\s*$/);if(k){const inner=c130ResolveIn(m,"cooperative",k[2].trim());if(inner.ok)return inner}return r}
 /* 行（配列の配列）を調べる。単協はマスタの正式名、品目は品目マスタの名前に直す */
 function c130Check(aoa,m){
  const rows=[],errors=[];
@@ -238,7 +243,7 @@ function c130Check(aoa,m){
   const r=aoa[i]||[],get=k=>col[k]>=0?r[col[k]]:"";
   const coopIn=String(get("単協名")??"").trim(),itemIn=String(get("品目")??"").trim(),certIn=get("認証区分"),expIn=get("有効期限"),note=String(get("備考")??"").trim();
   if(!coopIn&&!itemIn&&!String(certIn??"").trim()&&!String(expIn??"").trim())continue;
-  const line=i+1,why=[],res=coopIn?c130ResolveIn(m,"cooperative",coopIn):{ok:false},item=itemIn?c130Item(itemIn):"";
+  const line=i+1,why=[],res=coopIn?c130CoopIn(m,coopIn):{ok:false},item=itemIn?c130Item(itemIn):"";
   if(!coopIn)why.push("単協名が空です");else if(!m)why.push("単協マスタを読み込めません");else if(!res.ok)why.push("単協名がマスタにありません");
   if(!itemIn)why.push("品目が空です");else if(!item)why.push("品目がSEIKA＋の品目（品目設定・QR対象品目）にありません");
   const cert=c130Cert(certIn);if(!cert)why.push("認証区分は JGAP・GGAP・ASIAGAP（AGAP）のどれかで書いてください");
@@ -370,6 +375,7 @@ try{
   steps:["「取り込み用のひな形をダウンロード」でExcelのひな形を出し、単協名・品目・認証区分（JGAP／GGAP）・有効期限・備考を1行ずつ書きます。ひも付けは単協＋品目です（仕入先ではひも付けません）。",
    "「Excelを取り込む（全部置き換え）」でファイルを選ぶと、追加・変更・削除の件数と中身が出ます。確認して「この内容で置き換える」を押します。",
    "単協名が仕入先・単協マスタにない行、品目が品目マスタにない行、認証区分や有効期限が正しくない行は取り込まず、「取り込まない行」に理由つきで出ます。",
+   "単協名が「さしま農場（カルゲン会さしま）」のようにかっこ付きのときは、かっこの中の名前（カルゲン会さしま）がマスタにあれば、その名前で取り込みます。品目の「大根」は、カット大根・葉付大根のロットにも当てはまります。",
    "QR入庫で単協名と品目を入れると、GAP一覧にあり入荷日が有効期限内なら、認証区分が自動で入ります。違うときは選び直せます。単協がないロット、一覧にないもの、期限が切れたものには入りません。",
    "取り込む前に入庫したロットに入れるときは「在庫が残るロットに入れる」を押し、対象を確認してから「この○件に入れる」を押します（認証区分が空で、在庫が残っているロットだけ）。",
    "画面の上に「期限切れ」と「30日以内に期限が切れる」ものが出ます。QR在庫管理のボタンにも件数が出ます。"],

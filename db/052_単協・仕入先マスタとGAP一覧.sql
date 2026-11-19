@@ -8,6 +8,7 @@
   2. GAP一覧（単協＋品目ごとの認証区分と有効期限）を保存する（qr_gap_certs_v1199c130）
      ・取り込みは全部置き換え（replace_qr_gap_certs_v1199c130、管理者のみ）
      ・在庫が残るロットに、さかのぼって認証区分を入れる（qr_gap_backfill_v1199c130、管理者のみ）
+     ・GAP一覧の「大根」は、カット大根・葉付大根のロットにも当てはめる（seika_gap_item_family_v1199c130）
 
 前提：db/010（仕入先・単協名の候補を共有）まで実行済みであること。
 SQLを実行しただけでは、ロット・履歴・GAPの中身は変わりません（アプリの操作で変わります）。
@@ -114,7 +115,16 @@ $f$;
 revoke all on function public.replace_qr_gap_certs_v1199c130(jsonb) from public, anon;
 grant execute on function public.replace_qr_gap_certs_v1199c130(jsonb) to authenticated, service_role;
 
+-- ===== 品目のまとめ方：GAP一覧の「大根」は、カット大根・葉付大根にも当てはめる =====
+create or replace function public.seika_gap_item_family_v1199c130(p text)
+returns text language sql immutable set search_path to 'pg_catalog' as $f$
+  select case public.seika_party_norm_v1280(p)
+    when 'カット大根' then '大根' when '葉付大根' then '大根' when '葉付き大根' then '大根'
+    else public.seika_party_norm_v1280(p) end
+$f$;
+
 -- ===== 在庫が残るロットに、さかのぼってGAPを入れる（管理者）。p_apply=false は対象の確認だけ =====
+-- 品目は、同じ名前の行を先に使い、なければまとめた品目（例：大根）の行を使う
 create or replace function public.qr_gap_backfill_v1199c130(p_apply boolean default false)
 returns jsonb
 language plpgsql
@@ -126,35 +136,31 @@ declare
   v_n integer := 0;
 begin
   perform public.seika_require_role_v1240(array['admin']);
-  with t as (
-    select l.id, l.lot_no, l.item_name, l.cooperative_name, l.received_date, g.certification, g.expires_on
-    from public.qr_lots l
-    join public.qr_gap_certs_v1199c130 g
-      on g.coop_norm = public.seika_party_norm_v1280(l.cooperative_name)
-     and g.item_norm = public.seika_party_norm_v1280(l.item_name)
-    where coalesce(l.active, true)
-      and coalesce(l.current_qty, 0) > 0
-      and coalesce(btrim(l.certification), '') = ''
-      and coalesce(btrim(l.cooperative_name), '') <> ''
-      and l.received_date is not null
-      and l.received_date <= g.expires_on
-  )
+  create temp table if not exists c130_backfill(id uuid, lot_no text, item_name text, cooperative_name text, received_date date, certification text, expires_on date) on commit drop;
+  truncate c130_backfill;
+  insert into c130_backfill
+  select distinct on (l.id) l.id, l.lot_no, l.item_name, l.cooperative_name, l.received_date, g.certification, g.expires_on
+  from public.qr_lots l
+  join public.qr_gap_certs_v1199c130 g
+    on g.coop_norm = public.seika_party_norm_v1280(l.cooperative_name)
+   and g.item_norm in (public.seika_party_norm_v1280(l.item_name), public.seika_gap_item_family_v1199c130(l.item_name))
+  where coalesce(l.active, true)
+    and coalesce(l.current_qty, 0) > 0
+    and coalesce(btrim(l.certification), '') = ''
+    and coalesce(btrim(l.cooperative_name), '') <> ''
+    and l.received_date is not null
+  order by l.id, (g.item_norm = public.seika_party_norm_v1280(l.item_name)) desc;
+  delete from c130_backfill where received_date > expires_on;
+
   select coalesce(jsonb_agg(jsonb_build_object('id', id, 'lot_no', lot_no, 'item_name', item_name, 'cooperative_name', cooperative_name,
            'received_date', received_date, 'certification', certification, 'expires_on', expires_on) order by item_name, received_date), '[]'::jsonb),
          count(*)
-    into v_rows, v_n from t;
+    into v_rows, v_n from c130_backfill;
 
   if p_apply and v_n > 0 then
-    update public.qr_lots l set certification = g.certification
-    from public.qr_gap_certs_v1199c130 g
-    where g.coop_norm = public.seika_party_norm_v1280(l.cooperative_name)
-      and g.item_norm = public.seika_party_norm_v1280(l.item_name)
-      and coalesce(l.active, true)
-      and coalesce(l.current_qty, 0) > 0
-      and coalesce(btrim(l.certification), '') = ''
-      and coalesce(btrim(l.cooperative_name), '') <> ''
-      and l.received_date is not null
-      and l.received_date <= g.expires_on;
+    update public.qr_lots l set certification = b.certification
+    from c130_backfill b
+    where l.id = b.id and coalesce(btrim(l.certification), '') = '';
     get diagnostics v_n = row_count;
   end if;
   return jsonb_build_object('ok', true, 'applied', p_apply, 'count', v_n, 'rows', v_rows);

@@ -180,6 +180,15 @@ class PartyGapSqlRuntimeTests(unittest.TestCase):
                          'A:JGAP,B:JGAP,C:GGAP,D:-,E:-,F:-,G:-,H:-')
         self.assertEqual(self.rpc('public.qr_gap_backfill_v1199c130(true)')['count'], 0)
 
+    def test_backfill_applies_daikon_to_cut_and_leaf_daikon_and_prefers_the_exact_item(self):
+        self.gap([{'coop_name': 'カルゲン会さしま', 'item_name': '大根', 'certification': 'JGAP', 'expires_on': '2028-03-27'},
+                  {'coop_name': 'カルゲン会さしま', 'item_name': '葉付大根', 'certification': 'GGAP', 'expires_on': '2028-03-27'}])
+        self.psql("""insert into public.qr_lots(lot_no,item_name,cooperative_name,received_date,current_qty) values
+          ('A','カット大根','カルゲン会さしま','2026-11-10',5),('B','葉付大根','カルゲン会さしま','2026-11-10',5),
+          ('C','葉付き大根','カルゲン会さしま','2026-11-10',5),('D','人参','カルゲン会さしま','2026-11-10',5)""")
+        self.assertEqual(self.rpc('public.qr_gap_backfill_v1199c130(true)')['count'], 3)
+        self.assertEqual(self.val("select string_agg(lot_no||':'||coalesce(certification,'-'),',' order by lot_no) from public.qr_lots"), 'A:JGAP,B:GGAP,C:JGAP,D:-')
+
     def test_usage_counts_active_lots_by_normalized_name(self):
         self.psql("""insert into public.qr_lots(item_name,supplier,cooperative_name,received_date,active) values
           ('キャベツ','水戸大同','JA水戸','2026-11-01',true),('白菜','水戸大同 ','JA 水戸','2026-11-05',true),

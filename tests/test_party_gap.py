@@ -70,8 +70,16 @@ class PartyGapBrowserTests(unittest.TestCase):
     def test_import_check_matches_masters_and_reports_errors(self):
         parties = [{"kind": "cooperative", "name": "JA水戸", "status": "active"},
                    {"kind": "cooperative", "name": "JA水戸市", "status": "deleted", "renamed_to": "JA水戸"},
-                   {"kind": "cooperative", "name": "ＪＡつくば", "status": "active"}]
+                   {"kind": "cooperative", "name": "ＪＡつくば", "status": "active"},
+                   {"kind": "cooperative", "name": "カルゲン会さしま", "status": "active"}]
         page = self.open_app(parties=parties)
+        fam = page.evaluate("""async()=>{const m=await c130Master(true);return c130Check([['単協名','品目','認証区分','有効期限'],['さしま農場（カルゲン会さしま）','大根','JGAP','2028/3/27'],['NCTファームネット（小出博基）','レタス','GGAP','2027/8/27']],m)}""")
+        self.assertEqual([(r["coop_name"], r["item_name"]) for r in fam["rows"]], [("カルゲン会さしま", "大根")])
+        self.assertEqual(len(fam["errors"]), 1)
+        rows = [{"coop_norm": "カルゲン会さしま", "item_norm": "大根", "certification": "JGAP", "expires_on": "2028-03-27"},
+                {"coop_norm": "カルゲン会さしま", "item_norm": "葉付大根", "certification": "GGAP", "expires_on": "2028-03-27"}]
+        found = page.evaluate("(r)=>['カット大根','葉付大根','葉付き大根','人参'].map(i=>{const g=c130Find(r,'カルゲン会さしま',i,'2026-11-19');return g?g.certification:''})", rows)
+        self.assertEqual(found, ["JGAP", "GGAP", "JGAP", ""])
         out = page.evaluate("""async()=>{const m=await c130Master(true);
           const aoa=[['GAP一覧'],['単協名','品目','認証区分','有効期限','備考'],
            ['JA水戸','キャベツ','JGAP','2027/3/31','a'],
