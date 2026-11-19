@@ -1,5 +1,5 @@
 
-const SUPABASE_URL="https://hsuofxvcxgmsplwdigpr.supabase.co";const SUPABASE_KEY="sb_publishable_1nv4y9m3z8pKTyQliJ-Cfg_FLY8ph3_"
+const SUPABASE_URL="https://hsuofxvcxgmsplwdigpr.supabase.co";const SUPABASE_KEY="sb_publishable_VZsMbf9hTMwkCOD3-oxlow__2FaMM4m"
 ;const ITEMS=[["item1","レタス",8],["item2","サニー",4],["item3","リーフ",4],["item4","ロメイン",5],["item5","水菜",5],["item6","長葱",10],["item7","小葱",10],["item8","大葉",3],["item9","青梗菜",2],["item10","小松菜",7],["item11","ほうれん草",6],["item12","ゴーヤ",3],["item13","茄子",5],["item14","長茄子",4],["item15","トマト",4],["item16","ピーマン",4],["item17","白菜",15],["item18","ミニトマト",3],["item19","紫キャベツ",10],["item20","胡瓜",5]].map((x,i)=>({
 id:x[0],name:x[1],pack:x[2],sort:i+1,active:true,useSpec:x[1]==="胡瓜"}));const SPECIAL_STOCK_TABLES={exchange:{title:"その他",sub:"適正在庫設定外"},kataoka:{
 title:"片岡在庫",sub:"適正在庫設定外：片岡冷蔵庫"}};const DEFAULT_SPECIAL_ITEMS={
