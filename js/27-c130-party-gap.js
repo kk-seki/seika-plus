@@ -164,7 +164,7 @@ async function c130Gap(force=false){
 function c130AddDays(d,k){const t=new Date(String(d).slice(0,10)+"T00:00:00");t.setDate(t.getDate()+k);return ymdKey(t)}
 function c130Find(rows,coop,item,date){
  if(!rows||!coop||!item)return null;
- const c=n(coop),i=n(qrStrictItemName(item)||item),g=rows.find(r=>r.coop_norm===c&&r.item_norm===i);
+ const c=n(coop),i=n(c130Item(item)||item),g=rows.find(r=>r.coop_norm===c&&r.item_norm===i);
  if(!g)return null;
  const d=String(date||todayKey()).slice(0,10);
  return{...g,valid:d<=String(g.expires_on).slice(0,10)};
@@ -208,7 +208,7 @@ function c130Template(){
  const hs={font:{bold:true,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"1F4E78"}},alignment:{horizontal:"center"}};
  HEAD.forEach((_,i)=>{const c=XLSX.utils.encode_cell({r:0,c:i});if(ws[c])ws[c].s=hs});
  XLSX.utils.book_append_sheet(wb,ws,"GAP一覧");
- const how=XLSX.utils.aoa_to_sheet([["GAP一覧の書き方（このシートは取り込みません）"],[],["列","書き方"],["単協名","SEIKA＋の「仕入先・単協マスタ」の単協名と同じ名前で書く（マスタにない名前の行は取り込みません）"],["品目","SEIKA＋の品目マスタと同じ名前で書く（例：キャベツ、さつま芋）"],["認証区分","JGAP または GGAP（ASIAGAP も可）"],["有効期限","日付で書く（例：2027/3/31）。入荷日がこの日までなら、QR入庫で自動で入ります"],["備考","自由に書く（取り込みます）"],[],["・1行に「単協＋品目」1つ。同じ単協・品目を2行書かない"],["・取り込むと、今の一覧は全部この内容に置き換わります（取り込む前に、追加・変更・削除の件数を確認できます）"],["・仕入先ではひも付けません（市場の仕入先は複数の単協を扱うため）"],[],["記入例"],HEAD,["JA新ひたち野","キャベツ","JGAP","2027/3/31","第三者認証"]]);
+ const how=XLSX.utils.aoa_to_sheet([["GAP一覧の書き方（このシートは取り込みません）"],[],["列","書き方"],["単協名","SEIKA＋の「仕入先・単協マスタ」の単協名と同じ名前で書く（マスタにない名前の行は取り込みません）"],["品目","SEIKA＋の品目マスタと同じ名前で書く（例：キャベツ、さつま芋）"],["認証区分","JGAP・GGAP・ASIAGAP（AGAP と書いても可）"],["有効期限","日付で書く（例：2027/3/31）。入荷日がこの日までなら、QR入庫で自動で入ります"],["備考","自由に書く（取り込みます）"],[],["・1行に「単協＋品目」1つ。同じ単協・品目を2行書かない"],["・取り込むと、今の一覧は全部この内容に置き換わります（取り込む前に、追加・変更・削除の件数を確認できます）"],["・仕入先ではひも付けません（市場の仕入先は複数の単協を扱うため）"],[],["記入例"],HEAD,["JA新ひたち野","キャベツ","JGAP","2027/3/31","第三者認証"]]);
  how["!cols"]=[{wch:24},{wch:80},{wch:10},{wch:13},{wch:20}];
  XLSX.utils.book_append_sheet(wb,how,"書き方");
  XLSX.writeFile(wb,"GAP一覧_取り込み用ひな形.xlsx");
@@ -223,7 +223,9 @@ function c130Date(v){
  const y=Number(m[1]),mo=Number(m[2]),d=Number(m[3]),t=new Date(y,mo-1,d);
  return t.getFullYear()===y&&t.getMonth()===mo-1&&t.getDate()===d?ymdKey(t):"";
 }
-function c130Cert(v){const s=String(v??"").normalize("NFKC").toUpperCase().replace(/[\s\-.・]/g,"");if(s==="GLOBALGAP"||s==="GLOBALG.A.P.")return"GGAP";return CERTS.includes(s)?s:""}
+function c130Cert(v){const s=String(v??"").normalize("NFKC").toUpperCase().replace(/[\s\-.・]/g,"");if(s==="GLOBALGAP")return"GGAP";if(s==="AGAP")return"ASIAGAP";return CERTS.includes(s)?s:""}
+/* 品目：QR対象品目、または品目設定の品目（名前の書き方の違いは吸収） */
+function c130Item(v){const raw=String(v??"").trim();if(!raw)return"";const q=qrStrictItemName(raw);if(q)return q;const k=loose(raw);try{for(const it of activeItems()){const nm=String(it?.name||"").trim();if(nm&&loose(nm)===k)return nm}}catch(_){}return""}
 /* 行（配列の配列）を調べる。単協はマスタの正式名、品目は品目マスタの名前に直す */
 function c130Check(aoa,m){
  const rows=[],errors=[];
@@ -236,10 +238,10 @@ function c130Check(aoa,m){
   const r=aoa[i]||[],get=k=>col[k]>=0?r[col[k]]:"";
   const coopIn=String(get("単協名")??"").trim(),itemIn=String(get("品目")??"").trim(),certIn=get("認証区分"),expIn=get("有効期限"),note=String(get("備考")??"").trim();
   if(!coopIn&&!itemIn&&!String(certIn??"").trim()&&!String(expIn??"").trim())continue;
-  const line=i+1,why=[],res=coopIn?c130ResolveIn(m,"cooperative",coopIn):{ok:false},item=itemIn?qrStrictItemName(itemIn):"";
+  const line=i+1,why=[],res=coopIn?c130ResolveIn(m,"cooperative",coopIn):{ok:false},item=itemIn?c130Item(itemIn):"";
   if(!coopIn)why.push("単協名が空です");else if(!m)why.push("単協マスタを読み込めません");else if(!res.ok)why.push("単協名がマスタにありません");
-  if(!itemIn)why.push("品目が空です");else if(!item)why.push("品目が品目マスタにありません");
-  const cert=c130Cert(certIn);if(!cert)why.push("認証区分は JGAP か GGAP で書いてください");
+  if(!itemIn)why.push("品目が空です");else if(!item)why.push("品目がSEIKA＋の品目（品目設定・QR対象品目）にありません");
+  const cert=c130Cert(certIn);if(!cert)why.push("認証区分は JGAP・GGAP・ASIAGAP（AGAP）のどれかで書いてください");
   const exp=c130Date(expIn);if(!exp)why.push("有効期限が日付ではありません");
   if(!why.length){const key=n(res.name)+"|"+n(item);if(seen.has(key))why.push(`同じ単協・品目が${seen.get(key)}行目にもあります`);else seen.set(key,line)}
   const base={line,coop:coopIn,item:itemIn,cert:String(certIn??""),exp:String(expIn instanceof Date?c130Date(expIn):expIn??"")};

@@ -90,10 +90,11 @@ class PartyGapBrowserTests(unittest.TestCase):
         reasons = {e["line"]: e["reason"] for e in out["errors"]}
         self.assertEqual(set(reasons), {6, 7, 8, 9, 10})
         self.assertIn("単協名がマスタにありません", reasons[6])
-        self.assertIn("品目が品目マスタにありません", reasons[7])
+        self.assertIn("品目がSEIKA＋の品目", reasons[7])
         self.assertIn("認証区分", reasons[8])
         self.assertIn("有効期限", reasons[9])
         self.assertIn("3行目にもあります", reasons[10])
+        self.assertEqual(page.evaluate("()=>['AGAP','ａｓｉａｇａｐ','J-GAP','GLOBALG.A.P.','x'].map(c130Cert)"), ["ASIAGAP", "ASIAGAP", "JGAP", "GGAP", ""])
 
     def test_import_preview_shows_diff_and_replaces_only_valid_rows(self):
         parties = [{"kind": "cooperative", "name": "JA水戸", "status": "active"}]
