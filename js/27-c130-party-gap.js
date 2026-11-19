@@ -87,14 +87,14 @@ async function c130PartyPage(kind="supplier",msg=""){
  const active=c130ActiveNames(m,k),aset=new Set(active.map(n));
  const alias=[...map.values()].filter(v=>v.status==="deleted"&&v.renamed_to).sort((a,b)=>a.name.localeCompare(b.name,"ja"));
  const hidden=[...map.values()].filter(v=>v.status==="hidden").map(v=>v.name).sort((a,b)=>a.localeCompare(b,"ja"));
- const loose2=(usage||[]).filter(u=>!aset.has(u.norm)&&!(map.get(u.norm)?.status==="deleted"&&map.get(u.norm)?.renamed_to));
+ const loose2=(usage||[]).filter(u=>!map.has(u.norm));
  const pending=(usage||[]).filter(u=>map.get(u.norm)?.status==="deleted"&&map.get(u.norm)?.renamed_to);
- const tabs=`<div class="card"><div class="row"><button class="btn ${k==="supplier"?"blue":"btn2"}" ${seikaEventAttrs("click","v1208CandidatePage",["supplier",""])}>仕入先</button><button class="btn ${k==="cooperative"?"blue":"btn2"}" ${seikaEventAttrs("click","v1208CandidatePage",["cooperative",""])}>単協名</button></div>${m?"":'<div class="err" style="margin-top:8px">マスタを読み込めませんでした（SQL 010 の実行が必要です）。</div>'}${usage?"":`<div class="notice" style="margin-top:8px">ロットの表記の件数は、${NEED_SQL}</div>`}</div>`;
+ const tabs=`<div class="card">${c130MasterTabs(k)}${m?"":'<div class="err" style="margin-top:8px">マスタを読み込めませんでした（SQL 010 の実行が必要です）。</div>'}${usage?"":`<div class="notice" style="margin-top:8px">ロットの表記の件数は、${NEED_SQL}</div>`}</div>`;
  const add=`<div class="card"><b>${label}を追加</b><div class="small">ここに登録した正式名だけが、QR入庫・ロット編集の入力候補に出ます。</div><input id="v1208AddName" class="input" placeholder="例：${k==="supplier"?"中央園芸":"茨城中央"}" autocomplete="off"><button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","v1208AddCandidate",[k])}>追加する</button></div>`;
  const cnt=nm=>{const u=count.get(n(nm));return u?`<span class="small">（ロット ${u.lots}件）</span>`:'<span class="small">（ロットなし）</span>'};
  const list=`<div class="card"><b>マスタの${label}（正式名・${active.length}件）</b><div class="small">「名称修正」で正しい名前に直せます${admin?"（過去のロット・履歴の表記もまとめて直せます）":""}。「非表示」は候補から外します（あとで戻せます）。</div>${active.length?active.map(nm=>line(`${esc(nm)} ${cnt(nm)}`,btn("btn2","v1208RenameCandidate",[k,nm],"名称修正")+btn("btn2","v1208HideCandidate",[k,nm],"非表示"))).join(""):'<div class="small">登録がありません。</div>'}</div>`;
  const bulk=admin&&loose2.length?`<button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c130RegisterAll",[k])}>表示中の${loose2.length}件をすべてマスタに登録</button>`:"";
- const looseBox=usage?`<div class="card warn"><b>マスタにない${label}（ロットに入っている表記・${loose2.length}件）</b><div class="small">間違えて入れた表記は「正式名にまとめる」で、過去のロット・履歴の表記も正式名に直します（管理者）。正しい名前なら「マスタに登録」を押します。</div>${loose2.length?loose2.map(u=>line(`${esc(u.name)} <span class="small">（ロット ${u.lots}件・最後の入荷 ${esc(u.last_date||"-")}）</span>`,btn("btn2","c130RegisterOne",[k,u.name],"マスタに登録")+(admin?btn("blue","c130MergePage",[k,u.name,""],"正式名にまとめる"):""))).join(""):'<div class="small">ありません。ロットの表記はすべてマスタの正式名です。</div>'}${bulk}</div>`:"";
+ const looseBox=usage?`<div class="card warn"><b>マスタにない${label}（ロットに入っている表記・${loose2.length}件）</b><div class="small">間違えて入れた表記は「正式名にまとめる」で、過去のロット・履歴の表記も正式名に直します（管理者）。正しい名前なら「マスタに登録」を押します。いらない名前は「候補から外す」でこの一覧から消せます（登録済みのロットはそのまま。入力候補にはマスタの正式名だけが出ます）。</div>${loose2.length?loose2.map(u=>line(`${esc(u.name)} <span class="small">（ロット ${u.lots}件・最後の入荷 ${esc(u.last_date||"-")}）</span>`,btn("btn2","c130RegisterOne",[k,u.name],"マスタに登録")+(admin?btn("blue","c130MergePage",[k,u.name,""],"正式名にまとめる"):"")+btn("btn2","c134HideLoose",[k,u.name],"候補から外す"))).join(""):'<div class="small">ありません。ロットの表記はすべてマスタの正式名です。</div>'}${bulk}</div>`:"";
  const pendBox=admin&&pending.length?`<div class="card warn"><b>名称修正したが、ロットに元の表記が残っているもの（${pending.length}件）</b>${pending.map(u=>{const to=map.get(u.norm).renamed_to;return line(`${esc(u.name)} → ${esc(to)} <span class="small">（ロット ${u.lots}件）</span>`,btn("blue","c130MergeRun",[k,u.name,to],"ロットの表記も直す"))}).join("")}</div>`:"";
  const aliasBox=`<div class="card"><b>自動で正式名に直す表記（${alias.length}件）</b><div class="small">この表記で入力されたときは、保存のときに正式名に直します。</div>${alias.length?alias.map(v=>line(`${esc(v.name)} → <b>${esc(v.renamed_to)}</b>`,"")).join(""):'<div class="small">ありません。</div>'}</div>`;
  const hidBox=`<div class="card"><b>非表示にした${label}（${hidden.length}件）</b>${hidden.length?hidden.map(nm=>line(esc(nm),btn("btn2","v1208ShowCandidate",[k,nm],"戻す")+btn("danger","v1280DeleteCandidate",[k,nm],"削除"))).join(""):'<div class="small">ありません。</div>'}</div>`;
@@ -104,10 +104,18 @@ async function c130RegisterOne(kind,name){
  try{c130Busy(true,"保存しています");await v1280Set(kind,name,"active");c130Forget();await c130PartyPage(kind,`「${name}」をマスタに登録しました`)}
  catch(e){alert(e?.message||e)}finally{c130Busy(false)}
 }
+/* c134：タブ（納品先・仕入先・単協名）。納品先マスタは管理者だけ */
+function c130MasterTabs(k){const b=(key,label,act,args)=>`<button class="btn ${k===key?"blue":"btn2"}" ${seikaEventAttrs("click",act,args)}>${label}</button>`;
+ return `<div class="row">${canAdmin()?b("dest","納品先","v194DestinationsPage",[""]):""}${b("supplier","仕入先","v1208CandidatePage",["supplier",""])}${b("cooperative","単協名","v1208CandidatePage",["cooperative",""])}</div>`}
+async function c134HideLoose(kind,name){
+ if(!confirm(`「${name}」を候補から外します。\nこの一覧から消えます（登録済みのロットの表記はそのままです）。\nあとで「非表示にした${KIND_LABEL[kind]}」から戻せます。`))return;
+ try{c130Busy(true,"保存しています");await v1280Set(kind,name,"hidden");c130Forget();await c130PartyPage(kind,`「${name}」を候補から外しました`)}
+ catch(e){alert(e?.message||e)}finally{c130Busy(false)}
+}
 async function c130RegisterAll(kind){
  if(!canAdmin())return;
  const m=await c130Master(true),aset=new Set(c130ActiveNames(m,kind).map(n)),map=m?.[kind]||new Map;
- const list=(c130LastUsage[kind]||[]).filter(u=>!aset.has(u.norm)&&!(map.get(u.norm)?.status==="deleted"&&map.get(u.norm)?.renamed_to)).map(u=>u.name);
+ const list=(c130LastUsage[kind]||[]).filter(u=>!map.has(u.norm)).map(u=>u.name);
  if(!list.length)return;
  if(!confirm(`${list.length}件をすべてマスタに登録します。\n間違えて入れた表記が混ざっていないか、先に確認してください。よろしいですか？`))return;
  c130Busy(true,"登録しています");let done=0;
@@ -362,7 +370,7 @@ const menuBase=accountMenu;
 accountMenu=function(...a){const r=menuBase.apply(this,a);const add=()=>{const m=document.querySelector(".menu");if(!m||!canAdmin()||document.getElementById("c130MenuGap"))return;const p=document.getElementById("v1280MenuParty");const h=`<button id="c130MenuGap" class="btn btn2" ${seikaEventAttrs("click","c130GapPage",[""])}>GAP一覧（認証）</button>`;if(p)p.insertAdjacentHTML("afterend",h);else m.insertAdjacentHTML("afterbegin",h)};add();setTimeout(add,320);return r};window.accountMenu=accountMenu;
 {const st=document.createElement("style");st.textContent=".homeBtnGap{background:linear-gradient(90deg,#14532d 0%,#15803d 52%,#86efac 100%) !important;color:#fff !important;border-color:transparent !important;}";document.head.appendChild(st)}
 
-Object.assign(window,{c130Master,c130Resolve,c130ResolveIn,c130CheckParties,c130PartyPage,c130RegisterOne,c130RegisterAll,c130MergePage,c130MergeSearch,c130MergeRun,
+Object.assign(window,{c130MasterTabs,c134HideLoose,c130Master,c130Resolve,c130ResolveIn,c130CheckParties,c130PartyPage,c130RegisterOne,c130RegisterAll,c130MergePage,c130MergeSearch,c130MergeRun,
  c130Gap,c130Find,c130GapAuto,c130Template,c130Date,c130Cert,c130Check,c130Diff,c130PickFile,c130ReadFile,c130PreviewPage,c130CancelImport,c130Import,
  c130BackfillPage,c130BackfillRun,c130GapPage});
 
