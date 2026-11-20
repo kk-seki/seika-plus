@@ -17,7 +17,7 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
 
 SETUP = r"""role=>{
-window.db={role,user:'テスト'};window.__h2={};window.__calls=[];window.__alerts=[];window.alert=m=>__alerts.push(String(m));window.confirm=()=>true;
+window.db={role,user:'テスト'};window.__h2={};window.hqItemRuleOf=n=>['キャベツ','白菜','紫キャベツ'].includes(String(n||'').trim())?{item_name:String(n).trim(),waste_measured:false}:null;window.__calls=[];window.__alerts=[];window.alert=m=>__alerts.push(String(m));window.confirm=()=>true;
 window.esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 window.seikaEventAttrs=(event,action,args=[])=>`data-seika-${event}-action="${esc(action)}" data-seika-${event}-args="${esc(encodeURIComponent(JSON.stringify(args)))}"`;
 document.addEventListener('click',e=>{const el=e.target.closest('[data-seika-click-action]');if(!el||el.disabled)return;const fn=window[el.dataset.seikaClickAction];if(typeof fn==='function')fn(...JSON.parse(decodeURIComponent(el.dataset.seikaClickArgs||'%5B%5D')))});

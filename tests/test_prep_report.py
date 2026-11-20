@@ -44,7 +44,8 @@ class PrepReportBrowserTests(unittest.TestCase):
         # and unrelated index startup cannot overwrite the rendered mock screen.
         page.set_content('<!doctype html><html><body><div id="app"></div></body></html>')
         page.evaluate("""()=>{
-          window.db={}; window.__h2={}; window.esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+          window.db={}; window.__h2={}; // 本番の品目ルール：キャベツ・白菜・紫キャベツは廃棄を量らない（SQL 057）
+window.hqItemRuleOf=n=>['キャベツ','白菜','紫キャベツ'].includes(String(n||'').trim())?{item_name:String(n).trim(),waste_measured:false}:null; window.esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
           window.seikaEventAttrs=(event,action,args=[])=>`data-seika-${event}-action="${esc(action)}" data-seika-${event}-args="${esc(encodeURIComponent(JSON.stringify(args)))}"`;
           window.currentScreen=''; window.currentArgs=[]; window.setScreen=(name,args=[])=>{window.currentScreen=name;window.currentArgs=args}; window.pageShell=(title,sub,body)=>document.getElementById('app').innerHTML=`<main class="wrap"><h1>${title}</h1><div>${sub}</div>${body}</main>`;
           let __id=0; window.newId=()=>`00000000-0000-4000-8000-${String(++__id).padStart(12,'0')}`;
