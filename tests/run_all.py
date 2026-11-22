@@ -59,11 +59,24 @@ def run_check(command, env, timeout=CHECK_TIMEOUT):
         process.wait()
 
 
-def main():
+def pick_shard(checks, argv):
+    """--shard 2/4 のように指定すると、全テストを4組に分けたうちの2組目だけを流す。
+    組分けは名前順で順番に配る（1,2,3,4,1,2,…）ので、新しいテストを足しても必ずどこかの組に入る。"""
+    if "--shard" not in argv:
+        return checks
+    value = argv[argv.index("--shard") + 1]
+    index, total = (int(x) for x in value.split("/"))
+    if not 1 <= index <= total:
+        raise ValueError(f"--shard の指定が正しくありません: {value}")
+    return [c for i, c in enumerate(checks) if i % total == index - 1]
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
     if os.environ.get(CHILD_KEY):
         print("NG: テストから共通入口を再び起動することはできません", flush=True)
         return 1
-    checks = discover_checks()
+    checks = pick_shard(discover_checks(), argv)
     handler = functools.partial(QuietRequestHandler, directory=str(ROOT))
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

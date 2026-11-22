@@ -52,7 +52,21 @@ class RunAllTests(unittest.TestCase):
 
     def quiet_main(self):
         with contextlib.redirect_stdout(io.StringIO()):
-            return run_all.main()
+            return run_all.main([])
+
+    def test_shards_cover_every_check_exactly_once(self):
+        # c146: 自動チェックは4組に分けて流す。どのテストも必ずどれか1組だけに入る
+        for i in range(9):
+            self.unit_file(f"test_{i}.py")
+        checks = run_all.discover_checks()
+        names = []
+        for i in range(1, 5):
+            names += [n for n, _ in run_all.pick_shard(checks, ["--shard", f"{i}/4"])]
+        self.assertEqual(sorted(names), sorted(n for n, _ in checks))
+        self.assertEqual(len(names), len(set(names)))
+        self.assertEqual(run_all.pick_shard(checks, []), checks)
+        with self.assertRaises(ValueError):
+            run_all.pick_shard(checks, ["--shard", "5/4"])
 
     def test_existing_checks_and_new_tests_are_discovered(self):
         self.unit_file("test_z.py")

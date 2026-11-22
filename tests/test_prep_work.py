@@ -301,7 +301,8 @@ class PrepWorkTests(unittest.TestCase):
         self.assertEqual(ended["p_work_id"], saved["p_work_id"])
 
         page = self.app("hq_prep")
-        page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.pause_kind='休憩'}""")
+        page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.pause_kind='中断'}""")
+        # c137: 休憩中でも終了できる（休憩中の人は休憩に入った時刻で抜ける）。止めるのは「中断」中だけ
         self.work_page(page, "W1")
         self.assertTrue(page.locator("#c120EndButton").is_disabled())
         page.evaluate("()=>h2C120End('W1','x')")
@@ -448,8 +449,10 @@ class PrepWorkTests(unittest.TestCase):
         self.assertEqual(event.value.suggested_filename, "本社_歩留まり_2026年11月.xlsx")
         report = sheets["製造日報"]
         self.assertEqual([row[2] for row in report[1:]], ["1/4芯", "1/4葉"])
-        self.assertEqual([row[5] for row in report[1:]], [25, 75])
-        self.assertEqual([row[6] for row in report[1:]], [2.5, 7.5])
+        # c136: 「使用原料kgの区分」の列が増えたので、出来高・廃棄は1つ右
+        self.assertEqual(report[0][5], "使用原料kgの区分")
+        self.assertEqual([row[6] for row in report[1:]], [25, 75])
+        self.assertEqual([row[7] for row in report[1:]], [2.5, 7.5])
         self.assertEqual([row[-1] for row in report[1:]], [12.5, 37.5])
         self.assertEqual(sum(row[4] for row in report[1:]), 110)
         self.assertEqual(sum(row[-1] for row in report[1:]), 50)

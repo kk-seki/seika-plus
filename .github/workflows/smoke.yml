@@ -6,10 +6,20 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# c146: テストを4組に分けて同時に流す（1本で流すと15分を超えて途中で止まっていた）。
+# 最後の「まとめ」は、4組が全部成功したときだけ成功になる。GitHubの「マージ前に必須のチェック」にはこれを1つ指定する。
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   smoke:
+    name: テスト ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,16 +29,24 @@ jobs:
         run: |
           node -e "const s=require('fs').readFileSync('index.html','utf8');const re=/<script>([\s\S]*?)<\/script>/g;let m,bad=0,n=0;while((m=re.exec(s))){n++;try{new Function(m[1])}catch(e){bad++;console.log('NG:',e.message)}}console.log(n+'個のうち、書き間違い '+bad);process.exit(bad?1:0)"
           node -e "new Function(require('fs').readFileSync('sw.js','utf8'))"
+          for f in js/*.js tools/*.js; do node --check "$f" || exit 1; done
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: 準備
         run: |
-          pip install playwright==1.48.0
+          pip install playwright==1.48.0 openpyxl==3.1.5
           python -m playwright install --with-deps chromium
           sudo apt-get install -y fonts-noto-cjk
-      - name: 架空のデータで主な画面を開く
+      - name: 架空のデータで主な画面を開く（${{ matrix.shard }}組目）
+        run: python3 tests/run_all.py --shard ${{ matrix.shard }}/4
+  done:
+    name: 自動チェック（まとめ）
+    if: always()
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: 4組すべて成功したか
         run: |
-          python3 -m http.server 8765 >/dev/null 2>&1 &
-          sleep 2
-          python3 tests/run_all.py
+          echo "結果: ${{ needs.smoke.result }}"
+          test "${{ needs.smoke.result }}" = "success"
