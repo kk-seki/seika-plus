@@ -320,11 +320,22 @@ function diffOf(now,cur){
  return{add,chg,del};
 }
 /* 日ごとの状態：new 新しく登録 ／ change 変わる ／ same 変わらない（登録し直さない） ／ bad 読めない */
+/* 「11月.xlsx」と「11月-埼玉・フジ　他.xlsx」のように、同じ月のファイルが1つしか選ばれていないときの「足りない側」の説明 */
+function monthPartnerMissing(selected,nowF){
+ const out=[];for(const f of nowF){const m=N(f).match(/^(\d+)月/);if(!m)continue;const same=selected.filter(x=>(N(x).match(/^(\d+)月/)||[])[1]===m[1]);if(same.length<2)out.push(`${m[1]}月のもう1つのファイル`)}
+ return out;
+}
 function dayStates(){
  const p=pending,eff=effective(),out=[];
  for(const d of [...p.selected].sort()){
   const ls=eff.filter(l=>l.date===d),cur=p.current.get(d)||{active:null,lines:[]},open=ls.filter(l=>l.open.length).length;
   if(p.bad.has(d)||!ls.length){out.push({date:d,state:"bad",lines:ls,open});continue}
+  /* ファイルが足りない日は登録しない（1ファイルずつ取り込むと、もう片方の分が消えてしまうため）：
+     ・同じ月の2ファイル（「11月.xlsx」「11月-埼玉・フジ　他.xlsx」）の片方しか選んでいない
+     ・前の取り込みにあったファイルが今回ない */
+  const nowF=p.sheets.filter(x=>x.date===d).map(x=>x.file),prevF=(cur.active?.files||[]).map(f=>f.file).filter(Boolean);
+  const lack=[...new Set([...prevF.filter(f=>!nowF.includes(f)),...monthPartnerMissing(p.books.map(b=>b.name),nowF)])];
+  if(lack.length){out.push({date:d,state:"short",lines:ls,open,lack});continue}
   const df=diffOf(ls,cur.lines);
   const st=p.done[d]?"done":!cur.active?"new":(df.add.length||df.chg.length||df.del.length)?"change":"same";
   out.push({date:d,state:st,lines:ls,open,diff:df,cur});
@@ -336,11 +347,12 @@ function c140PreviewPage(){
  setScreen("c140PreviewPage",[]);
  const items=seikaItems(),days=dayStates(),eff=days.flatMap(d=>d.lines),open=eff.filter(l=>l.open.length);
  const tomorrow=addDays(todayKey(),1);
- const stTxt={new:"新しく登録",change:"変わる",same:"変わらない（登録しません）",bad:"読めません（登録しません）",done:"登録済み"};
+ const stTxt={new:"新しく登録",change:"変わる",same:"変わらない（登録しません）",bad:"読めません（登録しません）",short:"ファイルが足りません（登録しません）",done:"登録済み"};
  const dayInfo=new Map(days.map(d=>[d.date,d]));
  const dateRow=x=>{const on=p.selected.has(x.date),di=dayInfo.get(x.date);let info="";
   if(on&&di){info=`<b class="c140St c140St_${di.state}">${stTxt[di.state]}</b>`;if(di.state==="change")info+=`<span class="small">（追加${di.diff.add.length}・変更${di.diff.chg.length}・なくなる${di.diff.del.length}）</span>`;if(di.state!=="bad")info+=` <span class="small">${di.lines.length}行${di.open?`・要確認${di.open}`:""}</span>`}
-  const warn=x.missing.length?`<div class="small" style="color:#b45309">⚠ ${esc(x.missing.join("、"))} にこの日のシートがありません（片方だけで登録すると数が足りなくなります）</div>`:"";
+  const lk2=di?.state==="short"?`<div class="small" style="color:#b91c1c">⚠ ${esc(di.lack.join("、"))} がありません。同じ月の2ファイルを一緒に選んでください（片方だけで登録すると、もう片方の客先の分が消えます）</div>`:"";
+  const warn=lk2+(x.missing.length?`<div class="small" style="color:#b45309">⚠ ${esc(x.missing.join("、"))} にこの日のシートがありません（片方だけで登録すると数が足りなくなります）</div>`:"");
   return `<label style="display:flex;gap:8px;align-items:flex-start;border-top:1px solid #e2e8f0;padding:6px 0;cursor:pointer"><input type="checkbox" style="width:20px;height:20px;margin-top:2px;flex:none" ${on?"checked":""} ${seikaEventAttrs("change","c140ToggleDate",[x.date,{__seikaChecked:true}])}><span><b>${md(x.date)}</b>${x.date<tomorrow?'<span class="small">（過去の日）</span>':""} ${info}${warn}</span></label>`};
  const dateCard=`<div class="card"><b>取り込む納品日を選ぶ</b><div class="small">ファイルに入っている納品日です。はじめは明日（${md(tomorrow)}）以降が選ばれています。出荷日は納品日の前日です。</div>
   ${p.dates.filter(x=>x.date>=tomorrow).map(dateRow).join("")||'<div class="small">明日以降の納品日のシートはありません。</div>'}
@@ -457,7 +469,7 @@ function c140InjectHome(){
 }
 const app=document.getElementById("app");
 if(app)new MutationObserver(()=>{if(currentScreen==="home"&&!document.getElementById("c140HomeBtn")&&document.querySelector("#app .homePrimary"))c140InjectHome()}).observe(app,{childList:true,subtree:true});
-{const st=document.createElement("style");st.textContent=".homeBtnShipPlan,.c140Btn{background:linear-gradient(90deg,#1e293b 0%,#1d4ed8 55%,#f59e0b 100%) !important;color:#fff !important;border-color:transparent !important;}.c140St{margin-left:6px;font-size:13px}.c140St_new,.c140St_change{color:#1d4ed8}.c140St_same{color:#64748b}.c140St_bad{color:#b91c1c}.c140St_done{color:#15803d}.c142Diff{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fee2e2;color:#991b1b;font-size:12px;font-weight:800;border:1px solid #f87171}.c142Btn{background:linear-gradient(90deg,#14532d 0%,#15803d 55%,#facc15 100%) !important;color:#fff !important;border-color:transparent !important}.c140Frac{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;border:1px solid #f59e0b}";document.head.appendChild(st)}
+{const st=document.createElement("style");st.textContent=".homeBtnShipPlan,.c140Btn{background:linear-gradient(90deg,#1e293b 0%,#1d4ed8 55%,#f59e0b 100%) !important;color:#fff !important;border-color:transparent !important;}.c140St{margin-left:6px;font-size:13px}.c140St_new,.c140St_change{color:#1d4ed8}.c140St_same{color:#64748b}.c140St_bad,.c140St_short{color:#b91c1c}.c140St_done{color:#15803d}.c142Diff{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fee2e2;color:#991b1b;font-size:12px;font-weight:800;border:1px solid #f87171}.c142Btn{background:linear-gradient(90deg,#14532d 0%,#15803d 55%,#facc15 100%) !important;color:#fff !important;border-color:transparent !important}.c140Frac{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;border:1px solid #f59e0b}";document.head.appendChild(st)}
 
 Object.assign(window,{c140ShipPlanPage,c140ImportPage,c140PickFiles,c140ReadFiles,c140Prepare,c140PreviewPage,c140ToggleDate,c140PickItem,c140ToggleAlias,c140FixKg,c140FixCust,c140CancelImport,c140Save,
  c140AliasPage,c140ChangeAlias,c140DeleteAlias,c140SaveStd,c140AddStd,c140InjectHome,
