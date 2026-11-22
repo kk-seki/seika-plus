@@ -51,9 +51,9 @@ async function c134Load(){
   for(const rows of await Promise.all(parts.map(part=>qrSelect("qr_lots",`select=*&id=in.(${part.join(",")})`))))for(const l of rows||[])lots.set(l.id,l);
   const by={};
   for(const m of moves){const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=name||String(l?.item_name||m.item_name||"").trim();if(!name)continue;
-   const d=ymd(new Date(m.occurred_at||m.created_at)),o=by[name]=by[name]||{days:new Set,kg:0,unk:0,hqKg:0};o.days.add(d);const toHq=String(m.destination||"").trim()==="本社";
+   const d=ymd(new Date(m.occurred_at||m.created_at)),o=by[name]=by[name]||{days:new Set,kg:0,unk:0,hqKg:0};o.days.add(d);const dest=String(m.destination||"").trim(),toHq=dest==="本社"||(dest==="荻沼"&&/人参|大根/.test(name));
    let kg=null;if(m.weight!==null&&m.weight!==undefined&&m.weight!==""&&Number.isFinite(Number(m.weight)))kg=Number(m.weight);else{try{const k=l?v163LotKgAtQuantity(l,Number(m.qty||0)):0;kg=k>0?k:null}catch(_){}}
-   if(kg==null)o.unk++;else{o.kg+=kg;if(toHq)o.hqKg+=kg}}  // c151：本社への出庫は分けても数える（本社は積み込み表に入らないため）
+   if(kg==null)o.unk++;else{o.kg+=kg;if(toHq)o.hqKg+=kg}}  // c151：本社への出庫は分けても数える（本社は積み込み表に入らないため）。荻沼（本社管轄の協力工場）への人参・大根は本社からの発注なので本社の分に入れる
   cache={by,fromKey,toKey};cacheAt=Date.now();return cache})();
  try{return await loading}finally{loading=null}
 }

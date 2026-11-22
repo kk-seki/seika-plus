@@ -61,6 +61,26 @@ def test_buyer_daily_buttons_average_by_shipping_days(self):
 
 
 @_t
+def test_hq_share_counts_honsha_and_oginuma_carrot_radish(self):
+    # c151：本社への出庫は本社の分。荻沼（本社管轄の協力工場）への人参・大根も本社からの発注なので本社の分。玉葱は入れない
+    page = self.open_app("buyer")
+    by = page.evaluate("""async()=>{const now=Date.now(),day=k=>new Date(now-k*864e5).toISOString();
+      const lots=[{id:'L1',item_name:'人参'},{id:'L2',item_name:'カット大根'},{id:'L3',item_name:'玉葱'},{id:'L4',item_name:'キャベツ'}];
+      const moves=[
+        {id:'a',lot_id:'L1',movement_type:'出庫',qty:1,weight:100,destination:'荻沼',occurred_at:day(1)},
+        {id:'b',lot_id:'L1',movement_type:'出庫',qty:1,weight:40,destination:'現場作業',occurred_at:day(2)},
+        {id:'c',lot_id:'L2',movement_type:'出庫',qty:1,weight:60,destination:'荻沼',occurred_at:day(1)},
+        {id:'d',lot_id:'L3',movement_type:'出庫',qty:1,weight:70,destination:'荻沼',occurred_at:day(1)},
+        {id:'e',lot_id:'L4',movement_type:'出庫',qty:1,weight:30,destination:'本社',occurred_at:day(1)}];
+      qrSelect=async(t,q)=>t==='qr_lot_movements'?moves:t==='qr_lots'?lots:[];
+      c134ResetCache();const r=(await c134Load()).by;const o={};for(const k in r)o[k]=[r[k].kg,r[k].hqKg,r[k].days.size];return o}""")
+    self.assertEqual(by["人参"], [140, 100, 2])
+    self.assertEqual(by["カット大根"], [60, 60, 1])
+    self.assertEqual(by["玉葱"], [70, 0, 1])
+    self.assertEqual(by["キャベツ"], [30, 30, 1])
+
+
+@_t
 def test_range_excel_splits_by_destination_and_can_pick_one(self):
     lots, moves, history = self.slip_data()
     page = self.open_app(lots=lots, moves=moves, history=history)

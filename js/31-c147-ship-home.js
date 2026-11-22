@@ -44,7 +44,8 @@ function c147Diffs(planLines,actualLines,mine,inhouse){
 }
 /* 明日の予定：品目ごとの合計kg（多い順）。daily があれば日量と何倍かを付ける。
    c151：日量は社内（埼玉・深谷・本社・現場作業など）への出庫も含む。積み込み表には埼玉・深谷は入っているが本社は入らないので、
-   本社の分は出庫履歴から足す（本社分＝昨日までの7日間の本社への出庫 ÷ 出庫した日数。日量と同じ割り方）。比べるのは「予定＋本社分」と日量。 */
+   本社の分は出庫履歴から足す（本社分＝昨日までの7日間の本社への出庫 ÷ 出庫した日数。日量と同じ割り方）。比べるのは「予定＋本社分」と日量。
+   荻沼（本社管轄の協力工場。人参・大根・玉葱を加工）への人参・大根は本社からの発注なので、本社の分に入れる（玉葱は入れない）。 */
 function c147Tomorrow(planLines,mine,daily){
  const p=sumKg(planLines);
  return [...p].filter(([it])=>!mine||mine.has(it)).map(([item,kg])=>{
@@ -122,7 +123,7 @@ function c147Html(data,mine,daily){
   if(data.inhouse===null)s2+=`<div class="small">埼玉・深谷への出庫を読み込めなかったので、社外だけで比べています。</div>`;
   else if(data.shipDate>=data.today)s2+=`<div class="small">埼玉・深谷の確定は、出荷日 ${md(data.shipDate)} の出庫です（今日の分は途中までです）。</div>`}
  return `${head}
-  <div class="c147Sec"><div class="c147Sub">明日（${md(data.tomorrow)}納品）の出荷予定</div>${s1}${buyer?'<div class="small">日量は社内（埼玉・深谷・本社など）への出庫も含みます。本社は積み込み表に入らないので、本社への出庫（昨日までの7日間）から1日分を足して比べます。</div>':""}</div>
+  <div class="c147Sec"><div class="c147Sub">明日（${md(data.tomorrow)}納品）の出荷予定</div>${s1}${buyer?'<div class="small">日量は社内（埼玉・深谷・本社など）への出庫も含みます。本社は積み込み表に入らないので、本社への出庫（昨日までの7日間。荻沼への人参・大根は本社の分）から1日分を足して比べます。</div>':""}</div>
   <div class="c147Sec"><div class="c147Sub">${data.act?`${md(data.actDate)}納品の確定と予定の違い（2割以上）`:"確定と予定の違い"}</div>${s2}
    <div class="small">社外は産地報告書の確定と、確定のある客先の予定で比べます。埼玉・深谷は積み込み表の予定と、出荷日（納品日の前日）の出庫で比べます。kgで比べ、予定・確定とも${MIN_KG}kg以下の品目は出しません。</div></div>
   <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" class="btn c147Btn" ${seikaEventAttrs("click","c140ShipPlanPage",[data.tomorrow,""])}>明日の出荷予定を開く</button>${data.act?`<button type="button" class="btn btn2" ${seikaEventAttrs("click","c140ShipPlanPage",[data.actDate,""])}>${md(data.actDate)}の確定を開く</button>`:""}</div>`;
