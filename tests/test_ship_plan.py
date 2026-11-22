@@ -189,6 +189,21 @@ class ShipPlanBrowserTests(unittest.TestCase):
         self.assertEqual(rpc[1][2], rpc[2][2])     # 同じ日は同じ取り込みIDで送り直す
         self.assertEqual(rpc[2][3], 2)
 
+    def test_one_file_of_the_pair_is_not_registered(self):
+        page = self.open_app("worker")
+        page.evaluate(f"""async()=>{{const books=({self.MULTI})();books[0].name='11月.xlsx';books[1].name='11月-埼玉・フジ　他.xlsx';const m={MASTERS};
+          c140Prepare([books[0]],null,m,new Map());return c140PreviewPage()}}""")
+        page.wait_for_selector("text=取り込む納品日を選ぶ")
+        text = page.inner_text("#app")
+        self.assertIn("ファイルが足りません", text)
+        self.assertIn("11月のもう1つのファイル", text)
+        self.assertEqual(page.locator("text=選んだ日を登録する").count(), 0)
+        # 前の取り込みにあったファイルが今回ない（名前の決まりに合わないファイルでも止まる）
+        page.evaluate(f"""async()=>{{const books=({self.MULTI})();const m={MASTERS};const [p,t1]=window.__D;
+          const cur=new Map([[t1,{{active:{{id:'old',delivery_date:t1,files:[{{file:'その1.xlsx'}},{{file:'その2.xlsx'}}]}},lines:[]}}]]);
+          c140Prepare([books[0]],null,m,cur);return c140PreviewPage()}}""")
+        page.wait_for_selector("text=その2.xlsx がありません")
+
     def test_home_button_by_role(self):
         for role, expect in (("buyer", "明日の出荷予定を見る"), ("worker", "明日の出荷予定を見る・取り込む"), ("hq_prep", None)):
             page = self.open_app(role)
