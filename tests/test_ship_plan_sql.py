@@ -160,6 +160,8 @@ class ShipPlanSqlRuntimeTests(unittest.TestCase):
         self.assertEqual(self.val("select count(*) from public.ship_plan_imports_v1199c140"), '0')
 
     def test_masters_and_read_policy(self):
+        self.assertEqual(self.val("select string_agg(raw_key||'>'||item_name,',' order by raw_key) from public.ship_plan_item_aliases_v1199c140 where raw_key in ('大根','加工用大根','レタス剥き','カットしめじ')"),
+                         'カットしめじ>しめじ,レタス剥き>レタス,加工用大根>カット大根,大根>カット大根')
         self.rpc("public.save_ship_plan_alias_v1199c140('大根','大根','カット大根',true)", WORKER)
         self.assertEqual(self.val("select item_name from public.ship_plan_item_aliases_v1199c140 where raw_key='大根'"), 'カット大根')
         with self.assertRaises(AssertionError):
