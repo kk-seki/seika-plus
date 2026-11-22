@@ -27,7 +27,7 @@ SETUP = """role=>{
   loadPlan:async d=>{const ls=__plan[d];return {active:ls?{id:d}:null,lines:ls||[]}},
   loadActual:async d=>{const ls=__actual[d];return {active:ls?{id:d}:null,lines:ls||[]}}};
  window.v1153BuyerOptimalItems=()=>[{name:'キャベツ'},{name:'人参'},{name:'ほうれん草'},{name:'ごぼう'}];
- window.c134Load=async()=>({by:{'キャベツ':{kg:1200,days:new Set(['a','b','c','d'])},'人参':{kg:300,days:new Set(['a','b'])}}});
+ window.c134Load=async()=>({by:{'キャベツ':{kg:1200,days:new Set(['a','b','c','d'])},'人参':{kg:300,days:new Set(['a','b']),hqKg:60}}});
  document.getElementById('app').innerHTML='<main class="wrap"><div class="homeSummary">まとめ</div><div class="homePrimary"></div><div id="c134Daily"><div id="c134DailyBtns"><button class="c134Btn"><b>キャベツ</b><em>日量 300kg</em></button><button class="c134Btn"><b>ごぼう</b><em>出庫なし</em></button></div></div></main>';
 }"""
 
@@ -71,9 +71,9 @@ class ShipHomeTests(unittest.TestCase):
         text = card.inner_text()
         self.assertIn("（担当品目）", text)
         self.assertIn("明日（11/24納品）の出荷予定", text)
-        # 担当品目だけ。キャベツ 400kg ÷ 日量300kg＝1.3倍（多い）、人参 90kg ÷ 日量150kg＝0.6倍（少ない）
+        # 担当品目だけ。キャベツ 400kg ÷ 日量300kg＝1.3倍（多い）、人参（90kg＋本社30kg）÷ 日量150kg＝0.8倍（少ない）
         self.assertIn("日量の1.3倍・多い", text)
-        self.assertIn("日量の0.6倍・少ない", text)
+        self.assertIn("日量の0.8倍・少ない", text)
         self.assertNotIn("小松菜", text)
         self.assertNotIn("レタス", text)
         self.assertIn("予定なし：ごぼう、ほうれん草", text)
@@ -186,6 +186,19 @@ class ShipHomeTests(unittest.TestCase):
         page.locator("#c147Ship .c147Sub").first.wait_for(timeout=5000)
         page.locator("#c134DailyBtns .c147Add").first.wait_for(timeout=5000)
         self.assertEqual(page.locator("#c147Ship").count(), 1)
+
+    def test_hq_share_from_shipping_history_is_added_to_tomorrow(self):
+        # c151：本社は積み込み表に入らないので、本社への出庫（7日間 ÷ 出庫した日数）を明日の予定に足して日量と比べる
+        page = self.open_home("buyer")
+        page.locator("#c147Ship .c147Sub").first.wait_for()
+        text = page.locator("#c147Ship").inner_text()
+        # 人参：予定 90kg ＋ 本社 60kg÷2日＝30kg → 120kg、日量 150kg → 0.8倍（少ない）
+        self.assertIn("＋本社 30kg", text)
+        self.assertIn("＝120kg", text)
+        self.assertIn("日量の0.8倍・少ない", text)
+        self.assertIn("本社は積み込み表に入らないので", text)
+        # キャベツは本社への出庫なし → 今までどおり 400kg ÷ 300kg
+        self.assertIn("日量の1.3倍・多い", text)
 
 if __name__ == "__main__":
     unittest.main()

@@ -49,9 +49,9 @@ async function c134Load(){
   for(let i=0;i<ids.length;i+=80){const part=ids.slice(i,i+80);for(const l of (await qrSelect("qr_lots",`select=*&id=in.(${part.join(",")})`)||[]))lots.set(l.id,l)}
   const by={};
   for(const m of moves){const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=name||String(l?.item_name||m.item_name||"").trim();if(!name)continue;
-   const d=ymd(new Date(m.occurred_at||m.created_at)),o=by[name]=by[name]||{days:new Set,kg:0,unk:0};o.days.add(d);
+   const d=ymd(new Date(m.occurred_at||m.created_at)),o=by[name]=by[name]||{days:new Set,kg:0,unk:0,hqKg:0};o.days.add(d);const toHq=String(m.destination||"").trim()==="本社";
    let kg=null;if(m.weight!==null&&m.weight!==undefined&&m.weight!==""&&Number.isFinite(Number(m.weight)))kg=Number(m.weight);else{try{const k=l?v163LotKgAtQuantity(l,Number(m.qty||0)):0;kg=k>0?k:null}catch(_){}}
-   if(kg==null)o.unk++;else o.kg+=kg}
+   if(kg==null)o.unk++;else{o.kg+=kg;if(toHq)o.hqKg+=kg}}  // c151：本社への出庫は分けても数える（本社は積み込み表に入らないため）
   cache={by,fromKey,toKey};cacheAt=Date.now();return cache})();
  try{return await loading}finally{loading=null}
 }

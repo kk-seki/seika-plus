@@ -33,12 +33,14 @@ function c147Diffs(planLines,actualLines,mine){
  }
  return out.sort((x,y)=>Math.abs(y.actual-y.plan)-Math.abs(x.actual-x.plan));
 }
-/* 明日の予定：品目ごとの合計kg（多い順）。daily があれば日量と何倍かを付ける */
+/* 明日の予定：品目ごとの合計kg（多い順）。daily があれば日量と何倍かを付ける。
+   c151：日量は社内（埼玉・深谷・本社・現場作業など）への出庫も含む。積み込み表には埼玉・深谷は入っているが本社は入らないので、
+   本社の分は出庫履歴から足す（本社分＝昨日までの7日間の本社への出庫 ÷ 出庫した日数。日量と同じ割り方）。比べるのは「予定＋本社分」と日量。 */
 function c147Tomorrow(planLines,mine,daily){
  const p=sumKg(planLines);
  return [...p].filter(([it])=>!mine||mine.has(it)).map(([item,kg])=>{
-  const d=daily?.[item],avg=d&&d.days?.size?d.kg/d.days.size:null,times=avg>0?kg/avg:null;
-  return {item,kg,daily:avg,times,mark:times==null?"":times>=MANY-1e-9?"many":times<=FEW+1e-9?"few":""};
+  const d=daily?.[item],nd=d?.days?.size||0,avg=nd?d.kg/nd:null,hq=nd&&d.hqKg>0?d.hqKg/nd:0,total=kg+hq,times=avg>0?total/avg:null;
+  return {item,kg,hq,total,daily:avg,times,mark:times==null?"":times>=MANY-1e-9?"many":times<=FEW+1e-9?"few":""};
  }).sort((a,b)=>b.kg-a.kg);
 }
 
@@ -82,14 +84,14 @@ function c147Html(data,mine,daily){
  if(!data.plan?.active)s1=`<div class="small">明日（${md(data.tomorrow)}納品）の積み込み表はまだ取り込まれていません。</div>`;
  else if(!tom.length)s1=`<div class="small">明日（${md(data.tomorrow)}納品）の予定に${buyer?"担当品目は":"品目が"}ありません。</div>`;
  else{const max=buyer?50:8,show=tom.slice(0,max);
-  s1=`<table class="table c147Tbl"><tr><th>品目</th><th>予定</th>${buyer?"<th>日量とくらべて</th>":""}</tr>${show.map(r=>`<tr class="${r.mark?`c147Row ${r.mark}`:""}"><td>${esc(r.item)}</td><td><b>${fmt(r.kg)}kg</b></td>${buyer?`<td>${r.daily!=null?`<span class="small">日量${fmt(r.daily)}kg</span><br>`:""}${timesText(r)}</td>`:""}</tr>`).join("")}</table>${tom.length>max?`<div class="small">ほか${tom.length-max}品目</div>`:""}`;
+  s1=`<table class="table c147Tbl"><tr><th>品目</th><th>予定</th>${buyer?"<th>日量とくらべて</th>":""}</tr>${show.map(r=>`<tr class="${r.mark?`c147Row ${r.mark}`:""}"><td>${esc(r.item)}</td><td><b>${fmt(r.kg)}kg</b>${r.hq>0?`<div class="small">＋本社 ${fmt(r.hq)}kg<br>＝${fmt(r.total)}kg</div>`:""}</td>${buyer?`<td>${r.daily!=null?`<span class="small">日量${fmt(r.daily)}kg</span><br>`:""}${timesText(r)}</td>`:""}</tr>`).join("")}</table>${tom.length>max?`<div class="small">ほか${tom.length-max}品目</div>`:""}`;
   if(buyer){const none=[...mine].filter(n=>!tom.some(r=>r.item===n)).sort((a,b)=>a.localeCompare(b,"ja"));if(none.length)s1+=`<div class="small">予定なし：${esc(none.join("、"))}</div>`}}
  let s2;
  if(!data.act)s2=`<div class="small">明日〜${BACK-1}日前の確定（産地報告書）はまだ取り込まれていません。</div>`;
  else{const diffs=c147Diffs(data.actPlan?.lines,data.act.lines,mine);
   s2=diffs.length?`<table class="table c147Tbl"><tr><th>品目</th><th>予定→確定</th></tr>${diffs.map(d=>`<tr><td>${esc(d.item)}</td><td>${fmt(d.plan)}kg → <b>${fmt(d.actual)}kg</b> ${rateText(d)}</td></tr>`).join("")}</table>`:`<div class="c147Ok">予定と2割以上違う${buyer?"担当品目":"品目"}はありません。</div>`}
  return `${head}
-  <div class="c147Sec"><div class="c147Sub">明日（${md(data.tomorrow)}納品）の出荷予定</div>${s1}</div>
+  <div class="c147Sec"><div class="c147Sub">明日（${md(data.tomorrow)}納品）の出荷予定</div>${s1}${buyer?'<div class="small">日量は社内（埼玉・深谷・本社など）への出庫も含みます。本社は積み込み表に入らないので、本社への出庫（昨日までの7日間）から1日分を足して比べます。</div>':""}</div>
   <div class="c147Sec"><div class="c147Sub">${data.act?`${md(data.actDate)}納品の確定と予定の違い（2割以上）`:"確定と予定の違い"}</div>${s2}
    <div class="small">確定のある客先（産地報告書にある社外の客先）の予定とkgで比べます。予定・確定とも${MIN_KG}kg以下の品目は出しません。</div></div>
   <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" class="btn c147Btn" ${seikaEventAttrs("click","c140ShipPlanPage",[data.tomorrow,""])}>明日の出荷予定を開く</button>${data.act?`<button type="button" class="btn btn2" ${seikaEventAttrs("click","c140ShipPlanPage",[data.actDate,""])}>${md(data.actDate)}の確定を開く</button>`:""}</div>`;
@@ -100,7 +102,7 @@ function c147Decorate(tom){
  const btns=[...box.querySelectorAll("button.c134Btn")];if(!btns.length)return false;
  const by=new Map(tom.map(r=>[r.item,r]));
  for(const b of btns){if(b.querySelector(".c147Add"))continue;const name=b.querySelector("b")?.textContent||"";const r=by.get(name);
-  b.insertAdjacentHTML("beforeend",`<span class="c147Add ${r?.mark||""}">${r?`明日 ${fmt(r.kg)}kg${r.times!=null?`（${r.times.toFixed(1)}倍）`:""}`:"明日 予定なし"}</span>`)}
+  b.insertAdjacentHTML("beforeend",`<span class="c147Add ${r?.mark||""}">${r?`明日 ${fmt(r.total)}kg${r.hq>0?`（本社込み）`:""}${r.times!=null?`（${r.times.toFixed(1)}倍）`:""}`:"明日 予定なし"}</span>`)}
  return true;
 }
 /* c150：起動直後はホームが何度か描き直される。読み込み中に描き直されてカードが消えたときは、読み終わったあとにもう一度出す。
