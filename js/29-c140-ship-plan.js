@@ -12,7 +12,7 @@
 (()=>{
 const IMPORT_ROLES=["admin","worker","clerk"],VIEW_ROLES=["admin","worker","buyer","sales","clerk","office_viewer","viewer"];
 const SMALL_KG=10;
-const T={imp:"ship_plan_imports_v1199c140",line:"ship_plan_lines_v1199c140",alias:"ship_plan_item_aliases_v1199c140",std:"ship_plan_case_std_v1199c140"};
+const T={imp:"ship_plan_imports_v1199c140",line:"ship_plan_lines_v1199c140",alias:"ship_plan_item_aliases_v1199c140",std:"ship_plan_case_std_v1199c140",aimp:"ship_actual_imports_v1199c142",aline:"ship_actual_lines_v1199c142",calias:"ship_customer_aliases_v1199c142"};
 const sqlMissing=e=>/PGRST202|PGRST205|schema cache|does not exist|404|_v1199c140/.test(String(e?.message||e||""));
 const NEED_SQL="この機能の準備がまだです（SQL 061 の実行が必要です）。";
 const canImport=()=>IMPORT_ROLES.includes(db?.role);
@@ -166,33 +166,61 @@ async function loadPlan(dateKey){
  const lines=act?await qrSelect(T.line,`select=*&import_id=eq.${act.id}&order=line_no.asc&limit=5000`):[];
  return{imports:imps||[],active:act,lines:(lines||[]).map(l=>({...l,item:l.item_name,inMaster:l.item_in_master,kg:l.kg===null?null:Number(l.kg),pack:l.pack_kg===null?null:Number(l.pack_kg),customer:l.customer_name}))};
 }
+/* c142：確定数量（産地報告書）。表がまだない（SQL 062 前）ときは null */
+async function loadActual(dateKey){
+ try{
+  const imps=await qrSelect(T.aimp,`select=*&delivery_date=eq.${dateKey}&order=imported_at.desc&limit=20`);
+  const act=(imps||[]).find(i=>i.status==="active")||null;
+  const lines=act?await qrSelect(T.aline,`select=*&import_id=eq.${act.id}&order=line_no.asc&limit=5000`):[];
+  return{imports:imps||[],active:act,lines:(lines||[]).map(l=>({...l,item:l.item_name,customer:l.customer_name,kg:l.kg===null?null:Number(l.kg),pack:l.pack_kg===null?null:Number(l.pack_kg)}))};
+ }catch(e){return null}
+}
+function sumBy(lines){const mp=new Map;for(const l of lines){const k=`${l.customer}｜${l.item}`;const o=mp.get(k)||{customer:l.customer,item:l.item,kg:0,unknown:0,lines:[]};if(l.kg===null||l.kg===undefined)o.unknown++;else o.kg+=l.kg;o.lines.push(l);mp.set(k,o)}for(const o of mp.values())o.kg=Math.round(o.kg*1000)/1000;return mp}
+function shortQty(o,small,m){
+ if(!o)return'<span class="small">－</span>';
+ if(small)return weightText(o.kg);
+ let cs=0,frac=false,unk=false;for(const l of o.lines){const c=casesOf(l.item,l.kg,l.pack,m);if(c.cases===null)unk=true;else{cs+=c.cases;if(c.frac)frac=true}}
+ return unk&&!cs?`${num(o.kg)}kg`:`${cs}ケース${frac?'<span class="c140Frac">端数あり</span>':""}<span class="small">（${num(o.kg)}kg）</span>`;
+}
 let viewDate="";
 async function c140ShipPlanPage(dateKey="",msg=""){
  if(!canView()){alert("出荷予定を見る権限がありません");return home()}
  viewDate=dateKey||viewDate||addDays(todayKey(),1);
  setScreen("c140ShipPlanPage",[viewDate,msg]);
  pageShell("出荷予定（積み込み表）","読み込んでいます",'<div class="card"><div class="notice">読み込んでいます。</div></div>');
- let plan,m;
- try{[plan,m]=await Promise.all([loadPlan(viewDate),loadMasters(true)])}
+ let plan,m,actual;
+ try{[plan,m,actual]=await Promise.all([loadPlan(viewDate),loadMasters(true),loadActual(viewDate)])}
  catch(e){return pageShell("出荷予定（積み込み表）","",`<div class="err">${esc(sqlMissing(e)?NEED_SQL:(e?.message||e))}</div><button class="btn btn2" style="width:100%" ${seikaEventAttrs("click","home",[])}>ホームへ</button>`)}
  if(currentScreen!=="c140ShipPlanPage")return;
  const d=viewDate,nav=`<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn2" ${seikaEventAttrs("click","c140ShipPlanPage",[addDays(d,-1),""])}>前の日</button><input id="c140Date" type="date" value="${esc(d)}" ${seikaEventAttrs("change","c140ShipPlanPage",[{__seikaValue:true},""])} style="font-size:18px;padding:6px"><button class="btn btn2" ${seikaEventAttrs("click","c140ShipPlanPage",[addDays(d,1),""])}>次の日</button></div>
   <div class="small" style="margin-top:6px">納品日 <b>${md(d)}</b> ／ 出荷日（セット日） <b>${md(addDays(d,-1))}</b></div>`;
- const tools=canImport()?`<button class="btn c140Btn" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","c140ImportPage",[d])}>積み込み表を取り込む</button><button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c140AliasPage",[""])}>品名の読み替え・標準ケース</button>`:"";
- let body;
- if(!plan.active){body=`<div class="card notice">この納品日の出荷予定はまだ取り込まれていません。</div>`}
- else{
-  const a=plan.active,tots=itemTotals(plan.lines,m),totMap=new Map(tots.map(o=>[o.item,o]));
-  const files=(a.files||[]).map(f=>`${esc(f.file)}（シート ${esc(f.sheet)}）`).join("、");
-  const custs=new Map;for(const l of plan.lines){const k=l.customer_name;if(!custs.has(k))custs.set(k,[]);custs.get(k).push(l)}
-  body=`<div class="card"><b>取り込み：${esc(String(a.imported_at).slice(0,16).replace("T"," "))}（${esc(a.imported_by_name||"-")}）</b><div class="small">${files}・${a.line_count}行</div></div>
-  <div class="card"><b>品目ごとの合計（${tots.length}品目）</b><div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>品目</th><th>数量</th></tr>${tots.map(o=>`<tr><td>${esc(o.item)}${o.inMaster?"":'<span class="small">（マスタ外）</span>'}</td><td>${totalText(o)}</td></tr>`).join("")}</table></div>
-   <div class="small">ケース数は、1行ずつ標準ケースで割って切り上げた数の合計です。全客先を合わせて${SMALL_KG}kg以下の品目は、ケースではなく重さで出します。</div></div>
-  <div class="card"><b>客先ごと（${custs.size}件）</b>${[...custs].map(([c,ls])=>`<details style="margin-top:6px"><summary style="font-weight:800;cursor:pointer">${esc(c)}<span class="small">（${ls.length}行${ls[0].route?`・${esc(ls[0].route)}`:""}）</span></summary><div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>品目</th><th>積み込み表の書き方</th><th>数量</th></tr>${ls.map(l=>`<tr><td>${esc(l.item)}</td><td>${esc(l.item_raw)}<span class="small">${l.qty_raw?`（${esc(l.qty_raw)}）`:""}</span></td><td>${qtyText(l,totMap.get(l.item),m)}</td></tr>`).join("")}</table></div></details>`).join("")}</div>`;
- }
- const old=plan.imports.filter(i=>i.status==="replaced");
- const hist=old.length?`<div class="card"><details><summary style="font-weight:800;cursor:pointer">前の取り込み（置き換え済み・${old.length}件）</summary>${old.map(i=>`<div class="small">${esc(String(i.imported_at).slice(0,16).replace("T"," "))}（${esc(i.imported_by_name||"-")}）・${i.line_count}行・${num(i.total_kg)}kg</div>`).join("")}</details></div>`:"";
- pageShell("出荷予定（積み込み表）","客先ごとの出荷予定（翌日分を前日の夕方に取り込み）",`${okHtml(msg)}<div class="card">${nav}${tools}</div>${body}${hist}`);
+ const tools=canImport()?`<button class="btn c140Btn" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","c140ImportPage",[d])}>積み込み表を取り込む（予定）</button>${typeof window.c142ImportPage==="function"?`<button class="btn c142Btn" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c142ImportPage",[])}>産地報告書を取り込む（確定数量）</button>`:""}<button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c140AliasPage",[""])}>品名・客先の読み替え・標準ケース</button>`:"";
+ const hasA=!!actual?.active,act=hasA?actual.lines:[];
+ const stamp=(i)=>`${esc(String(i.imported_at).slice(0,16).replace("T"," "))}（${esc(i.imported_by_name||"-")}）`;
+ const status=`<div class="card"><div><b>予定（積み込み表）：</b>${plan.active?`${stamp(plan.active)}・${plan.active.line_count}行`:"まだ取り込まれていません"}</div>
+  ${actual?`<div style="margin-top:4px"><b>確定（産地報告書）：</b>${hasA?`${stamp(actual.active)}・${actual.active.line_count}行`:"まだ取り込まれていません"}</div>`:""}
+  ${plan.active?`<div class="small">${(plan.active.files||[]).map(f=>`${esc(f.file)}（シート ${esc(f.sheet)}）`).join("、")}</div>`:""}</div>`;
+ let body="";
+ if(plan.active||hasA){
+  const P=plan.lines,pt=itemTotals(P,m),at=itemTotals(act,m),ptm=new Map(pt.map(o=>[o.item,o])),atm=new Map(at.map(o=>[o.item,o]));
+  const items=[...new Set([...pt.map(o=>o.item),...at.map(o=>o.item)])].sort((a,b)=>a.localeCompare(b,"ja"));
+  const small=it=>((ptm.get(it)?.kg||0)<=SMALL_KG&&(atm.get(it)?.kg||0)<=SMALL_KG);
+  const diffMark=(p,a)=>hasA&&plan.active&&Math.abs((p?.kg||0)-(a?.kg||0))>0.001?'<span class="c142Diff">違い</span>':"";
+  const tot=`<div class="card"><b>品目ごとの合計（${items.length}品目）</b><div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>品目</th><th>予定</th>${hasA?"<th>確定</th>":""}</tr>${items.map(it=>{const p=ptm.get(it),a=atm.get(it);return `<tr><td>${esc(it)}${diffMark(p,a)}</td><td>${p?totalText(p):"－"}</td>${hasA?`<td>${a?totalText(a):"－"}</td>`:""}</tr>`}).join("")}</table></div>
+   <div class="small">ケース数は、1行ずつ標準ケースで割って切り上げた数の合計です。全客先を合わせて${SMALL_KG}kg以下の品目は、ケースではなく重さで出します。${hasA?"「違い」は予定と確定のkgが違う品目です。確定は産地報告書にある客先（社外）だけです。":""}</div></div>`;
+  const ps=sumBy(P),as=sumBy(act),custs=new Map;
+  for(const o of [...ps.values(),...as.values()]){if(!custs.has(o.customer))custs.set(o.customer,new Set);custs.get(o.customer).add(o.item)}
+  const route=c=>P.find(l=>l.customer===c)?.route||"";
+  const cust=`<div class="card"><b>客先ごと（${custs.size}件）</b>${[...custs].map(([c,its])=>{const rows=[...its].sort((a,b)=>a.localeCompare(b,"ja")).map(it=>{const p=ps.get(`${c}｜${it}`),a=as.get(`${c}｜${it}`);
+    const raw=(p?.lines||[]).map(l=>`${l.item_raw}${l.qty_raw?`（${l.qty_raw}）`:""}`).join("、"),orig=(a?.lines||[]).map(l=>[l.origin,l.coop].filter(Boolean).join("・")).filter(Boolean).join("、");
+    return `<tr><td>${esc(it)}${diffMark(p,a)}<div class="small">${esc(raw)}</div></td><td>${shortQty(p,small(it),m)}</td>${hasA?`<td>${shortQty(a,small(it),m)}${orig?`<div class="small">${esc(orig)}</div>`:""}</td>`:""}</tr>`}).join("");
+    const nd=hasA&&plan.active?[...its].filter(it=>Math.abs((ps.get(`${c}｜${it}`)?.kg||0)-(as.get(`${c}｜${it}`)?.kg||0))>0.001).length:0;
+    return `<details style="margin-top:6px"><summary style="font-weight:800;cursor:pointer">${esc(c)}<span class="small">（${its.size}品目${route(c)?`・${esc(route(c))}`:""}${nd?`・違い${nd}`:""}）</span></summary><div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>品目</th><th>予定</th>${hasA?"<th>確定</th>":""}</tr>${rows}</table></div></details>`}).join("")}</div>`;
+  body=tot+cust;
+ }else body=`<div class="card notice">この納品日の出荷予定はまだ取り込まれていません。</div>`;
+ const old=[...plan.imports.filter(i=>i.status==="replaced").map(i=>["予定",i]),...(actual?.imports||[]).filter(i=>i.status==="replaced").map(i=>["確定",i])];
+ const hist=old.length?`<div class="card"><details><summary style="font-weight:800;cursor:pointer">前の取り込み（置き換え済み・${old.length}件）</summary>${old.map(([k,i])=>`<div class="small">${k}：${stamp(i)}・${i.line_count}行・${num(i.total_kg)}kg</div>`).join("")}</details></div>`:"";
+ pageShell("出荷予定（積み込み表）","客先ごとの出荷予定と確定数量",`${okHtml(msg)}<div class="card">${nav}${tools}</div>${status}${body}${hist}`);
 }
 
 /* ---------- 取り込み（c141：ファイルに入っている何日分もまとめて） ---------- */
@@ -378,16 +406,20 @@ async function c140AliasPage(msg=""){
  setScreen("c140AliasPage",[msg]);
  pageShell("品名の読み替え・標準ケース","読み込んでいます",'<div class="card"><div class="notice">読み込んでいます。</div></div>');
  let m;try{m=await loadMasters(true)}catch(e){return pageShell("品名の読み替え・標準ケース","",`<div class="err">${esc(sqlMissing(e)?NEED_SQL:(e?.message||e))}</div>`)}
+ let ca=null;try{ca=await qrSelect(T.calias,"select=*&limit=2000")}catch(_){ca=null}
  if(currentScreen!=="c140AliasPage")return;
  const admin=canAdmin(),items=seikaItems();
+ const caCard=ca?`<div class="card"><b>客先の読み替え（産地報告書 → 積み込み表・${ca.length}件）</b><div class="small">産地報告書の取り込みで選んだ対応がここに増えます。${admin?"「削除」すると、次の取り込みで要確認に戻ります。":""}</div>
+  <div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>産地報告書の書き方</th><th>積み込み表の客先</th>${admin?"<th></th>":""}</tr>${[...ca].sort((a,b)=>String(a.raw_name).localeCompare(String(b.raw_name),"ja")).map(a=>`<tr><td>${esc(a.raw_name)}</td><td>${esc(a.customer_name)}</td>${admin?`<td><button class="btn btn2" ${seikaEventAttrs("click","c142DeleteCustomerAlias",[a.raw_key,a.raw_name])}>削除</button></td>`:""}</tr>`).join("")}</table></div></div>`:"";
  const al=[...m.aliasRows].sort((a,b)=>String(a.raw_name).localeCompare(String(b.raw_name),"ja"));
  const st=[...m.stdRows].sort((a,b)=>String(a.item_name).localeCompare(String(b.item_name),"ja"));
- pageShell("品名の読み替え・標準ケース","積み込み表の書き方とSEIKA＋の品目の対応、ケース数を出す重さ",`${okHtml(msg)}
+ pageShell("品名・客先の読み替え・標準ケース","積み込み表の書き方とSEIKA＋の品目の対応、ケース数を出す重さ、産地報告書の客先名",`${okHtml(msg)}
  <div class="card"><b>品名読み替えマスタ（${al.length}件）</b><div class="small">取り込みの確認画面で選んだ対応がここに増えます。${admin?"品目を選び直すと、次の取り込みからその品目になります（馬鈴薯のように時期で使う品種が変わるものはここで切り替え）。「削除」すると、次の取り込みで要確認に戻ります。":"直すときは管理者に頼んでください。"}</div>
   <div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>積み込み表の書き方</th><th>SEIKA＋の品目</th><th>更新</th>${admin?"<th></th>":""}</tr>${al.map(a=>`<tr><td>${esc(a.raw_name)}</td><td>${admin?`<select style="font-size:15px;padding:4px;max-width:11em" ${seikaEventAttrs("change","c140ChangeAlias",[a.raw_key,a.raw_name,{__seikaValue:true}])}>${(items.includes(a.item_name)?items:[a.item_name,...items]).map(x=>`<option value="${esc(x)}" ${x===a.item_name?"selected":""}>${esc(x)}</option>`).join("")}</select>`:esc(a.item_name)}${a.in_master===false?'<span class="small">（マスタ外）</span>':""}</td><td class="small">${esc(a.updated_by_name||"")}</td>${admin?`<td><button class="btn btn2" ${seikaEventAttrs("click","c140DeleteAlias",[a.raw_key,a.raw_name])}>削除</button></td>`:""}</tr>`).join("")}</table></div></div>
  <div class="card"><b>標準ケースの重さ（${st.length}品目）</b><div class="small">ケース数＝kg ÷ この重さ を切り上げます。ない品目は、積み込み表に書いてある1箱の重さで割ります。</div>
   <div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>品目</th><th>1ケース</th>${admin?"<th></th>":""}</tr>${st.map(s=>`<tr><td>${esc(s.item_name)}</td><td>${admin?`<input type="number" min="0.1" step="0.1" value="${esc(s.case_kg)}" style="width:6em;font-size:16px;padding:4px" ${seikaEventAttrs("change","c140SaveStd",[s.item_name,{__seikaValue:true}])}> kg`:`${num(s.case_kg)}kg`}</td>${admin?`<td><button class="btn btn2" ${seikaEventAttrs("click","c140SaveStd",[s.item_name,""])}>削除</button></td>`:""}</tr>`).join("")}</table></div>
   ${admin?`<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select id="c140StdItem" style="font-size:16px;padding:6px"><option value="">品目を選ぶ</option>${items.map(x=>`<option>${esc(x)}</option>`).join("")}</select><input id="c140StdKg" type="number" min="0.1" step="0.1" placeholder="kg" style="width:6em;font-size:16px;padding:6px"><button class="btn blue" ${seikaEventAttrs("click","c140AddStd",[])}>追加</button></div>`:""}</div>
+ ${caCard}
  <button class="btn btn2" style="width:100%" ${seikaEventAttrs("click","c140ShipPlanPage",["",""])}>出荷予定へ戻る</button>`);
 }
 async function c140ChangeAlias(k,name,item){
@@ -414,10 +446,11 @@ function c140InjectHome(){
 }
 const app=document.getElementById("app");
 if(app)new MutationObserver(()=>{if(currentScreen==="home"&&!document.getElementById("c140HomeBtn")&&document.querySelector("#app .homePrimary"))c140InjectHome()}).observe(app,{childList:true,subtree:true});
-{const st=document.createElement("style");st.textContent=".homeBtnShipPlan,.c140Btn{background:linear-gradient(90deg,#1e293b 0%,#1d4ed8 55%,#f59e0b 100%) !important;color:#fff !important;border-color:transparent !important;}.c140St{margin-left:6px;font-size:13px}.c140St_new,.c140St_change{color:#1d4ed8}.c140St_same{color:#64748b}.c140St_bad{color:#b91c1c}.c140St_done{color:#15803d}.c140Frac{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;border:1px solid #f59e0b}";document.head.appendChild(st)}
+{const st=document.createElement("style");st.textContent=".homeBtnShipPlan,.c140Btn{background:linear-gradient(90deg,#1e293b 0%,#1d4ed8 55%,#f59e0b 100%) !important;color:#fff !important;border-color:transparent !important;}.c140St{margin-left:6px;font-size:13px}.c140St_new,.c140St_change{color:#1d4ed8}.c140St_same{color:#64748b}.c140St_bad{color:#b91c1c}.c140St_done{color:#15803d}.c142Diff{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fee2e2;color:#991b1b;font-size:12px;font-weight:800;border:1px solid #f87171}.c142Btn{background:linear-gradient(90deg,#14532d 0%,#15803d 55%,#facc15 100%) !important;color:#fff !important;border-color:transparent !important}.c140Frac{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;border:1px solid #f59e0b}";document.head.appendChild(st)}
 
 Object.assign(window,{c140ShipPlanPage,c140ImportPage,c140PickFiles,c140ReadFiles,c140Prepare,c140PreviewPage,c140ToggleDate,c140PickItem,c140ToggleAlias,c140FixKg,c140FixCust,c140CancelImport,c140Save,
  c140AliasPage,c140ChangeAlias,c140DeleteAlias,c140SaveStd,c140AddStd,c140InjectHome,
+ c140Lib:{T,N,key,md,addDays,num,busy,uuid,esc:(v)=>esc(v),loadMasters,getMasters:()=>masters,seikaItems,resolveItem,casesOf,itemTotals,weightText,totalText,baseName,cellDate,loadPlan,loadActual,sqlMissing,canImport,canView,SMALL_KG},
  c140Parse:{unitOf,specKg,baseName,parseQty,readSheet,readBooks,listDates,casesOf,itemTotals,resolveItem,weightText}});
 
 /* ---------- 操作ガイド ---------- */
