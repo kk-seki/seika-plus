@@ -218,7 +218,7 @@ async function c142DeleteCustomerAlias(k,name){
  try{await callRpc("delete_ship_customer_alias_v1199c142",{p_key:k});await c140AliasPage(`「${name}」の客先の読み替えを削除しました。`)}catch(e){alert(e?.message||e)}
 }
 Object.assign(window,{c142ImportPage,c142PickFile,c142ReadFile,c142Prepare,c142PreviewPage,c142PickCustomer,c142ToggleCAlias,c142PickItem,c142ToggleAlias,c142FixKg,c142Cancel,c142Save,c142DeleteCustomerAlias,
- c142Parse:{parseReportQty,readReport,ckey}});
+ c142Parse:{parseReportQty,readReport,ckey},c142Auto:{eff,pend:()=>pend}});
 
 /* ---------- 操作ガイド ---------- */
 try{

@@ -450,6 +450,7 @@ if(app)new MutationObserver(()=>{if(currentScreen==="home"&&!document.getElement
 
 Object.assign(window,{c140ShipPlanPage,c140ImportPage,c140PickFiles,c140ReadFiles,c140Prepare,c140PreviewPage,c140ToggleDate,c140PickItem,c140ToggleAlias,c140FixKg,c140FixCust,c140CancelImport,c140Save,
  c140AliasPage,c140ChangeAlias,c140DeleteAlias,c140SaveStd,c140AddStd,c140InjectHome,
+ c140Auto:{dayStates,effective,payload,listDates,pending:()=>pending},
  c140Lib:{T,N,key,md,addDays,num,busy,uuid,esc:(v)=>esc(v),loadMasters,getMasters:()=>masters,seikaItems,resolveItem,casesOf,itemTotals,weightText,totalText,baseName,cellDate,loadPlan,loadActual,sqlMissing,canImport,canView,SMALL_KG},
  c140Parse:{unitOf,specKg,baseName,parseQty,readSheet,readBooks,listDates,casesOf,itemTotals,resolveItem,weightText}});
 
