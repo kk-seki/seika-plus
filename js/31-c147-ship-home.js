@@ -1,7 +1,7 @@
 /* ===== v1.199-c147 仕入れ担当者・営業担当者のホームに「出荷予定と確定」 =====
    ・ホームの一番上にまとめカードを出す。
      ①明日の出荷予定（品目ごとの合計kg）。仕入れ担当者は担当品目だけを出し、担当品目の日量と並べて「日量の何倍か」を出す。
-     ②いちばん新しい確定（産地報告書）と予定の違い。確定のある客先の予定と確定のkgを比べ、2割以上違う品目を色付きで出す。
+     ②いちばん新しい確定（産地報告書）と予定の違い（産地報告書は翌日の納品分なので明日から探す。c149）。確定のある客先の予定と確定のkgを比べ、2割以上違う品目を色付きで出す。
        予定・確定の両方が10kg以下の品目は、少しの違いでも2割を超えやすいので出さない。
    ・仕入れ担当者の「担当品目の日量」のボタンにも、明日の予定kgと日量の何倍かを書き足す。
    ・押すと「出荷予定（積み込み表）」の画面が開く。 */
@@ -10,7 +10,7 @@ const ROLES=["buyer","sales"];
 const RATE=0.2;          // 予定と確定の違い：2割以上
 const MANY=1.2,FEW=0.8;  // 明日の予定が日量の1.2倍以上＝多い、0.8倍以下＝少ない
 const MIN_KG=10;         // 予定・確定の両方がこれ以下の品目は違いを出さない
-const BACK=3;            // 確定は今日から何日さかのぼって探すか
+const BACK=3;            // 確定は明日から探し、今日から何日さかのぼるか（明日・今日・昨日・おととい）
 const L=()=>window.c140Lib;
 const r1=v=>Math.round(v*10)/10;
 const fmt=v=>r1(v).toLocaleString("ja-JP");
@@ -51,19 +51,33 @@ async function c147Load(){
   const lib=L(),today=todayKey(),tomorrow=lib.addDays(today,1);
   const plan=await lib.loadPlan(tomorrow);
   let act=null,actDate="",actPlan=null;
-  for(let i=0;i<BACK;i++){const d=lib.addDays(today,-i),a=await lib.loadActual(d);if(a===null)break;if(a.active){act=a;actDate=d;actPlan=await lib.loadPlan(d);break}}
+  /* 産地報告書は翌日の納品分なので、明日から探す（明日→今日→昨日→おととい） */
+  for(let i=-1;i<BACK;i++){const d=lib.addDays(today,-i),a=await lib.loadActual(d);if(a===null)break;if(a.active){act=a;actDate=d;actPlan=await lib.loadPlan(d);break}}
   cache={tomorrow,plan,actDate,act,actPlan};cacheAt=Date.now();return cache})();
  try{return await loading}finally{loading=null}
 }
-function myItems(){if(db?.role!=="buyer")return null;try{return new Set((v1153BuyerOptimalItems()||[]).map(i=>i.name).filter(Boolean))}catch(_){return new Set}}
+/* 仕入れ担当者の担当品目の名前（c149）：適正在庫を設定した担当品目に加えて、
+   QRで管理する品目のうち、仕入れ担当者の一覧（07_営業仕入れ担当者カード）でこの人の品目になっているもの（例：人参→荒木さん） */
+function c149BuyerItemNames(userId=db?.userId){
+ const set=new Set;
+ try{for(const i of v1153BuyerOptimalItems(userId)||[])if(i?.name)set.add(i.name)}catch(_){}
+ try{
+  const me=typeof v1151CanonicalBuyerId==="function"?v1151CanonicalBuyerId(userId):userId;
+  const names=typeof qrAllowedItemNames==="function"?qrAllowedItemNames()||[]:[];
+  for(const n of names){if(!n||set.has(n))continue;const c=window.v1144AutoPurchaseStaffForItemName?.(n);const id=c?.legacy_user_id;if(id&&(typeof v1151CanonicalBuyerId==="function"?v1151CanonicalBuyerId(id):id)===me)set.add(n)}
+ }catch(_){}
+ return [...set].sort((a,b)=>a.localeCompare(b,"ja"));
+}
+/* 担当品目が1つもない仕入れ担当者は、全品目を出す（何も出ないと役に立たないため） */
+function myItems(){if(db?.role!=="buyer")return null;const set=new Set(c149BuyerItemNames());return set.size?set:null}
 async function myDaily(){if(db?.role!=="buyer"||typeof window.c134Load!=="function")return null;try{return (await window.c134Load()).by}catch(_){return null}}
 
 /* ---------- 表示 ---------- */
 function timesText(r){if(r.times==null)return r.daily==null?'<span class="small">日量なし</span>':"";return `<span class="c147T ${r.mark}">日量の${r.times.toFixed(1)}倍${r.mark==="many"?"・多い":r.mark==="few"?"・少ない":""}</span>`}
 function rateText(d){if(d.rate===null)return '<span class="c147R up">予定なし→確定あり</span>';const pc=Math.round(d.rate*100);return `<span class="c147R ${pc>0?"up":"down"}">${pc>0?"+":""}${pc}%</span>`}
 function c147Html(data,mine,daily){
- const buyer=!!mine,tom=c147Tomorrow(data.plan?.lines,mine,daily);
- const head=`<div class="c147Head"><b>出荷予定と確定</b>${buyer?'<span class="small">（担当品目）</span>':""}</div>`;
+ const buyer=!!mine,noMine=db?.role==="buyer"&&!mine,tom=c147Tomorrow(data.plan?.lines,mine,daily);
+ const head=`<div class="c147Head"><b>出荷予定と確定</b>${buyer?'<span class="small">（担当品目）</span>':noMine?'<span class="small">（担当品目が未設定のため全品目）</span>':""}</div>`;
  let s1;
  if(!data.plan?.active)s1=`<div class="small">明日（${md(data.tomorrow)}納品）の積み込み表はまだ取り込まれていません。</div>`;
  else if(!tom.length)s1=`<div class="small">明日（${md(data.tomorrow)}納品）の予定に${buyer?"担当品目は":"品目が"}ありません。</div>`;
@@ -71,7 +85,7 @@ function c147Html(data,mine,daily){
   s1=`<table class="table c147Tbl"><tr><th>品目</th><th>予定</th>${buyer?"<th>日量とくらべて</th>":""}</tr>${show.map(r=>`<tr class="${r.mark?`c147Row ${r.mark}`:""}"><td>${esc(r.item)}</td><td><b>${fmt(r.kg)}kg</b></td>${buyer?`<td>${r.daily!=null?`<span class="small">日量${fmt(r.daily)}kg</span><br>`:""}${timesText(r)}</td>`:""}</tr>`).join("")}</table>${tom.length>max?`<div class="small">ほか${tom.length-max}品目</div>`:""}`;
   if(buyer){const none=[...mine].filter(n=>!tom.some(r=>r.item===n)).sort((a,b)=>a.localeCompare(b,"ja"));if(none.length)s1+=`<div class="small">予定なし：${esc(none.join("、"))}</div>`}}
  let s2;
- if(!data.act)s2=`<div class="small">ここ${BACK}日の確定（産地報告書）はまだ取り込まれていません。</div>`;
+ if(!data.act)s2=`<div class="small">明日〜${BACK-1}日前の確定（産地報告書）はまだ取り込まれていません。</div>`;
  else{const diffs=c147Diffs(data.actPlan?.lines,data.act.lines,mine);
   s2=diffs.length?`<table class="table c147Tbl"><tr><th>品目</th><th>予定→確定</th></tr>${diffs.map(d=>`<tr><td>${esc(d.item)}</td><td>${fmt(d.plan)}kg → <b>${fmt(d.actual)}kg</b> ${rateText(d)}</td></tr>`).join("")}</table>`:`<div class="c147Ok">予定と2割以上違う${buyer?"担当品目":"品目"}はありません。</div>`}
  return `${head}
@@ -124,5 +138,5 @@ if(app)new MutationObserver(()=>{if(currentScreen==="home"&&ROLES.includes(db?.r
 .c147Add{display:block;font-size:13px;font-weight:800;color:#334155}
 .c147Add.many{color:#c2410c}.c147Add.few{color:#1d4ed8}`;document.head.appendChild(st)}
 
-Object.assign(window,{c147InjectHome,c147Load,c147Lib:{c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
+Object.assign(window,{c147InjectHome,c147Load,c149BuyerItemNames,c147Lib:{c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
 })();
