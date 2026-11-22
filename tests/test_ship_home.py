@@ -167,5 +167,25 @@ class ShipHomeTests(unittest.TestCase):
         self.assertIn("人参", text)
         self.assertNotIn("キャベツ", text.split("確定と予定の違い")[0])
 
+    def test_card_comes_back_when_home_is_redrawn_while_loading(self):
+        # c150：起動直後はホームが何度か描き直される。読み込み中に描き直されても、カードと日量ボタンの「明日」が出ること
+        context = self.browser.new_context(service_workers="block", timezone_id="Asia/Tokyo")
+        self.addCleanup(context.close)
+        context.route("**/*", lambda route: route.continue_() if urlparse(route.request.url).netloc == self.local else route.abort())
+        page = context.new_page()
+        page.set_content('<!doctype html><html><body><div id="app"></div></body></html>')
+        page.evaluate(SETUP, "buyer")
+        page.evaluate("""()=>{const lp=c140Lib.loadPlan;c140Lib.loadPlan=async d=>{await new Promise(r=>setTimeout(r,300));return lp(d)};window.__home=document.getElementById('app').innerHTML}""")
+        page.add_script_tag(url=self.base + "/js/31-c147-ship-home.js")
+        page.evaluate("()=>{c147InjectHome()}")  # 待たずに次へ（読み込み中）
+        page.wait_for_timeout(100)
+        page.evaluate("()=>{document.getElementById('app').innerHTML=__home}")  # 読み込み中にホームを描き直す
+        page.locator("#c147Ship .c147Sub").first.wait_for(timeout=5000)
+        page.locator("#c134DailyBtns .c147Add").first.wait_for(timeout=5000)
+        page.evaluate("()=>{document.getElementById('app').innerHTML=__home}")  # 読み込み済みのあとに描き直す
+        page.locator("#c147Ship .c147Sub").first.wait_for(timeout=5000)
+        page.locator("#c134DailyBtns .c147Add").first.wait_for(timeout=5000)
+        self.assertEqual(page.locator("#c147Ship").count(), 1)
+
 if __name__ == "__main__":
     unittest.main()
