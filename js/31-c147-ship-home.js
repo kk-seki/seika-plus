@@ -164,7 +164,7 @@ async function c147InjectHome(){
 }
 /* c151：アプリを開いたら、ホームを描く前に出荷予定と日量を先に読んでおく（ホームでは読み込み待ちなしで出る） */
 function c151Prefetch(n=0){
- if(ROLES.includes(db?.role)&&L()?.canView?.()&&typeof qrSelect==="function"){Promise.all([c147Load(),myDaily()]).catch(()=>{});return}
+ if(ROLES.includes(db?.role)&&L()?.canView?.()&&typeof qrSelect==="function"&&(db?.items||[]).length){/* 品目（アプリのデータ）を読み終えてから */Promise.all([c147Load(),myDaily()]).catch(()=>{});return}
  if(n<120)setTimeout(()=>c151Prefetch(n+1),500);
 }
 setTimeout(()=>c151Prefetch(),0);

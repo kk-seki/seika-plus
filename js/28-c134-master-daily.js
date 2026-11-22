@@ -78,7 +78,8 @@ const app=document.getElementById("app");
 if(app)new MutationObserver(()=>{if(currentScreen==="home"&&db?.role==="buyer"&&!document.getElementById("c134Daily")&&document.querySelector("#app .homeSummary"))c134InjectBuyer()}).observe(app,{childList:true,subtree:true});
 {const st=document.createElement("style");st.textContent=".c134Grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}.c134Btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border-radius:14px;border:2px solid #0f766e;background:#f0fdfa;color:#134e4a;text-align:left;cursor:pointer}.c134Btn b{font-size:17px}.c134Btn em{font-style:normal;font-size:16px;font-weight:900}.c134Btn em span{display:block;font-size:12px;font-weight:700;color:#475569}.c134Btn.none{border-color:#cbd5e1;background:#f8fafc;color:#64748b}";document.head.appendChild(st)}
 
-Object.assign(window,{c134FixHome,c134Load,c134InjectBuyer});
+function c134ResetCache(){cache=null;cacheAt=0}
+Object.assign(window,{c134FixHome,c134Load,c134InjectBuyer,c134ResetCache});
 
 /* ---------- 操作ガイド ---------- */
 try{
