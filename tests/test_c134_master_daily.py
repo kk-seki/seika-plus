@@ -54,7 +54,7 @@ def test_buyer_daily_buttons_average_by_shipping_days(self):
       v163LotKgAtQuantity=(l,q)=>l.pack_weight==='10kg'?10*q:0;}""")
     page.evaluate("()=>{currentScreen='home';document.getElementById('c134Daily')?.remove();document.querySelector('#app').insertAdjacentHTML('afterbegin','<div class=\"homeSummary\"></div>');return c134InjectBuyer()}")
     page.wait_for_selector("#c134DailyBtns button")
-    texts = page.eval_on_selector_all("#c134DailyBtns button", "els=>els.map(e=>e.innerText.replace(/\\s+/g,' '))")
+    texts = page.eval_on_selector_all("#c134DailyBtns button", "els=>els.map(e=>{let t=e.innerText;for(const x of e.querySelectorAll('.c147Add'))t=t.replace(x.innerText,'');return t.replace(/\\s+/g,' ').trim()})")  # c147 が書き足す「明日の予定」は除いて比べる
     self.assertEqual(texts, ["キャベツ 日量 60kg 出庫2日", "人参 日量 － 出庫1日・重さ不明1件", "白菜 出庫なし"])
     page.click("#c134DailyBtns button:has-text('キャベツ')")
     page.wait_for_selector("text=在庫・出庫の分析")

@@ -51,7 +51,7 @@ class ShipHomeTests(unittest.TestCase):
         cls.server.server_close()
 
     def open_home(self, role):
-        context = self.browser.new_context(viewport={"width": 820, "height": 1180}, service_workers="block")
+        context = self.browser.new_context(viewport={"width": 820, "height": 1180}, service_workers="block", timezone_id="Asia/Tokyo")
         self.addCleanup(context.close)
         context.route("**/*", lambda route: route.continue_() if urlparse(route.request.url).netloc == self.local else route.abort())
         page = context.new_page()
