@@ -117,6 +117,8 @@ function seikaItems(){
  const add=n=>{const s=String(n||"").trim();if(s&&!set.has(key(s)))set.set(key(s),s)};
  try{qrAllowedItemNames().forEach(add)}catch(_){}
  try{activeItems().forEach(i=>add(i?.name))}catch(_){}
+ /* 通常在庫の「その他」などの品目（トレビスなど）も選べるようにする */
+ try{Object.keys(SPECIAL_STOCK_TABLES).forEach(t=>specialItems(t).forEach(i=>add(i?.name)))}catch(_){}
  return[...set.values()].sort((a,b)=>a.localeCompare(b,"ja"));
 }
 /* 品名 → SEIKA＋の品目。アリアス → 品目名と同じ名前（そのまま） → なし（要確認） */
@@ -321,12 +323,16 @@ async function c140AliasPage(msg=""){
  const al=[...m.aliasRows].sort((a,b)=>String(a.raw_name).localeCompare(String(b.raw_name),"ja"));
  const st=[...m.stdRows].sort((a,b)=>String(a.item_name).localeCompare(String(b.item_name),"ja"));
  pageShell("品名の読み替え・標準ケース","積み込み表の書き方とSEIKA＋の品目の対応、ケース数を出す重さ",`${okHtml(msg)}
- <div class="card"><b>品名読み替えマスタ（${al.length}件）</b><div class="small">取り込みの確認画面で選んだ対応がここに増えます。${admin?"間違えた対応は「削除」すると、次の取り込みで要確認に戻ります。":"直すときは管理者に頼んでください。"}</div>
-  <div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>積み込み表の書き方</th><th>SEIKA＋の品目</th><th>更新</th>${admin?"<th></th>":""}</tr>${al.map(a=>`<tr><td>${esc(a.raw_name)}</td><td>${esc(a.item_name)}${a.in_master===false?'<span class="small">（マスタ外）</span>':""}</td><td class="small">${esc(a.updated_by_name||"")}</td>${admin?`<td><button class="btn btn2" ${seikaEventAttrs("click","c140DeleteAlias",[a.raw_key,a.raw_name])}>削除</button></td>`:""}</tr>`).join("")}</table></div></div>
+ <div class="card"><b>品名読み替えマスタ（${al.length}件）</b><div class="small">取り込みの確認画面で選んだ対応がここに増えます。${admin?"品目を選び直すと、次の取り込みからその品目になります（馬鈴薯のように時期で使う品種が変わるものはここで切り替え）。「削除」すると、次の取り込みで要確認に戻ります。":"直すときは管理者に頼んでください。"}</div>
+  <div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>積み込み表の書き方</th><th>SEIKA＋の品目</th><th>更新</th>${admin?"<th></th>":""}</tr>${al.map(a=>`<tr><td>${esc(a.raw_name)}</td><td>${admin?`<select style="font-size:15px;padding:4px;max-width:11em" ${seikaEventAttrs("change","c140ChangeAlias",[a.raw_key,a.raw_name,{__seikaValue:true}])}>${(items.includes(a.item_name)?items:[a.item_name,...items]).map(x=>`<option value="${esc(x)}" ${x===a.item_name?"selected":""}>${esc(x)}</option>`).join("")}</select>`:esc(a.item_name)}${a.in_master===false?'<span class="small">（マスタ外）</span>':""}</td><td class="small">${esc(a.updated_by_name||"")}</td>${admin?`<td><button class="btn btn2" ${seikaEventAttrs("click","c140DeleteAlias",[a.raw_key,a.raw_name])}>削除</button></td>`:""}</tr>`).join("")}</table></div></div>
  <div class="card"><b>標準ケースの重さ（${st.length}品目）</b><div class="small">ケース数＝kg ÷ この重さ を切り上げます。ない品目は、積み込み表に書いてある1箱の重さで割ります。</div>
   <div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>品目</th><th>1ケース</th>${admin?"<th></th>":""}</tr>${st.map(s=>`<tr><td>${esc(s.item_name)}</td><td>${admin?`<input type="number" min="0.1" step="0.1" value="${esc(s.case_kg)}" style="width:6em;font-size:16px;padding:4px" ${seikaEventAttrs("change","c140SaveStd",[s.item_name,{__seikaValue:true}])}> kg`:`${num(s.case_kg)}kg`}</td>${admin?`<td><button class="btn btn2" ${seikaEventAttrs("click","c140SaveStd",[s.item_name,""])}>削除</button></td>`:""}</tr>`).join("")}</table></div>
   ${admin?`<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select id="c140StdItem" style="font-size:16px;padding:6px"><option value="">品目を選ぶ</option>${items.map(x=>`<option>${esc(x)}</option>`).join("")}</select><input id="c140StdKg" type="number" min="0.1" step="0.1" placeholder="kg" style="width:6em;font-size:16px;padding:6px"><button class="btn blue" ${seikaEventAttrs("click","c140AddStd",[])}>追加</button></div>`:""}</div>
  <button class="btn btn2" style="width:100%" ${seikaEventAttrs("click","c140ShipPlanPage",["",""])}>出荷予定へ戻る</button>`);
+}
+async function c140ChangeAlias(k,name,item){
+ if(!canAdmin()||!item)return;
+ try{await callRpc("save_ship_plan_alias_v1199c140",{p_key:k,p_raw:name,p_item:item,p_in_master:seikaItems().includes(item)});masters=null;await c140AliasPage(`「${name}」を「${item}」に読み替えるようにしました（次の取り込みから）。`)}catch(e){alert(e?.message||e)}
 }
 async function c140DeleteAlias(k,name){
  if(!canAdmin()||!confirm(`「${name}」の読み替えを削除します。よろしいですか？`))return;
@@ -351,7 +357,7 @@ if(app)new MutationObserver(()=>{if(currentScreen==="home"&&!document.getElement
 {const st=document.createElement("style");st.textContent=".homeBtnShipPlan,.c140Btn{background:linear-gradient(90deg,#1e293b 0%,#1d4ed8 55%,#f59e0b 100%) !important;color:#fff !important;border-color:transparent !important;}.c140Frac{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;border:1px solid #f59e0b}";document.head.appendChild(st)}
 
 Object.assign(window,{c140ShipPlanPage,c140ImportPage,c140PickFiles,c140ReadFiles,c140Prepare,c140PreviewPage,c140PickItem,c140ToggleAlias,c140FixKg,c140FixCust,c140CancelImport,c140Save,
- c140AliasPage,c140DeleteAlias,c140SaveStd,c140AddStd,c140InjectHome,
+ c140AliasPage,c140ChangeAlias,c140DeleteAlias,c140SaveStd,c140AddStd,c140InjectHome,
  c140Parse:{unitOf,specKg,baseName,parseQty,readSheet,readBooks,casesOf,itemTotals,resolveItem,weightText}});
 
 /* ---------- 操作ガイド ---------- */
@@ -370,7 +376,7 @@ try{
    "「客先ごと」を開くと、客先ごとの品目と数量、積み込み表の書き方が見られます。"],
   check:"いつ・だれが取り込んだかは、画面の上に出ます。",caution:"まだ取り込まれていない日は「まだ取り込まれていません」と出ます。"};
  const alias={title:"品名の読み替え・標準ケースを直す",where:"ホーム →「出荷予定（積み込み表）」→「品名の読み替え・標準ケース」",
-  steps:["積み込み表の書き方と、SEIKA＋の品目の対応が一覧で出ます。間違えた対応は管理者が「削除」すると、次の取り込みで要確認に戻ります。",
+  steps:["積み込み表の書き方と、SEIKA＋の品目の対応が一覧で出ます。管理者は品目を選び直せます（成城石井の「馬鈴薯」のように、時期で使う品種が変わるものはここで切り替えます）。「削除」すると、次の取り込みで要確認に戻ります。",
    "標準ケースの重さ（キャベツ10kg、葉付き大根・人参・カット大根15kgなど）は管理者が直せます。ない品目は、積み込み表の1箱の重さで割ります。"],
   check:"直した内容は、次に取り込んだときから使われます。",caution:"すでに登録した出荷予定は、取り込み直すまで変わりません。"};
  if(typeof V195_ROLE_GUIDES!=="undefined"){

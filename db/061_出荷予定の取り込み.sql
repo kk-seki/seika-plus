@@ -116,7 +116,8 @@ insert into public.ship_plan_case_std_v1199c140(item_name, case_kg, updated_by_n
 on conflict (item_name) do nothing;
 
 -- 書き方の違いの初期登録（ほかは取り込みの確認画面で選ぶ）
--- 大根・加工用大根・レタス剥き・カットしめじは 2026-11-22 平田さんの指定
+-- 大根・加工用大根・レタス剥き・カットしめじ・馬鈴薯は 2026-11-22 平田さんの指定
+-- 馬鈴薯（成城石井）は時期で品種が変わる（今はさやか、その前はとうや）→ 管理者が「品名の読み替え」で切り替える
 insert into public.ship_plan_item_aliases_v1199c140(raw_key, raw_name, item_name, in_master, updated_by_name) values
   ('gリーフ','Gリーフ','グリーンリーフ',true,'初期値'),
   ('葉付大根','葉付大根','葉付き大根',true,'初期値'),
@@ -124,7 +125,8 @@ insert into public.ship_plan_item_aliases_v1199c140(raw_key, raw_name, item_name
   ('大根','大根','カット大根',true,'初期値'),
   ('加工用大根','加工用大根','カット大根',true,'初期値'),
   ('レタス剥き','レタス剥き','レタス',true,'初期値'),
-  ('カットしめじ','カットしめじ','しめじ',true,'初期値')
+  ('カットしめじ','カットしめじ','しめじ',true,'初期値'),
+  ('馬鈴薯','馬鈴薯','さやか',true,'初期値')
 on conflict (raw_key) do nothing;
 
 -- ===== 見る権限（石岡の役割だけ）・書き込みは関数だけ =====

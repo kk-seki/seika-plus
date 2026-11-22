@@ -137,6 +137,18 @@ class ShipPlanBrowserTests(unittest.TestCase):
         self.assertEqual(by["キャベツ 10kg"]["source_sheet"], "2")
         self.assertEqual(len(args["p_files"]), 2)
 
+    def test_normal_stock_items_match_and_admin_can_switch_an_alias(self):
+        page = self.open_app("admin")
+        hit = page.evaluate("""()=>{db.specialItems={exchange:[{id:'x',name:'トレビス',active:true}]};return c140Parse.resolveItem('トレビス',{alias:new Map(),std:new Map()})}""")
+        self.assertEqual(hit["item"], "トレビス")
+        page.evaluate("""()=>{window.__T.ship_plan_item_aliases_v1199c140.push({raw_key:'馬鈴薯',raw_name:'馬鈴薯',item_name:'さやか',in_master:true});
+          const base=window.qrAllowedItemNames;window.qrAllowedItemNames=()=>[...base(),'さやか','とうや'];return c140AliasPage('')}""")
+        page.wait_for_selector("text=品名読み替えマスタ")
+        page.locator("tr", has_text="馬鈴薯").locator("select").select_option("とうや")
+        page.wait_for_function("()=>window.__rpc.some(r=>r[0]==='save_ship_plan_alias_v1199c140')")
+        self.assertEqual(page.evaluate("()=>window.__rpc.find(r=>r[0]==='save_ship_plan_alias_v1199c140')[1]"),
+                         {"p_key": "馬鈴薯", "p_raw": "馬鈴薯", "p_item": "とうや", "p_in_master": True})
+
     def test_home_button_by_role(self):
         for role, expect in (("buyer", "明日の出荷予定を見る"), ("worker", "明日の出荷予定を見る・取り込む"), ("hq_prep", None)):
             page = self.open_app(role)
