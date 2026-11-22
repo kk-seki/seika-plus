@@ -161,8 +161,9 @@ class ShipActualBrowserTests(unittest.TestCase):
         text = page.inner_text("#app")
         self.assertNotIn("違い", text.split("品目ごとの合計")[1].split("ケース数は")[0])   # kgが同じなら、ケースの数が違っても「違い」にしない
         self.assertIn("確定のある客先の予定：", text)                                      # 埼玉は比べない
-        self.assertIn("1箱の重さがそろっていないためkg", text)
-        self.assertIn("712kg", text)
+        self.assertIn("1,112kg（8kg×14・5kg×120）", text)     # 書いてある箱の重さ×箱数のまま
+        self.assertIn("712kg（6kg×100・重さ混在19箱）", text)
+        self.assertNotIn("違い1", text)                                   # 確定のない客先（埼玉）は「違い」にしない
 
     def test_view_shows_plan_and_actual_side_by_side(self):
         page = self.open_app("buyer")

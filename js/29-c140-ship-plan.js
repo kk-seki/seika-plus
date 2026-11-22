@@ -145,8 +145,8 @@ function itemTotals(lines,m){
   o.lines++;if(l.kg===null||l.kg===undefined)o.unknown++;else o.kg+=l.kg;by.set(l.item,o)}
  for(const o of by.values()){o.kg=Math.round(o.kg*1000)/1000;o.small=o.kg<=SMALL_KG;const c=casesOf(o.item,o.kg,null,m);o.std=c.std;o.cases=c.cases;o.frac=c.frac;
   o.lineCases=0;o.noCase=0;for(const l of lines)if(l.item===o.item){const lc=casesOf(l.item,l.kg,l.pack,m);if(lc.cases)o.lineCases+=lc.cases;else if(l.kg!==null&&l.kg!==undefined)o.noCase++;if(lc.frac)o.frac=true}
-  /* 1箱の重さが行ごとに違う品目（標準ケースがない）は、ケース数を足しても比べられないので kg を主に出す */
-  const packs=new Set(lines.filter(l=>l.item===o.item).map(l=>casesOf(l.item,l.kg,l.pack,m).std).filter(Boolean));o.mixedPack=!m?.std?.get(o.item)&&(packs.size>1||o.noCase>0)}
+  /* 標準ケースのない品目は、書いてある箱の重さ×箱数のまま（例：5kg×120、6kg×100）。合計はkgで、箱は重さごとに分けて出す */
+  o.noStd=!m?.std?.get(o.item);o.packs=packBreakdown(lines.filter(l=>l.item===o.item))}
  return[...by.values()].sort((a,b)=>a.item.localeCompare(b.item,"ja"));
 }
 function qtyText(l,tot,m){
@@ -155,10 +155,13 @@ function qtyText(l,tot,m){
  const c=casesOf(l.item,l.kg,l.pack,m);
  return c.cases!==null?`${c.cases}ケース${c.frac?'<span class="c140Frac">端数あり</span>':""}<span class="small">（${num(l.kg)}kg）</span>`:`${num(l.kg)}kg`;
 }
+/* 箱の内訳：{"5":120,"8":14,"":17}（"" は1行に重さが混ざっている箱） */
+function packBreakdown(ls){const mp=new Map;for(const l of ls){if(!(l.boxes>0))continue;const k=l.pack>0?String(Number(l.pack)):"";mp.set(k,(mp.get(k)||0)+Number(l.boxes))}return mp}
+function packText(mp){return [...mp].sort((a,b)=>(a[0]===""?1:0)-(b[0]===""?1:0)||Number(b[0])-Number(a[0])).map(([k,n])=>k?`${num(k)}kg×${num(n)}`:`重さ混在${num(n)}箱`).join("・")}
 function totalText(o){
  if(o.small)return `<b>${weightText(o.kg)}</b><span class="small">（少量のため重さ）</span>`;
  const cs=o.lineCases||o.cases;
- if(o.mixedPack)return `<b>${num(o.kg)}kg</b><span class="small">（1箱の重さがそろっていないためkg${cs?`・目安${cs}ケース`:""}）</span>`;
+ if(o.noStd&&o.packs?.size)return `<b>${num(o.kg)}kg</b><span class="small">（${packText(o.packs)}）</span>`;
  return cs?`<b>${cs}ケース</b>${o.frac?'<span class="c140Frac">端数あり</span>':""}<span class="small">（${num(o.kg)}kg${o.std?`・1ケース${num(o.std)}kg`:""}${o.unknown?`・重さ不明${o.unknown}行`:""}）</span>`:`<b>${num(o.kg)}kg</b>${o.unknown?`<span class="small">（重さ不明${o.unknown}行）</span>`:""}`;
 }
 
@@ -184,7 +187,7 @@ function shortQty(o,small,m){
  if(!o)return'<span class="small">－</span>';
  if(small)return weightText(o.kg);
  let cs=0,frac=false,unk=false;for(const l of o.lines){const c=casesOf(l.item,l.kg,l.pack,m);if(c.cases===null)unk=true;else{cs+=c.cases;if(c.frac)frac=true}}
- if(!m?.std?.get(o.item))return `${num(o.kg)}kg${cs?`<span class="small">（${o.lines.map(l=>l.pack?`${num(l.pack)}kg×${num(l.boxes??Math.round(l.kg/l.pack))}`:"").filter(Boolean).join("・")||`${cs}ケース`}）</span>`:""}`;  // 標準ケースのない品目はkgで比べる
+ if(!m?.std?.get(o.item)){const pb=packBreakdown(o.lines);return `${num(o.kg)}kg${pb.size?`<span class="small">（${packText(pb)}）</span>`:""}`}  // 標準ケースのない品目は、書いてある箱の重さ×箱数のまま・kgで比べる
  return unk&&!cs?`${num(o.kg)}kg`:`${cs}ケース${frac?'<span class="c140Frac">端数あり</span>':""}<span class="small">（${num(o.kg)}kg）</span>`;
 }
 let viewDate="";
@@ -215,14 +218,14 @@ async function c140ShipPlanPage(dateKey="",msg=""){
   const diffMark=(p,a)=>hasA&&plan.active&&Math.abs((p?.kg||0)-(a?.kg||0))>0.001?'<span class="c142Diff">違い</span>':"";
   const cmpNote=it=>{const p=ptm.get(it),q=pcm.get(it);if(!hasA||!p||Math.abs((p.kg||0)-(q?.kg||0))<0.001)return"";return `<div class="small">確定のある客先の予定：${q?totalText(q):"なし"}</div>`};
   const tot=`<div class="card"><b>品目ごとの合計（${items.length}品目）</b><div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>品目</th><th>予定</th>${hasA?"<th>確定</th>":""}</tr>${items.map(it=>{const p=ptm.get(it),a=atm.get(it);return `<tr><td>${esc(it)}${diffMark(pcm.get(it),a)}</td><td>${p?totalText(p):"－"}${cmpNote(it)}</td>${hasA?`<td>${a?totalText(a):"－"}</td>`:""}</tr>`}).join("")}</table></div>
-   <div class="small">ケース数は、1行ずつ標準ケースで割って切り上げた数の合計です。全客先を合わせて${SMALL_KG}kg以下の品目は、ケースではなく重さで出します。${hasA?"「違い」は、確定のある客先（産地報告書にある社外の客先）の予定と確定のkgが違う品目です。埼玉・深谷など確定のない客先は比べません。比べるのはkgです（1箱の重さが違うとケースの数は変わるため）。標準ケースのない品目は、管理者が「品名・客先の読み替え・標準ケース」で決めるとケースでそろいます。":""}</div></div>`;
+   <div class="small">ケース数は、1行ずつ標準ケースで割って切り上げた数の合計です。全客先を合わせて${SMALL_KG}kg以下の品目は、ケースではなく重さで出します。${hasA?"「違い」は、確定のある客先（産地報告書にある社外の客先）の予定と確定のkgが違う品目です。埼玉・深谷など確定のない客先は比べません。比べるのはkgです（1箱の重さが違うとケースの数は変わるため）。標準ケースのない品目は、書いてある箱の重さ×箱数（例：5kg×120）のまま出し、合計はkgで比べます。":""}</div></div>`;
   const ps=sumBy(P),as=sumBy(act),custs=new Map;
   for(const o of [...ps.values(),...as.values()]){if(!custs.has(o.customer))custs.set(o.customer,new Set);custs.get(o.customer).add(o.item)}
   const route=c=>P.find(l=>l.customer===c)?.route||"";
   const cust=`<div class="card"><b>客先ごと（${custs.size}件）</b>${[...custs].map(([c,its])=>{const rows=[...its].sort((a,b)=>a.localeCompare(b,"ja")).map(it=>{const p=ps.get(`${c}｜${it}`),a=as.get(`${c}｜${it}`);
     const raw=(p?.lines||[]).map(l=>`${l.item_raw}${l.qty_raw?`（${l.qty_raw}）`:""}`).join("、"),orig=(a?.lines||[]).map(l=>[l.origin,l.coop].filter(Boolean).join("・")).filter(Boolean).join("、");
-    return `<tr><td>${esc(it)}${diffMark(p,a)}<div class="small">${esc(raw)}</div></td><td>${shortQty(p,small(it),m)}</td>${hasA?`<td>${shortQty(a,small(it),m)}${orig?`<div class="small">${esc(orig)}</div>`:""}</td>`:""}</tr>`}).join("");
-    const nd=hasA&&plan.active?[...its].filter(it=>Math.abs((ps.get(`${c}｜${it}`)?.kg||0)-(as.get(`${c}｜${it}`)?.kg||0))>0.001).length:0;
+    return `<tr><td>${esc(it)}${aCust.has(c)?diffMark(p,a):""}<div class="small">${esc(raw)}</div></td><td>${shortQty(p,small(it),m)}</td>${hasA?`<td>${shortQty(a,small(it),m)}${orig?`<div class="small">${esc(orig)}</div>`:""}</td>`:""}</tr>`}).join("");
+    const nd=hasA&&plan.active&&aCust.has(c)?[...its].filter(it=>Math.abs((ps.get(`${c}｜${it}`)?.kg||0)-(as.get(`${c}｜${it}`)?.kg||0))>0.001).length:0;
     return `<details style="margin-top:6px"><summary style="font-weight:800;cursor:pointer">${esc(c)}<span class="small">（${its.size}品目${route(c)?`・${esc(route(c))}`:""}${nd?`・違い${nd}`:""}）</span></summary><div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>品目</th><th>予定</th>${hasA?"<th>確定</th>":""}</tr>${rows}</table></div></details>`}).join("")}</div>`;
   body=tot+cust;
  }else body=`<div class="card notice">この納品日の出荷予定はまだ取り込まれていません。</div>`;
