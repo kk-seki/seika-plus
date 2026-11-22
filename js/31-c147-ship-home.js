@@ -19,17 +19,26 @@ const md=k=>`${Number(k.slice(5,7))}/${Number(k.slice(8,10))}`;
 /* ---------- 計算（画面に依存しない。テストから直接呼ぶ） ---------- */
 function sumKg(lines,filter){const mp=new Map;for(const l of lines||[]){const it=l.item||l.item_name;if(!it||(filter&&!filter(l)))continue;const kg=Number(l.kg);if(!Number.isFinite(kg)||l.kg===null||l.kg===undefined)continue;mp.set(it,(mp.get(it)||0)+kg)}return mp}
 /* 予定と確定の違い：確定のある客先の予定だけと比べる（埼玉・深谷など確定のない客先は除く） */
-function c147Diffs(planLines,actualLines,mine){
- const cust=new Set((actualLines||[]).map(l=>l.customer||l.customer_name));
- const p=sumKg(planLines,l=>cust.has(l.customer||l.customer_name)),a=sumKg(actualLines);
+/* 社内の客先：積み込み表の客先名で見分ける（(株)せき 埼玉工場・(株)せき 深谷青果センター） */
+const INHOUSE=[["埼玉",/埼玉/],["深谷",/深谷/]];
+const inhouseOf=c=>{const n=String(c||"");for(const [k,re] of INHOUSE)if(re.test(n))return k;return ""};
+/* 予定と確定の違い（c151）：
+   社外＝確定のある客先（産地報告書）の予定と、産地報告書の確定。
+   社内（埼玉・深谷）＝積み込み表の予定と、出荷日（納品日の前日）の出庫（QRの出庫先「埼玉」「深谷」）。inhouse が null のときは社外だけ。 */
+function c147Diffs(planLines,actualLines,mine,inhouse){
+ const ext=new Set((actualLines||[]).map(l=>l.customer||l.customer_name).filter(c=>!inhouseOf(c)));
+ const parts=[["社外",sumKg(planLines,l=>ext.has(l.customer||l.customer_name)),sumKg(actualLines,l=>!inhouseOf(l.customer||l.customer_name))]];
+ if(inhouse)for(const [k] of INHOUSE)parts.push([k,sumKg(planLines,l=>inhouseOf(l.customer||l.customer_name)===k),inhouse[k]||new Map]);
+ const items=new Set();for(const [,p,a] of parts){for(const k of p.keys())items.add(k);for(const k of a.keys())items.add(k)}
  const out=[];
- for(const it of new Set([...p.keys(),...a.keys()])){
+ for(const it of items){
   if(mine&&!mine.has(it))continue;
-  const pk=p.get(it)||0,ak=a.get(it)||0;
+  const by=parts.map(([label,p,a])=>({label,plan:p.get(it)||0,actual:a.get(it)||0})).filter(x=>x.plan||x.actual);
+  const pk=by.reduce((t,x)=>t+x.plan,0),ak=by.reduce((t,x)=>t+x.actual,0);
   if(pk<=MIN_KG&&ak<=MIN_KG)continue;
   const rate=pk>0?(ak-pk)/pk:null;
   if(rate!==null&&Math.abs(rate)<RATE-1e-9)continue;
-  out.push({item:it,plan:pk,actual:ak,rate});
+  out.push({item:it,plan:pk,actual:ak,rate,parts:by});
  }
  return out.sort((x,y)=>Math.abs(y.actual-y.plan)-Math.abs(x.actual-x.plan));
 }
@@ -40,24 +49,43 @@ function c147Tomorrow(planLines,mine,daily){
  const p=sumKg(planLines);
  return [...p].filter(([it])=>!mine||mine.has(it)).map(([item,kg])=>{
   const d=daily?.[item],nd=d?.days?.size||0,avg=nd?d.kg/nd:null,hq=nd&&d.hqKg>0?d.hqKg/nd:0,total=kg+hq,times=avg>0?total/avg:null;
-  return {item,kg,hq,total,daily:avg,times,mark:times==null?"":times>=MANY-1e-9?"many":times<=FEW+1e-9?"few":""};
+  const inh=INHOUSE.map(([k])=>[k,sumKg(planLines,l=>inhouseOf(l.customer||l.customer_name)===k).get(item)||0]).filter(([,v])=>v>0);
+  return {item,kg,hq,total,inh,daily:avg,times,mark:times==null?"":times>=MANY-1e-9?"many":times<=FEW+1e-9?"few":""};
  }).sort((a,b)=>b.kg-a.kg);
 }
 
 /* ---------- 読み込み ---------- */
 let cache=null,cacheAt=0,loading=null;
+/* 出荷日の社内への出庫（埼玉・深谷）を品目ごとのkgに（c151）。重さは出庫の重さ、なければロットの量目×数（日量と同じ） */
+async function c151InhouseOut(day){
+ const from=new Date(day+"T00:00:00+09:00"),to=new Date(from.getTime()+864e5),dest=INHOUSE.map(([k])=>encodeURIComponent(k)).join(",");
+ const q=`select=*&movement_type=eq.${encodeURIComponent("出庫")}&destination=in.(${dest})&occurred_at=gte.${encodeURIComponent(from.toISOString())}&occurred_at=lt.${encodeURIComponent(to.toISOString())}&limit=3000`;
+ const moves=(await qrSelect("qr_lot_movements",q)||[]).filter(m=>!m.cancelled_at);
+ const ids=[...new Set(moves.map(m=>m.lot_id).filter(Boolean))],lots=new Map,parts=[];
+ for(let i=0;i<ids.length;i+=80)parts.push(ids.slice(i,i+80));
+ for(const rows of await Promise.all(parts.map(part=>qrSelect("qr_lots",`select=*&id=in.(${part.join(",")})`))))for(const l of rows||[])lots.set(l.id,l);
+ const out={};for(const [k] of INHOUSE)out[k]=new Map;let unknown=0;
+ for(const m of moves){const k=String(m.destination||"").trim();if(!out[k])continue;const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=name||String(l?.item_name||m.item_name||"").trim();if(!name)continue;
+  let kg=null;if(m.weight!==null&&m.weight!==undefined&&m.weight!==""&&Number.isFinite(Number(m.weight)))kg=Number(m.weight);else{try{const v=l?v163LotKgAtQuantity(l,Number(m.qty||0)):0;kg=v>0?v:null}catch(_){}}
+  if(kg==null){unknown++;continue}out[k].set(name,(out[k].get(name)||0)+kg)}
+ out.unknown=unknown;return out;
+}
+/* c151：まとめて同時に読む（明日の予定・確定の候補4日分）。社内の出庫は確定の日が決まってから */
 async function c147Load(){
  if(cache&&Date.now()-cacheAt<5*60000)return cache;
  if(loading)return loading;
  loading=(async()=>{
   const lib=L(),today=todayKey(),tomorrow=lib.addDays(today,1);
-  const plan=await lib.loadPlan(tomorrow);
-  let act=null,actDate="",actPlan=null;
-  /* 産地報告書は翌日の納品分なので、明日から探す（明日→今日→昨日→おととい） */
-  for(let i=-1;i<BACK;i++){const d=lib.addDays(today,-i),a=await lib.loadActual(d);if(a===null)break;if(a.active){act=a;actDate=d;actPlan=await lib.loadPlan(d);break}}
-  cache={tomorrow,plan,actDate,act,actPlan};cacheAt=Date.now();return cache})();
+  const days=[];for(let i=-1;i<BACK;i++)days.push(lib.addDays(today,-i));  // 明日→今日→昨日→おととい
+  const [plan,...acts]=await Promise.all([lib.loadPlan(tomorrow),...days.map(d=>lib.loadActual(d))]);
+  let act=null,actDate="",actPlan=null,inhouse=null,shipDate="";
+  const k=acts.findIndex(a=>a?.active);
+  if(k>=0){act=acts[k];actDate=days[k];shipDate=lib.addDays(actDate,-1);
+   [actPlan,inhouse]=await Promise.all([actDate===tomorrow?plan:lib.loadPlan(actDate),c151InhouseOut(shipDate).catch(()=>null)])}
+  cache={tomorrow,plan,actDate,act,actPlan,inhouse,shipDate,today};cacheAt=Date.now();return cache})();
  try{return await loading}finally{loading=null}
 }
+function c147Fresh(){return !!cache&&Date.now()-cacheAt<5*60000}
 /* 仕入れ担当者の担当品目の名前（c149）：適正在庫を設定した担当品目に加えて、
    QRで管理する品目のうち、仕入れ担当者の一覧（07_営業仕入れ担当者カード）でこの人の品目になっているもの（例：人参→荒木さん） */
 function c149BuyerItemNames(userId=db?.userId){
@@ -84,16 +112,19 @@ function c147Html(data,mine,daily){
  if(!data.plan?.active)s1=`<div class="small">明日（${md(data.tomorrow)}納品）の積み込み表はまだ取り込まれていません。</div>`;
  else if(!tom.length)s1=`<div class="small">明日（${md(data.tomorrow)}納品）の予定に${buyer?"担当品目は":"品目が"}ありません。</div>`;
  else{const max=buyer?50:8,show=tom.slice(0,max);
-  s1=`<table class="table c147Tbl"><tr><th>品目</th><th>予定</th>${buyer?"<th>日量とくらべて</th>":""}</tr>${show.map(r=>`<tr class="${r.mark?`c147Row ${r.mark}`:""}"><td>${esc(r.item)}</td><td><b>${fmt(r.kg)}kg</b>${r.hq>0?`<div class="small">＋本社 ${fmt(r.hq)}kg<br>＝${fmt(r.total)}kg</div>`:""}</td>${buyer?`<td>${r.daily!=null?`<span class="small">日量${fmt(r.daily)}kg</span><br>`:""}${timesText(r)}</td>`:""}</tr>`).join("")}</table>${tom.length>max?`<div class="small">ほか${tom.length-max}品目</div>`:""}`;
+  s1=`<table class="table c147Tbl"><tr><th>品目</th><th>予定</th>${buyer?"<th>日量とくらべて</th>":""}</tr>${show.map(r=>`<tr class="${r.mark?`c147Row ${r.mark}`:""}"><td>${esc(r.item)}</td><td><b>${fmt(r.kg)}kg</b>${r.inh.length?`<div class="small">うち${r.inh.map(([k,v])=>`${k} ${fmt(v)}kg`).join("・")}</div>`:""}${r.hq>0?`<div class="small">＋本社 ${fmt(r.hq)}kg<br>＝${fmt(r.total)}kg</div>`:""}</td>${buyer?`<td>${r.daily!=null?`<span class="small">日量${fmt(r.daily)}kg</span><br>`:""}${timesText(r)}</td>`:""}</tr>`).join("")}</table>${tom.length>max?`<div class="small">ほか${tom.length-max}品目</div>`:""}`;
   if(buyer){const none=[...mine].filter(n=>!tom.some(r=>r.item===n)).sort((a,b)=>a.localeCompare(b,"ja"));if(none.length)s1+=`<div class="small">予定なし：${esc(none.join("、"))}</div>`}}
  let s2;
  if(!data.act)s2=`<div class="small">明日〜${BACK-1}日前の確定（産地報告書）はまだ取り込まれていません。</div>`;
- else{const diffs=c147Diffs(data.actPlan?.lines,data.act.lines,mine);
-  s2=diffs.length?`<table class="table c147Tbl"><tr><th>品目</th><th>予定→確定</th></tr>${diffs.map(d=>`<tr><td>${esc(d.item)}</td><td>${fmt(d.plan)}kg → <b>${fmt(d.actual)}kg</b> ${rateText(d)}</td></tr>`).join("")}</table>`:`<div class="c147Ok">予定と2割以上違う${buyer?"担当品目":"品目"}はありません。</div>`}
+ else{const diffs=c147Diffs(data.actPlan?.lines,data.act.lines,mine,data.inhouse);
+  const partText=d=>d.parts.length>1||d.parts[0]?.label!=="社外"?`<div class="small">${d.parts.map(x=>`${x.label} ${fmt(x.plan)}→${fmt(x.actual)}`).join("・")}</div>`:"";
+  s2=diffs.length?`<table class="table c147Tbl"><tr><th>品目</th><th>予定→確定</th></tr>${diffs.map(d=>`<tr><td>${esc(d.item)}</td><td>${fmt(d.plan)}kg → <b>${fmt(d.actual)}kg</b> ${rateText(d)}${partText(d)}</td></tr>`).join("")}</table>`:`<div class="c147Ok">予定と2割以上違う${buyer?"担当品目":"品目"}はありません。</div>`;
+  if(data.inhouse===null)s2+=`<div class="small">埼玉・深谷への出庫を読み込めなかったので、社外だけで比べています。</div>`;
+  else if(data.shipDate>=data.today)s2+=`<div class="small">埼玉・深谷の確定は、出荷日 ${md(data.shipDate)} の出庫です（今日の分は途中までです）。</div>`}
  return `${head}
   <div class="c147Sec"><div class="c147Sub">明日（${md(data.tomorrow)}納品）の出荷予定</div>${s1}${buyer?'<div class="small">日量は社内（埼玉・深谷・本社など）への出庫も含みます。本社は積み込み表に入らないので、本社への出庫（昨日までの7日間）から1日分を足して比べます。</div>':""}</div>
   <div class="c147Sec"><div class="c147Sub">${data.act?`${md(data.actDate)}納品の確定と予定の違い（2割以上）`:"確定と予定の違い"}</div>${s2}
-   <div class="small">確定のある客先（産地報告書にある社外の客先）の予定とkgで比べます。予定・確定とも${MIN_KG}kg以下の品目は出しません。</div></div>
+   <div class="small">社外は産地報告書の確定と、確定のある客先の予定で比べます。埼玉・深谷は積み込み表の予定と、出荷日（納品日の前日）の出庫で比べます。kgで比べ、予定・確定とも${MIN_KG}kg以下の品目は出しません。</div></div>
   <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" class="btn c147Btn" ${seikaEventAttrs("click","c140ShipPlanPage",[data.tomorrow,""])}>明日の出荷予定を開く</button>${data.act?`<button type="button" class="btn btn2" ${seikaEventAttrs("click","c140ShipPlanPage",[data.actDate,""])}>${md(data.actDate)}の確定を開く</button>`:""}</div>`;
 }
 /* 担当品目の日量のボタンに、明日の予定を書き足す */
@@ -113,13 +144,16 @@ async function c147InjectHome(){
  const anchor=document.querySelector("#app .homeSummary")||document.querySelector("#app .homePrimary");if(!anchor)return;
  injecting=true;
  try{
-  anchor.insertAdjacentHTML("beforebegin",`<div id="c147Ship" class="card c147"><b>出荷予定と確定</b><div class="small">読み込んでいます…</div></div>`);
+  /* c151：読み込み済み（アプリを開いたときに先に読んでおく）なら、「読み込んでいます」を出さずに一度で全部出す */
+  if(!c147Fresh())anchor.insertAdjacentHTML("beforebegin",`<div id="c147Ship" class="card c147"><b>出荷予定と確定</b><div class="small">読み込んでいます…</div></div>`);
   let data,daily;
   try{[data,daily]=await Promise.all([c147Load(),myDaily()])}
   catch(e){const c=document.getElementById("c147Ship");if(c)c.innerHTML=`<b>出荷予定と確定</b><div class="small">${esc(L().sqlMissing(e)?"出荷予定の機能（SQL 061）がまだ実行されていません。":"出荷予定を読み込めませんでした。")}</div>`;return}
   const mine=myItems();
   lastTom=mine?c147Tomorrow(data.plan?.lines,mine,daily):null;
-  const c=document.getElementById("c147Ship");if(!c||currentScreen!=="home")return;
+  if(currentScreen!=="home")return;
+  let c=document.getElementById("c147Ship");
+  if(!c){const a=document.querySelector("#app .homeSummary")||document.querySelector("#app .homePrimary");if(!a)return;a.insertAdjacentHTML("beforebegin",`<div id="c147Ship" class="card c147"></div>`);c=document.getElementById("c147Ship")}
   c.innerHTML=c147Html(data,mine,daily);c.dataset.ready="1";
   if(lastTom){let n=0;const t=()=>{if(!c147Decorate(lastTom)&&n++<40)setTimeout(t,150)};t()}
  }finally{
@@ -128,6 +162,12 @@ async function c147InjectHome(){
   if(currentScreen==="home"&&!document.getElementById("c147Ship")&&document.querySelector("#app .homeSummary, #app .homePrimary"))setTimeout(()=>c147InjectHome(),0);
  }
 }
+/* c151：アプリを開いたら、ホームを描く前に出荷予定と日量を先に読んでおく（ホームでは読み込み待ちなしで出る） */
+function c151Prefetch(n=0){
+ if(ROLES.includes(db?.role)&&L()?.canView?.()&&typeof qrSelect==="function"){Promise.all([c147Load(),myDaily()]).catch(()=>{});return}
+ if(n<120)setTimeout(()=>c151Prefetch(n+1),500);
+}
+setTimeout(()=>c151Prefetch(),0);
 const app=document.getElementById("app");
 if(app)new MutationObserver(()=>{
  if(currentScreen!=="home"||!ROLES.includes(db?.role))return;
@@ -152,5 +192,5 @@ if(app)new MutationObserver(()=>{
 .c147Add{display:block;font-size:13px;font-weight:800;color:#334155}
 .c147Add.many{color:#c2410c}.c147Add.few{color:#1d4ed8}`;document.head.appendChild(st)}
 
-Object.assign(window,{c147InjectHome,c147Load,c149BuyerItemNames,c147Lib:{c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
+Object.assign(window,{c147InjectHome,c147Load,c151Prefetch,c151InhouseOut,c149BuyerItemNames,c147Lib:{c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
 })();

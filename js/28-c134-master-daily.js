@@ -46,7 +46,9 @@ async function c134Load(){
   const q=`select=*&movement_type=eq.${encodeURIComponent("出庫")}&occurred_at=gte.${encodeURIComponent(from.toISOString())}&occurred_at=lt.${encodeURIComponent(to.toISOString())}&limit=5000`;
   const moves=(await qrSelect("qr_lot_movements",q)||[]).filter(m=>!m.cancelled_at&&String(m.destination||"").trim()!=="廃棄");
   const ids=[...new Set(moves.map(m=>m.lot_id).filter(Boolean))],lots=new Map;
-  for(let i=0;i<ids.length;i+=80){const part=ids.slice(i,i+80);for(const l of (await qrSelect("qr_lots",`select=*&id=in.(${part.join(",")})`)||[]))lots.set(l.id,l)}
+  /* c151：ロットは80件ずつまとめて同時に読む（1つずつ順番に待たない） */
+  const parts=[];for(let i=0;i<ids.length;i+=80)parts.push(ids.slice(i,i+80));
+  for(const rows of await Promise.all(parts.map(part=>qrSelect("qr_lots",`select=*&id=in.(${part.join(",")})`))))for(const l of rows||[])lots.set(l.id,l);
   const by={};
   for(const m of moves){const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=name||String(l?.item_name||m.item_name||"").trim();if(!name)continue;
    const d=ymd(new Date(m.occurred_at||m.created_at)),o=by[name]=by[name]||{days:new Set,kg:0,unk:0,hqKg:0};o.days.add(d);const toHq=String(m.destination||"").trim()==="本社";
