@@ -127,5 +127,34 @@ class ShipHomeTests(unittest.TestCase):
         self.assertIn("積み込み表はまだ取り込まれていません", text)
         self.assertIn("確定（産地報告書）はまだ取り込まれていません", text)
 
+    def page_with(self, role, extra):
+        context = self.browser.new_context(service_workers="block", timezone_id="Asia/Tokyo")
+        self.addCleanup(context.close)
+        context.route("**/*", lambda route: route.continue_() if urlparse(route.request.url).netloc == self.local else route.abort())
+        page = context.new_page()
+        page.set_content('<!doctype html><html><body><div id="app"></div></body></html>')
+        page.evaluate(SETUP, role)
+        page.evaluate(extra)
+        page.add_script_tag(url=self.base + "/js/31-c147-ship-home.js")
+        page.evaluate("()=>c147InjectHome()")
+        page.locator("#c147Ship .c147Sub").first.wait_for()
+        return page
+
+    def test_actual_for_tomorrow_is_found_first(self):
+        # c149：産地報告書は翌日の納品分。明日の確定がすでにあれば、それを比べる
+        page = self.page_with("sales", "()=>{__actual['2026-11-24']=[{customer:'A社',item:'キャベツ',kg:150}]}")
+        text = page.locator("#c147Ship").inner_text()
+        self.assertIn("11/24納品の確定と予定の違い", text)
+        self.assertIn("-50%", text)  # A社の予定 300kg → 確定 150kg
+        self.assertIn("11/24の確定を開く", text)
+
+    def test_buyer_without_items_sees_all_items(self):
+        # c149：担当品目が1つもない仕入れ担当者は、何も出ないのではなく全品目を出す
+        page = self.page_with("buyer", "()=>{window.v1153BuyerOptimalItems=()=>[]}")
+        text = page.locator("#c147Ship").inner_text()
+        self.assertIn("担当品目が未設定のため全品目", text)
+        self.assertIn("レタス", text)
+        self.assertNotIn("予定に担当品目はありません", text)
+
 if __name__ == "__main__":
     unittest.main()
