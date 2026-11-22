@@ -56,8 +56,20 @@ async function c147Load(){
   cache={tomorrow,plan,actDate,act,actPlan};cacheAt=Date.now();return cache})();
  try{return await loading}finally{loading=null}
 }
+/* 仕入れ担当者の担当品目の名前（c149）：適正在庫を設定した担当品目に加えて、
+   QRで管理する品目のうち、仕入れ担当者の一覧（07_営業仕入れ担当者カード）でこの人の品目になっているもの（例：人参→荒木さん） */
+function c149BuyerItemNames(userId=db?.userId){
+ const set=new Set;
+ try{for(const i of v1153BuyerOptimalItems(userId)||[])if(i?.name)set.add(i.name)}catch(_){}
+ try{
+  const me=typeof v1151CanonicalBuyerId==="function"?v1151CanonicalBuyerId(userId):userId;
+  const names=typeof qrAllowedItemNames==="function"?qrAllowedItemNames()||[]:[];
+  for(const n of names){if(!n||set.has(n))continue;const c=window.v1144AutoPurchaseStaffForItemName?.(n);const id=c?.legacy_user_id;if(id&&(typeof v1151CanonicalBuyerId==="function"?v1151CanonicalBuyerId(id):id)===me)set.add(n)}
+ }catch(_){}
+ return [...set].sort((a,b)=>a.localeCompare(b,"ja"));
+}
 /* 担当品目が1つもない仕入れ担当者は、全品目を出す（何も出ないと役に立たないため） */
-function myItems(){if(db?.role!=="buyer")return null;let set;try{set=new Set((v1153BuyerOptimalItems()||[]).map(i=>i.name).filter(Boolean))}catch(_){set=new Set}return set.size?set:null}
+function myItems(){if(db?.role!=="buyer")return null;const set=new Set(c149BuyerItemNames());return set.size?set:null}
 async function myDaily(){if(db?.role!=="buyer"||typeof window.c134Load!=="function")return null;try{return (await window.c134Load()).by}catch(_){return null}}
 
 /* ---------- 表示 ---------- */
@@ -126,5 +138,5 @@ if(app)new MutationObserver(()=>{if(currentScreen==="home"&&ROLES.includes(db?.r
 .c147Add{display:block;font-size:13px;font-weight:800;color:#334155}
 .c147Add.many{color:#c2410c}.c147Add.few{color:#1d4ed8}`;document.head.appendChild(st)}
 
-Object.assign(window,{c147InjectHome,c147Load,c147Lib:{c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
+Object.assign(window,{c147InjectHome,c147Load,c149BuyerItemNames,c147Lib:{c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
 })();

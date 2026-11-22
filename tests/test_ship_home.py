@@ -156,5 +156,16 @@ class ShipHomeTests(unittest.TestCase):
         self.assertIn("レタス", text)
         self.assertNotIn("予定に担当品目はありません", text)
 
+    def test_buyer_items_include_qr_items_from_the_buyer_list(self):
+        # c149：人参はQRで管理する品目（適正在庫の担当品目ではない）。仕入れ担当者の一覧で荒木さんの品目なので入れる
+        page = self.page_with("buyer", """()=>{db.userId='araki';window.v1153BuyerOptimalItems=()=>[];window.v1151CanonicalBuyerId=x=>x;
+          window.qrAllowedItemNames=()=>['人参','キャベツ','小松菜'];
+          window.v1144AutoPurchaseStaffForItemName=n=>n==='人参'?{legacy_user_id:'araki'}:{legacy_user_id:'saito_dai'}}""")
+        self.assertEqual(page.evaluate("()=>c149BuyerItemNames()"), ["人参"])
+        text = page.locator("#c147Ship").inner_text()
+        self.assertIn("（担当品目）", text)
+        self.assertIn("人参", text)
+        self.assertNotIn("キャベツ", text.split("確定と予定の違い")[0])
+
 if __name__ == "__main__":
     unittest.main()

@@ -59,7 +59,8 @@ function c134Fmt(v){return(Math.round(v*10)/10).toLocaleString("ja-JP")}
 async function c134InjectBuyer(){
  if(currentScreen!=="home"||db?.role!=="buyer"||document.getElementById("c134Daily"))return;
  const anchor=document.querySelector("#app .homeSummary");if(!anchor)return;
- let items=[];try{items=v1153BuyerOptimalItems()||[]}catch(_){}
+ /* c149：QRで管理する品目のうち、仕入れ担当者の一覧でこの人の品目になっているもの（例：人参→荒木さん）も入れる */
+ let items=[];try{items=typeof window.c149BuyerItemNames==="function"?window.c149BuyerItemNames().map(name=>({name})):(v1153BuyerOptimalItems()||[])}catch(_){}
  if(!items.length)return;
  anchor.insertAdjacentHTML("afterend",`<div id="c134Daily" class="card"><b>担当品目の日量</b><div class="small" id="c134DailySub">読み込んでいます…</div><div id="c134DailyBtns" class="c134Grid"></div></div>`);
  let data;try{data=await c134Load()}catch(e){const s=document.getElementById("c134DailySub");if(s)s.textContent="日量を読み込めませんでした。";return}
