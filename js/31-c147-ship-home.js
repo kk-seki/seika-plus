@@ -103,7 +103,9 @@ function c147Decorate(tom){
   b.insertAdjacentHTML("beforeend",`<span class="c147Add ${r?.mark||""}">${r?`明日 ${fmt(r.kg)}kg${r.times!=null?`（${r.times.toFixed(1)}倍）`:""}`:"明日 予定なし"}</span>`)}
  return true;
 }
-let injecting=false;
+/* c150：起動直後はホームが何度か描き直される。読み込み中に描き直されてカードが消えたときは、読み終わったあとにもう一度出す。
+   日量のボタン（c134）が描き直されたときも、覚えておいた明日の予定をもう一度書き足す。 */
+let injecting=false,lastTom=null;
 async function c147InjectHome(){
  if(injecting||currentScreen!=="home"||!ROLES.includes(db?.role)||!L()?.canView?.()||document.getElementById("c147Ship"))return;
  const anchor=document.querySelector("#app .homeSummary")||document.querySelector("#app .homePrimary");if(!anchor)return;
@@ -113,13 +115,23 @@ async function c147InjectHome(){
   let data,daily;
   try{[data,daily]=await Promise.all([c147Load(),myDaily()])}
   catch(e){const c=document.getElementById("c147Ship");if(c)c.innerHTML=`<b>出荷予定と確定</b><div class="small">${esc(L().sqlMissing(e)?"出荷予定の機能（SQL 061）がまだ実行されていません。":"出荷予定を読み込めませんでした。")}</div>`;return}
+  const mine=myItems();
+  lastTom=mine?c147Tomorrow(data.plan?.lines,mine,daily):null;
   const c=document.getElementById("c147Ship");if(!c||currentScreen!=="home")return;
-  const mine=myItems();c.innerHTML=c147Html(data,mine,daily);
-  if(mine){const tom=c147Tomorrow(data.plan?.lines,mine,daily);let n=0;const t=()=>{if(!c147Decorate(tom)&&n++<40)setTimeout(t,150)};t()}
- }finally{injecting=false}
+  c.innerHTML=c147Html(data,mine,daily);c.dataset.ready="1";
+  if(lastTom){let n=0;const t=()=>{if(!c147Decorate(lastTom)&&n++<40)setTimeout(t,150)};t()}
+ }finally{
+  injecting=false;
+  /* 読み込み中に描き直されてカードが消えていたら、もう一度（読み込んだ内容は5分覚えているのですぐ出る） */
+  if(currentScreen==="home"&&!document.getElementById("c147Ship")&&document.querySelector("#app .homeSummary, #app .homePrimary"))setTimeout(()=>c147InjectHome(),0);
+ }
 }
 const app=document.getElementById("app");
-if(app)new MutationObserver(()=>{if(currentScreen==="home"&&ROLES.includes(db?.role)&&!document.getElementById("c147Ship")&&document.querySelector("#app .homeSummary, #app .homePrimary"))c147InjectHome()}).observe(app,{childList:true,subtree:true});
+if(app)new MutationObserver(()=>{
+ if(currentScreen!=="home"||!ROLES.includes(db?.role))return;
+ if(!document.getElementById("c147Ship")&&document.querySelector("#app .homeSummary, #app .homePrimary"))c147InjectHome();
+ if(lastTom){const box=document.getElementById("c134DailyBtns");if(box&&box.querySelector("button.c134Btn:not(:has(.c147Add))"))c147Decorate(lastTom)}
+}).observe(app,{childList:true,subtree:true});
 {const st=document.createElement("style");st.textContent=`
 .c147{border:2px solid #1d4ed8}
 .c147Head{display:flex;align-items:baseline;gap:6px;font-size:19px}
