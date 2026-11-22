@@ -72,7 +72,7 @@ window.hqItemRuleOf=n=>['キャベツ','白菜','紫キャベツ'].includes(Stri
           const mats=[{id:'WM1',work_id:'W1',lot_id:'L1',lot_no:'LOT-1',item_name:'キャベツ',unit:'case',pack_kg:10,qty:null}];
           window.__h2.num2=v=>{const s=String(v??'').trim();return s===''?NaN:Number(s)}; window.__h2.h2Loading=()=>'<div>読み込んでいます…</div>'; window.__h2.h2CanPrep=()=>['admin','hq_worker','hq_prep'].includes(db.role); window.__h2.h2CanBoss=()=>['admin','hq_worker'].includes(db.role); window.__h2.h2Err=e=>String(e?.message||e||'');
           window.__h2.h2UsedKg=mats=>{let kg=0,unknown=false;for(const m of mats){const q=Number(m.qty),v=m.unit==='kg'?q:q*Number(m.pack_kg);if(!Number.isFinite(v))unknown=true;else kg+=v}return {kg,unknown}};
-          window.__h2.r2=async(name,args)=>{window.__calls.push([name,args]); if(name==='hq_prep_available_lots_v1199c117'||name==='hq_prep_available_lots_v1199c120') return JSON.parse(JSON.stringify(lots)); if(name==='hq_prep_report_save_v1199c120'||name==='hq_prep_report_save_v1199c120'||name==='hq_prep_submit_v1199c120'||name==='hq_prep_confirm_v1199c120') return window.__rpc ? window.__rpc(name,args) : {ok:true,id:args.p_work_id||'NEW',updated_at:'2026-11-12T03:00:00Z',review_status:name.includes('submit')?'submitted':'draft'}; throw new Error('unexpected rpc '+name)};
+          window.__h2.r2=async(name,args)=>{window.__calls.push([name,args]); if(name==='hq_prep_available_lots_v1199c117'||name==='hq_prep_available_lots_v1199c120') return JSON.parse(JSON.stringify(lots)); if(name==='hq_prep_report_save_v1199c136'||name==='hq_prep_submit_v1199c121'||name==='hq_prep_submit_v1199c120'||name==='hq_prep_confirm_v1199c120') return window.__rpc ? window.__rpc(name,args) : {ok:true,id:args.p_work_id||'NEW',updated_at:'2026-11-12T03:00:00Z',review_status:name.includes('submit')?'submitted':'draft'}; throw new Error('unexpected rpc '+name)};
           window.__h2.h2Staff=async()=>JSON.parse(JSON.stringify(staff)); window.__h2.h2Places=async()=>[{name:'作業台A'},{name:'作業台B'}]; window.__h2.h2Masters=async()=>JSON.parse(JSON.stringify(masters));
           window.__h2.h2Works=async q=>q.includes('id=eq.C120')?[JSON.parse(JSON.stringify(c120work))]:[JSON.parse(JSON.stringify(work))];
           window.__h2.h2Materials=async()=>JSON.parse(JSON.stringify(mats)); window.__h2.h2Members=async()=>JSON.parse(JSON.stringify(members));
@@ -100,8 +100,15 @@ window.hqItemRuleOf=n=>['キャベツ','白菜','紫キャベツ'].includes(Stri
         page.evaluate("()=>c117MasterToggle()")
         page.locator(".c117CaseQty").fill("5")
         page.locator('[data-c117-output="P1"] input').fill("40")
+        self.fill_used(page, "50")
         page.select_option("#c117StaffSelect", "S1")
         page.evaluate("()=>c117AddMemberFromSelect()")
+
+    def fill_used(self, page, kg):
+        # c136: 箱の原料は、使った原料の重さ（合計kg）を量って入れる
+        page.evaluate("()=>c117Input()")
+        page.locator("#c136Used").fill(kg)
+        page.evaluate("()=>c136UsedInput()")
 
     def test_permissions_and_c120_candidate_rpc(self):
         page = self.open_app("viewer")
@@ -134,26 +141,26 @@ window.hqItemRuleOf=n=>['キャベツ','白菜','紫キャベツ'].includes(Stri
         self.open_new(page)
         page.evaluate("""()=>{window.__rpc=async()=>{throw new Error('late network')}}""")
         page.evaluate("()=>c120Review();c120SaveDraft()")
-        page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120').length===1")
-        first = page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120')[0][1]")
+        page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c136').length===1")
+        first = page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c136')[0][1]")
         page.evaluate("()=>c120NewReportPage()")
         page.locator(".c117CaseQty").wait_for()
         self.assertEqual(page.locator(".c117CaseQty").input_value(), "5")
         page.evaluate("()=>c120Review();c120SaveDraft()")
-        page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120').length===2")
-        self.assertEqual(page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120')[1][1]"), first)
+        page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c136').length===2")
+        self.assertEqual(page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c136')[1][1]"), first)
 
     def test_c120_known_rejection_allows_correction(self):
         page = self.open_app()
         self.open_new(page)
         page.evaluate("""()=>{window.__rpc=async()=>{throw new Error(JSON.stringify({code:'P0001',message:'原料の在庫が不足しています'}))}}""")
         page.evaluate("()=>c120Review();c120SaveDraft()")
-        first = page.evaluate("()=>__calls.find(x=>x[0]==='hq_prep_report_save_v1199c120')[1]")
+        first = page.evaluate("()=>__calls.find(x=>x[0]==='hq_prep_report_save_v1199c136')[1]")
         page.evaluate("()=>c120Edit()")
         page.locator(".c117Qty").fill("4")
         page.evaluate("()=>{window.__rpc=async(_n,args)=>({ok:true,id:'NEW',updated_at:'2026-11-12T03:00:00Z',review_status:'draft'})};c120Review();c120SaveDraft()")
-        page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120').length===2")
-        second = page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120')[1][1]")
+        page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c136').length===2")
+        second = page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c136')[1][1]")
         self.assertNotEqual(first['p_operation_id'], second['p_operation_id'])
         self.assertEqual(second['p_report']['materials'][0]['qty'], 4)
 
@@ -163,10 +170,11 @@ window.hqItemRuleOf=n=>['キャベツ','白菜','紫キャベツ'].includes(Stri
         page.evaluate("()=>c117ReportPage('C120')")
         page.locator("#c120CorrectionReason").wait_for()
         page.locator(".c117CaseQty").fill("5")
+        self.fill_used(page, "50")
         page.locator("#c120CorrectionReason").fill("数量を訂正")
         page.evaluate("()=>c120Review();c120SaveDraft()")
-        page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120').length===1")
-        saved = page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c120')[0][1]")
+        page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c136').length===1")
+        saved = page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_report_save_v1199c136')[0][1]")
         self.assertEqual(saved['p_report']['correction_reason'], '数量を訂正')
         self.assertIn("訂正を保存しました", page.locator("body").inner_text())
         self.assertGreaterEqual(page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_available_lots_v1199c120').length"), 2)
@@ -189,8 +197,9 @@ window.hqItemRuleOf=n=>['キャベツ','白菜','紫キャベツ'].includes(Stri
         page.locator(".c117CaseQty").wait_for()
         self.assertEqual(page.locator('[data-c117-member]').count(), 3)
         page.locator(".c117CaseQty").fill("5")
+        self.fill_used(page, "50")
         page.evaluate("()=>c120Review();c120SaveDraft()")
-        payload = page.evaluate("()=>__calls.find(x=>x[0]==='hq_prep_report_save_v1199c120')[1].p_report")
+        payload = page.evaluate("()=>__calls.find(x=>x[0]==='hq_prep_report_save_v1199c136')[1].p_report")
         self.assertEqual([(m['start_at'],m['end_at']) for m in payload['members']], [
             ('2026-11-12T09:00:05+09:00','2026-11-12T09:30:00+09:00'),
             ('2026-11-12T09:45:00+09:00','2026-11-12T11:00:07+09:00'),
@@ -223,7 +232,7 @@ window.hqItemRuleOf=n=>['キャベツ','白菜','紫キャベツ'].includes(Stri
         page.locator("#c120ConfirmNow").wait_for()
         page.evaluate("()=>c120ConfirmNow()")
         calls = page.evaluate("()=>__calls.map(c=>c[0]).filter(n=>/report_save|submit|confirm/.test(n))")
-        self.assertEqual(calls, ["hq_prep_report_save_v1199c120", "hq_prep_submit_v1199c120", "hq_prep_confirm_v1199c120"])
+        self.assertEqual(calls, ["hq_prep_report_save_v1199c136", "hq_prep_submit_v1199c120", "hq_prep_confirm_v1199c120"])
         confirm = page.evaluate("()=>__calls.find(c=>c[0]==='hq_prep_confirm_v1199c120')[1]")
         self.assertEqual(confirm["p_expected_updated_at"], "2026-11-12T03:00:00Z")
         self.assertEqual(page.evaluate("()=>currentScreen"), "hqWorkPage")

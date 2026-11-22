@@ -14,15 +14,16 @@ class PrepReportBoxWasteBrowserTests(unittest.TestCase):
 
     open_app = prep_report.PrepReportBrowserTests.open_app
     open_new = prep_report.PrepReportBrowserTests.open_new
+    fill_used = prep_report.PrepReportBrowserTests.fill_used
     MEASURED = "()=>{window.hqItemRuleOf=()=>null}"  # 品目ルールにない品目＝廃棄を量る
 
     def test_measured_item_requires_waste_weight_and_hides_unknown_loss_for_prep(self):
         page = self.open_app()
         page.evaluate(self.MEASURED)
         self.open_new(page)
-        page.locator('.c117CaseQty').fill('2')
-        page.locator('.c117OpenBoxKg').fill('1.7')
+        page.locator('.c117CaseQty').fill('3')  # 開けた箱も1箱と数える
         page.locator('[data-c117-output="P1"] input').fill('11')
+        self.fill_used(page, '21.7')
         page.evaluate('()=>c117Input()')
         self.assertIn('廃棄の重さ（kg）', page.locator('#c117Totals').inner_text())
         self.assertNotIn('自動にもどす', page.locator('#c117Totals').inner_text())
@@ -34,8 +35,9 @@ class PrepReportBoxWasteBrowserTests(unittest.TestCase):
         self.assertIn('使用合計 21.7 kg', totals)
         self.assertNotIn('不明ロス', totals)
         page.evaluate('()=>c120Review();c120SaveDraft()')
-        payload = page.evaluate("()=>__calls.find(x=>x[0]==='hq_prep_report_save_v1199c120')[1].p_report")
-        self.assertAlmostEqual(payload['materials'][0]['qty'], 2.17)
+        payload = page.evaluate("()=>__calls.find(x=>x[0]==='hq_prep_report_save_v1199c136')[1].p_report")
+        self.assertEqual(payload['materials'][0]['qty'], 3)
+        self.assertEqual(payload['used_kg'], 21.7)
         self.assertEqual(payload['waste_kg'], .7)
         body = page.locator('body').inner_text()
         self.assertIn('廃棄 0.7 kg（量った重さ）', body)
@@ -45,9 +47,9 @@ class PrepReportBoxWasteBrowserTests(unittest.TestCase):
         page = self.open_app('hq_worker')
         page.evaluate(self.MEASURED)
         self.open_new(page)
-        page.locator('.c117CaseQty').fill('2')
-        page.locator('.c117OpenBoxKg').fill('1.7')
+        page.locator('.c117CaseQty').fill('3')  # 開けた箱も1箱と数える
         page.locator('[data-c117-output="P1"] input').fill('11')
+        self.fill_used(page, '21.7')
         page.locator('#c117Waste').fill('0.7')
         page.evaluate('()=>c117WasteInput()')
         self.assertIn('不明ロス 10 kg', page.locator('#c117Totals').inner_text())
@@ -60,29 +62,18 @@ class PrepReportBoxWasteBrowserTests(unittest.TestCase):
     def test_unmeasured_item_has_no_waste_input_and_omits_waste(self):
         page = self.open_app()
         self.open_new(page)
-        page.locator('.c117CaseQty').fill('2')
-        page.locator('.c117OpenBoxKg').fill('1.7')
+        page.locator('.c117CaseQty').fill('3')  # 開けた箱も1箱と数える
         page.locator('[data-c117-output="P1"] input').fill('11')
+        self.fill_used(page, '21.7')
         page.evaluate('()=>c117Input()')
         self.assertEqual(page.locator('#c117Waste').count(), 0)
         self.assertIn('廃棄は自動で計算します（推定）：10.7 kg', page.locator('#c117Totals').inner_text())
-        self.assertIn('（推定：量目で計算した原料があります）', page.locator('#c117Totals').inner_text())
+        # c136: 使った重さを量って入れたので「量目で計算（推定）」の注意は出ない
+        self.assertNotIn('量目で計算した原料があります', page.locator('#c117Totals').inner_text())
         page.evaluate('()=>c120Review();c120SaveDraft()')
-        payload = page.evaluate("()=>__calls.find(x=>x[0]==='hq_prep_report_save_v1199c120')[1].p_report")
+        payload = page.evaluate("()=>__calls.find(x=>x[0]==='hq_prep_report_save_v1199c136')[1].p_report")
         self.assertNotIn('waste_kg', payload)
         self.assertIn('（自動計算・推定）', page.locator('body').inner_text())
-
-    def test_measured_case_weight_is_used_and_not_estimated(self):
-        page = self.open_app()
-        page.evaluate("()=>{window.__h2.r2=(o=>async(n,a)=>{const r=await o(n,a);return n.startsWith('hq_prep_available_lots')?r.map(l=>l.id==='L1'?{...l,case_measured_kg:10.5}:l):r})(window.__h2.r2)}")
-        self.open_new(page)
-        page.locator('.c117CaseQty').fill('2')
-        page.locator('.c117OpenBoxKg').fill('0')
-        page.evaluate('()=>c117Input()')
-        totals = page.locator('#c117Totals').inner_text()
-        self.assertIn('使用合計 21 kg', totals)
-        self.assertNotIn('推定：量目', totals)
-        self.assertIn('入荷時に量った重さ', page.locator('[data-c117-material="L1"]').inner_text())
 
     def test_saved_manual_waste_of_unmeasured_item_stays_for_employee_only(self):
         for role, has_input in (('hq_worker', True), ('hq_prep', False)):

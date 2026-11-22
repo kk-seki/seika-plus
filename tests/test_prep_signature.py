@@ -28,8 +28,8 @@ const lots=[{id:'L1',lot_no:'LOT-1',item_name:'キャベツ',unit:'case',pack_we
 const masters=[{id:'P1',name:'1/4芯',item_name:'キャベツ'}];
 window.__h2.num2=v=>{const x=String(v??'').trim();return x===''?NaN:Number(x)};window.__h2.h2Loading=()=>'';window.__h2.h2CanPrep=()=>['admin','hq_worker','hq_prep'].includes(db.role);window.__h2.h2CanBoss=()=>['admin','hq_worker'].includes(db.role);window.__h2.h2Err=e=>String(e?.message||e||'');window.__h2.h2UsedKg=rows=>({kg:rows.reduce((n,x)=>n+Number(x.qty||0)*Number(x.pack_kg||10),0),unknown:false});
 window.__h2.h2Staff=async()=>structuredClone(staff);window.__h2.h2Places=async()=>[{name:'作業台A'}];window.__h2.h2Masters=async()=>structuredClone(masters);window.__h2.h2StopReader=async()=>{};
-window.__h2.r2=async(name,args)=>{__calls.push([name,structuredClone(args)]);if(name==='hq_prep_available_lots_v1199c120')return structuredClone(lots);if(name==='hq_prep_report_save_v1199c120')return {ok:true,id:'W1',updated_at:'2026-11-12T03:00:00Z',review_status:'draft'};if(name==='hq_prep_submit_v1199c120'||name==='hq_prep_submit_v1199c121')return window.__rpc?window.__rpc(name,args):{ok:true,updated_at:'2026-11-12T03:01:00Z',signer_name:args.p_signer_staff_id?'佐藤':null};throw new Error('unexpected rpc '+name)};window.r2=window.__h2.r2;
-window.hqPrepHome=async()=>{};window.hqWorkPage=async()=>{};
+window.__h2.r2=async(name,args)=>{__calls.push([name,structuredClone(args)]);if(name==='hq_prep_available_lots_v1199c120')return structuredClone(lots);if(name==='hq_prep_report_save_v1199c136')return {ok:true,id:'W1',updated_at:'2026-11-12T03:00:00Z',review_status:'draft'};if(name==='hq_prep_submit_v1199c120'||name==='hq_prep_submit_v1199c121')return window.__rpc?window.__rpc(name,args):{ok:true,updated_at:'2026-11-12T03:01:00Z',signer_name:args.p_signer_staff_id?'佐藤':null};throw new Error('unexpected rpc '+name)};window.r2=window.__h2.r2;
+window.hqPrepHome=async(m)=>{window.__homeMsg=m};window.hqWorkPage=async()=>{};
 }"""
 
 
@@ -64,7 +64,7 @@ class PrepSignatureTests(unittest.TestCase):
         page.locator('#c117Date').fill('2026-11-12'); page.locator('#c117Started').fill('2026-11-12T09:00'); page.locator('#c117Ended').fill('2026-11-12T11:00'); page.locator('#c117Place').select_option(label='作業台A')
         page.select_option('#c117LotSelect', 'L1'); page.evaluate('()=>c117AddMaterialFromSelect()')
         page.locator('input[name="c117Master"][value="P1"]').check(); page.evaluate('()=>c117MasterToggle()')
-        page.locator('.c117Qty').fill('5'); page.locator('[data-c117-output="P1"] input').fill('40'); page.select_option('#c117StaffSelect', 'S1'); page.evaluate('()=>c117AddMemberFromSelect()'); page.locator('[data-c117-member="S1"]').wait_for(); page.evaluate('async()=>{await c120Review();await c120SaveDraft()}')
+        page.locator('.c117CaseQty').fill('5'); page.locator('[data-c117-output="P1"] input').fill('40'); page.evaluate('()=>c117Input()'); page.locator('#c136Used').fill('50'); page.evaluate('()=>c136UsedInput()'); page.select_option('#c117StaffSelect', 'S1'); page.evaluate('()=>c117AddMemberFromSelect()'); page.locator('[data-c117-member="S1"]').wait_for(); page.evaluate('async()=>{await c120Review();await c120SaveDraft()}')
         page.locator('#c120Submit').wait_for()
 
     def signature_page(self, page):
@@ -78,16 +78,16 @@ class PrepSignatureTests(unittest.TestCase):
     def submit_calls(self, page):
         return page.evaluate("()=>__calls.filter(x=>x[0]==='hq_prep_submit_v1199c121'||x[0]==='hq_prep_submit_v1199c120')")
 
-    def test_hqprep_requires_name_and_real_line(self):
+    def test_hqprep_requires_real_line(self):
+        # c139: 入力した人の選択はなくし、サインだけで提出する
         page=self.app(); self.ready_review(page); self.signature_page(page)
-        self.assertTrue(page.locator('#c121SignatureSubmit').is_disabled()); self.assertIn('氏名', page.locator('#c121SignatureReason').inner_text())
-        page.locator('button', has_text='佐藤').click(); self.assertTrue(page.locator('#c121SignatureSubmit').is_disabled())
+        self.assertTrue(page.locator('#c121SignatureSubmit').is_disabled()); self.assertEqual(page.locator('button', has_text='佐藤').count(), 0)
         box=page.locator('#c121SignatureCanvas').bounding_box(); page.mouse.click(box['x']+20, box['y']+20)
         self.assertTrue(page.locator('#c121SignatureSubmit').is_disabled()); self.assertIn('線', page.locator('#c121SignatureReason').inner_text())
         self.assertEqual(self.submit_calls(page), [])
 
     def test_signature_screen_survives_screen_refresh_without_losing_strokes(self):
-        page=self.app(); self.ready_review(page); self.signature_page(page); page.locator('button', has_text='佐藤').click(); self.draw(page)
+        page=self.app(); self.ready_review(page); self.signature_page(page); self.draw(page)
         self.assertEqual(page.evaluate("()=>currentScreen"), 'c120SignaturePage')
         page.evaluate("()=>window[currentScreen](...currentArgs)"); page.locator('#c121SignatureCanvas').wait_for()
         self.assertFalse(page.locator('#c121SignatureSubmit').is_disabled())
@@ -104,22 +104,22 @@ class PrepSignatureTests(unittest.TestCase):
     def test_reason_message_changes_color_class_when_signature_is_ready(self):
         page=self.app(); self.ready_review(page); self.signature_page(page)
         self.assertEqual(page.locator('#c121SignatureReason').get_attribute('class'), 'err')
-        page.locator('button', has_text='佐藤').click(); self.draw(page)
+        self.draw(page)
         self.assertEqual(page.locator('#c121SignatureReason').get_attribute('class'), 'ok')
 
     def test_signature_submit_uses_c121_once_with_png(self):
-        page=self.app(); self.ready_review(page); self.signature_page(page); page.locator('button', has_text='佐藤').click(); self.draw(page)
+        page=self.app(); self.ready_review(page); self.signature_page(page); self.draw(page)
         self.assertFalse(page.locator('#c121SignatureSubmit').is_disabled()); page.locator('#c121SignatureSubmit').click(); page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_submit_v1199c121').length===1")
-        calls=self.submit_calls(page); self.assertEqual(len(calls),1); self.assertEqual(calls[0][0],'hq_prep_submit_v1199c121'); self.assertEqual(calls[0][1]['p_signer_staff_id'],'S1'); self.assertTrue(calls[0][1]['p_signature_png'].startswith('data:image/png;base64,')); self.assertIn('佐藤さんがサインして提出しました',page.locator('body').inner_text())
+        calls=self.submit_calls(page); self.assertEqual(len(calls),1); self.assertEqual(calls[0][0],'hq_prep_submit_v1199c121'); self.assertFalse(calls[0][1]['p_signer_staff_id']); self.assertTrue(calls[0][1]['p_signature_png'].startswith('data:image/png;base64,')); page.wait_for_function("()=>window.__homeMsg"); self.assertIn('サインして提出しました',page.evaluate('()=>__homeMsg'))  # c137: 提出したら作業一覧へ戻る
 
     def test_unknown_result_retry_keeps_exact_signature_arguments(self):
-        page=self.app(); self.ready_review(page); self.signature_page(page); page.locator('button', has_text='佐藤').click(); self.draw(page)
+        page=self.app(); self.ready_review(page); self.signature_page(page); self.draw(page)
         page.evaluate("()=>window.__rpc=async()=>{throw new Error('network unknown')}"); page.locator('#c121SignatureSubmit').click(); page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_submit_v1199c121').length===1")
         first=self.submit_calls(page)[0][1]; page.evaluate("()=>window.__rpc=async(_name,args)=>({ok:true,updated_at:'2026-11-12T03:01:00Z',signer_name:args.p_signer_staff_id==='S1'?'佐藤':''})"); page.locator('#c121SignatureSubmit').click(); page.wait_for_function("()=>__calls.filter(x=>x[0]==='hq_prep_submit_v1199c121').length===2")
         self.assertEqual(self.submit_calls(page)[1][1],first)
 
     def test_conflict_is_not_shown_as_success(self):
-        page=self.app(); self.ready_review(page); self.signature_page(page); page.locator('button', has_text='佐藤').click(); self.draw(page); page.evaluate("()=>window.__rpc=async()=>({ok:false,conflict:true,message:'他の人が変更しました'})")
+        page=self.app(); self.ready_review(page); self.signature_page(page); self.draw(page); page.evaluate("()=>window.__rpc=async()=>({ok:false,conflict:true,message:'他の人が変更しました'})")
         page.locator('#c121SignatureSubmit').click(); page.wait_for_timeout(60)
         self.assertNotIn('社員の確認待ちにしました', page.locator('body').inner_text()); self.assertIn('他の人が変更しました', page.evaluate('()=>__alerts.at(-1)'))
 
@@ -129,8 +129,8 @@ class PrepSignatureTests(unittest.TestCase):
             self.assertEqual(page.locator('#c121SignatureCanvas').count(),0); self.assertEqual(self.submit_calls(page)[0][0],'hq_prep_submit_v1199c120')
 
     def test_rewrite_clears_signature_and_back_preserves_input(self):
-        page=self.app(); self.ready_review(page); self.signature_page(page); page.locator('button', has_text='佐藤').click(); self.draw(page); page.locator('button', has_text='書き直す').click(); page.locator('#c121SignatureCanvas').wait_for(); self.assertTrue(page.locator('#c121SignatureSubmit').is_disabled())
-        page.locator('button', has_text='戻って直す').click(); page.locator('#c120Submit').wait_for(); page.locator('button', has_text='戻って編集する').click(); page.locator('.c117Qty').wait_for(); self.assertEqual(page.locator('.c117Qty').input_value(),'5')
+        page=self.app(); self.ready_review(page); self.signature_page(page); self.draw(page); page.locator('button', has_text='書き直す').click(); page.locator('#c121SignatureCanvas').wait_for(); self.assertTrue(page.locator('#c121SignatureSubmit').is_disabled())
+        page.locator('button', has_text='戻って直す').click(); page.locator('#c120Submit').wait_for(); page.locator('button', has_text='戻って編集する').click(); page.locator('.c117CaseQty').wait_for(); self.assertEqual(page.locator('.c117CaseQty').input_value(),'5')
 
     def test_tablet_signature_canvas_fits_viewport(self):
         page=self.app(viewport={'width':1024,'height':768}); self.ready_review(page); self.signature_page(page)
@@ -147,7 +147,7 @@ class PrepSignatureTests(unittest.TestCase):
           const work=__T.hq_works_v1500.find(x=>x.id==='W5'); Object.assign(work,{c120_flow:true,review_status:'submitted',updated_at:'2026-11-12T03:01:00Z'});
           const rpc=callRpc; callRpc=async(name,args)=>name==='hq_prep_signatures_v1199c121'?[{signer_name:'佐藤 花子',signed_at:'2026-11-12T03:00:00Z',signature_png:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlG0d8AAAAASUVORK5CYII='}]:rpc(name,args);
         }""")
-        page.evaluate("()=>hqWorkPage('W5')"); page.get_by_text('入力者', exact=True).wait_for()
+        page.evaluate("()=>hqWorkPage('W5')"); page.get_by_text('入力者のサイン', exact=True).wait_for()
         self.assertIn('佐藤 花子', page.locator('body').inner_text()); self.assertEqual(page.locator('img[alt="入力者サイン"]').count(), 1)
 
 
