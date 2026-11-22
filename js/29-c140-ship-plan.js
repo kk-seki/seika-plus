@@ -144,7 +144,9 @@ function itemTotals(lines,m){
  for(const l of lines){if(!l.item)continue;const o=by.get(l.item)||{item:l.item,kg:0,unknown:0,cases:0,frac:false,inMaster:l.inMaster,lines:0};
   o.lines++;if(l.kg===null||l.kg===undefined)o.unknown++;else o.kg+=l.kg;by.set(l.item,o)}
  for(const o of by.values()){o.kg=Math.round(o.kg*1000)/1000;o.small=o.kg<=SMALL_KG;const c=casesOf(o.item,o.kg,null,m);o.std=c.std;o.cases=c.cases;o.frac=c.frac;
-  o.lineCases=0;for(const l of lines)if(l.item===o.item){const lc=casesOf(l.item,l.kg,l.pack,m);if(lc.cases)o.lineCases+=lc.cases;if(lc.frac)o.frac=true}}
+  o.lineCases=0;o.noCase=0;for(const l of lines)if(l.item===o.item){const lc=casesOf(l.item,l.kg,l.pack,m);if(lc.cases)o.lineCases+=lc.cases;else if(l.kg!==null&&l.kg!==undefined)o.noCase++;if(lc.frac)o.frac=true}
+  /* 1箱の重さが行ごとに違う品目（標準ケースがない）は、ケース数を足しても比べられないので kg を主に出す */
+  const packs=new Set(lines.filter(l=>l.item===o.item).map(l=>casesOf(l.item,l.kg,l.pack,m).std).filter(Boolean));o.mixedPack=!m?.std?.get(o.item)&&(packs.size>1||o.noCase>0)}
  return[...by.values()].sort((a,b)=>a.item.localeCompare(b.item,"ja"));
 }
 function qtyText(l,tot,m){
@@ -156,8 +158,10 @@ function qtyText(l,tot,m){
 function totalText(o){
  if(o.small)return `<b>${weightText(o.kg)}</b><span class="small">（少量のため重さ）</span>`;
  const cs=o.lineCases||o.cases;
+ if(o.mixedPack)return `<b>${num(o.kg)}kg</b><span class="small">（1箱の重さがそろっていないためkg${cs?`・目安${cs}ケース`:""}）</span>`;
  return cs?`<b>${cs}ケース</b>${o.frac?'<span class="c140Frac">端数あり</span>':""}<span class="small">（${num(o.kg)}kg${o.std?`・1ケース${num(o.std)}kg`:""}${o.unknown?`・重さ不明${o.unknown}行`:""}）</span>`:`<b>${num(o.kg)}kg</b>${o.unknown?`<span class="small">（重さ不明${o.unknown}行）</span>`:""}`;
 }
+
 
 /* ---------- 保存済みの出荷予定 ---------- */
 async function loadPlan(dateKey){
@@ -180,6 +184,7 @@ function shortQty(o,small,m){
  if(!o)return'<span class="small">－</span>';
  if(small)return weightText(o.kg);
  let cs=0,frac=false,unk=false;for(const l of o.lines){const c=casesOf(l.item,l.kg,l.pack,m);if(c.cases===null)unk=true;else{cs+=c.cases;if(c.frac)frac=true}}
+ if(!m?.std?.get(o.item))return `${num(o.kg)}kg${cs?`<span class="small">（${o.lines.map(l=>l.pack?`${num(l.pack)}kg×${num(l.boxes??Math.round(l.kg/l.pack))}`:"").filter(Boolean).join("・")||`${cs}ケース`}）</span>`:""}`;  // 標準ケースのない品目はkgで比べる
  return unk&&!cs?`${num(o.kg)}kg`:`${cs}ケース${frac?'<span class="c140Frac">端数あり</span>':""}<span class="small">（${num(o.kg)}kg）</span>`;
 }
 let viewDate="";
@@ -203,11 +208,14 @@ async function c140ShipPlanPage(dateKey="",msg=""){
  let body="";
  if(plan.active||hasA){
   const P=plan.lines,pt=itemTotals(P,m),at=itemTotals(act,m),ptm=new Map(pt.map(o=>[o.item,o])),atm=new Map(at.map(o=>[o.item,o]));
+  /* 確定があるのは産地報告書の客先（社外）だけ。比べるのは、確定のある客先の予定だけにする（埼玉・深谷などは除く） */
+  const aCust=new Set(act.map(l=>l.customer)),pc=itemTotals(P.filter(l=>aCust.has(l.customer)),m),pcm=new Map(pc.map(o=>[o.item,o]));
   const items=[...new Set([...pt.map(o=>o.item),...at.map(o=>o.item)])].sort((a,b)=>a.localeCompare(b,"ja"));
   const small=it=>((ptm.get(it)?.kg||0)<=SMALL_KG&&(atm.get(it)?.kg||0)<=SMALL_KG);
   const diffMark=(p,a)=>hasA&&plan.active&&Math.abs((p?.kg||0)-(a?.kg||0))>0.001?'<span class="c142Diff">違い</span>':"";
-  const tot=`<div class="card"><b>品目ごとの合計（${items.length}品目）</b><div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>品目</th><th>予定</th>${hasA?"<th>確定</th>":""}</tr>${items.map(it=>{const p=ptm.get(it),a=atm.get(it);return `<tr><td>${esc(it)}${diffMark(p,a)}</td><td>${p?totalText(p):"－"}</td>${hasA?`<td>${a?totalText(a):"－"}</td>`:""}</tr>`}).join("")}</table></div>
-   <div class="small">ケース数は、1行ずつ標準ケースで割って切り上げた数の合計です。全客先を合わせて${SMALL_KG}kg以下の品目は、ケースではなく重さで出します。${hasA?"「違い」は予定と確定のkgが違う品目です。確定は産地報告書にある客先（社外）だけです。":""}</div></div>`;
+  const cmpNote=it=>{const p=ptm.get(it),q=pcm.get(it);if(!hasA||!p||Math.abs((p.kg||0)-(q?.kg||0))<0.001)return"";return `<div class="small">確定のある客先の予定：${q?totalText(q):"なし"}</div>`};
+  const tot=`<div class="card"><b>品目ごとの合計（${items.length}品目）</b><div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>品目</th><th>予定</th>${hasA?"<th>確定</th>":""}</tr>${items.map(it=>{const p=ptm.get(it),a=atm.get(it);return `<tr><td>${esc(it)}${diffMark(pcm.get(it),a)}</td><td>${p?totalText(p):"－"}${cmpNote(it)}</td>${hasA?`<td>${a?totalText(a):"－"}</td>`:""}</tr>`}).join("")}</table></div>
+   <div class="small">ケース数は、1行ずつ標準ケースで割って切り上げた数の合計です。全客先を合わせて${SMALL_KG}kg以下の品目は、ケースではなく重さで出します。${hasA?"「違い」は、確定のある客先（産地報告書にある社外の客先）の予定と確定のkgが違う品目です。埼玉・深谷など確定のない客先は比べません。比べるのはkgです（1箱の重さが違うとケースの数は変わるため）。標準ケースのない品目は、管理者が「品名・客先の読み替え・標準ケース」で決めるとケースでそろいます。":""}</div></div>`;
   const ps=sumBy(P),as=sumBy(act),custs=new Map;
   for(const o of [...ps.values(),...as.values()]){if(!custs.has(o.customer))custs.set(o.customer,new Set);custs.get(o.customer).add(o.item)}
   const route=c=>P.find(l=>l.customer===c)?.route||"";
