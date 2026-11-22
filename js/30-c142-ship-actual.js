@@ -3,7 +3,8 @@
      セット後に産地報告書を取り込み、客先×品目の確定数量（産地・単協名つき）を保存する（SQL 062）。出荷予定の画面で「予定」と並べて見る。
    ・Excelは端末の中で読む。各シートの1行目に納品日、客先ごとに「品目・産地・（単協名）・cs」の表（見出しの文字で列を探す）。
      客先名は表の2行上。数量は「10ｋ」の次の行に「6」、「15ｋ26」、「15ｋ13　5ｋ1」、「8ｋ193(1191ｋ)」（かっこは合計kg）。
-     規格だけで数のない行は出していないものとして読まない。読めない書き方は要確認。「納品先・kg」の重量の表は読まない（画面に出す）。
+     規格だけで数のない行は出していないものとして読まない。読めない書き方は要確認。
+   ・「重量」の表（納品先・単協・kg）：レタスをケースでなく計量して出す客先（プライム龍ヶ崎・第二など。量目不足対策）。計量したkgを同じ客先・品目のケースの行の重さとして使う。
    ・品名は品名読み替えマスタ（061）、客先名は客先の読み替え（062）で、積み込み表の客先名にそろえる。ないものは推測しない（要確認）。
    ・同じ納品日をもう一度取り込んだら置き換え（前の分は「置き換え済み」で残る）。取り込み：管理者・青果社員・事務員。 */
 (()=>{
@@ -34,6 +35,24 @@ function parseReportQty(v){
  return{boxes,kg:override??kg,pack:packs.size===1?[...packs][0]:null,override,calcKg:kg};
 }
 const LABELS={"産地":"origin","単協名":"coop","単協":"coop","仕入先":"supplier","入荷日":"recv","cs":"cs","c/s":"cs","ケース":"cs"};
+/* 重量の表（納品先・単協・kg）：レタスをケースでなく計量して出す客先（プライム龍ヶ崎・第二など）。
+   行＝納品先・単協・重さ（数字の右に「kg」）。次の行に品名（例「剝きレタス」）があればその品名、なければレタス。 */
+function readWeight(ws,sn,date,h,heads,range,out){
+ const next=heads.filter(x=>x.c===h.c&&x.r>h.r).map(x=>x.r-2);const end=next.length?Math.min(...next):range.e.r+1;
+ let n=0;
+ for(let r=h.r+1;r<end;r++){
+  const dest=tx(ws,r,h.c);if(!dest)continue;
+  let kg=null;for(let cc=h.c+1;cc<=Math.min(h.c+10,range.e.c);cc++){const v=raw(ws,r,cc);if(typeof v==="number"&&kg===null&&/^kg$/i.test(tx(ws,r,cc+1)))kg=v}
+  if(kg===null){const v2=[...Array(8)].map((_,i)=>raw(ws,r,h.c+1+i)).find(v=>typeof v==="number");if(v2!==undefined)kg=v2}
+  if(kg===null)continue;                                 // 重さのない行（品名だけの行など）
+  const lab=r+1<end?tx(ws,r+1,h.c):"",labHasKg=lab&&[...Array(8)].some((_,i)=>typeof raw(ws,r+1,h.c+1+i)==="number");
+  const item=lab&&!labHasKg?lab:"レタス";
+  const coop=h.cols.coop!==undefined?tx(ws,r,h.cols.coop):"";
+  out.lines.push({date,file:out.file,sheet:sn,cell:XLSX.utils.encode_cell({r,c:h.c}),customerRaw:dest,raw:item,base:baseName(item),qtyRaw:`${kg}kg（計量）`,origin:"",coop,issues:[],boxes:null,pack:null,kg:Number(kg),weight:true,note:""});
+  n++;
+ }
+ return n;
+}
 /* ブック全体を読む */
 function readReport(wb,fileName){
  const out={file:fileName,lines:[],sheets:[],skipped:[],dates:new Set,errors:[]};
@@ -45,10 +64,11 @@ function readReport(wb,fileName){
   const heads=[];
   for(let r=0;r<=range.e.r;r++)for(let c=0;c<=range.e.c;c++){const k=key(tx(ws,r,c));
    if(k==="品目"){const cols={};for(let cc=c+1;cc<=Math.min(c+10,range.e.c);cc++){const kk=key(tx(ws,r,cc));if(kk==="品目")break;if(LABELS[kk]&&cols[LABELS[kk]]===undefined)cols[LABELS[kk]]=cc}heads.push({r,c,cols})}
-   else if(k==="納品先")out.skipped.push(`${sn}：${XLSX.utils.encode_cell({r,c})} の重量の表（納品先・kg）`);
+   else if(k==="納品先"){const cols={};for(let cc=c+1;cc<=Math.min(c+10,range.e.c);cc++){const kk=key(tx(ws,r,cc));if(kk==="品目"||kk==="納品先")break;if(LABELS[kk]&&cols[LABELS[kk]]===undefined)cols[LABELS[kk]]=cc}heads.push({r,c,cols,weight:true})}
   }
   let count=0;
   for(const h of heads){
+   if(h.weight){count+=readWeight(ws,sn,date,h,heads,range,out);continue}
    if(h.cols.cs===undefined){out.skipped.push(`${sn}：${XLSX.utils.encode_cell({r:h.r,c:h.c})} の表（cs の列がありません）`);continue}
    let title="";for(const dr of [2,1,3]){const t=h.r-dr>=0?tx(ws,h.r-dr,h.c):"";if(t&&key(t)!=="品目"){title=t;break}}
    /* 2列に分けて書いてある客先（プライムの右半分など）は、同じ行の左にある客先名を使う */
@@ -115,7 +135,7 @@ function c142Prepare(rep,m,plan,calias,actual){
  pend={...rep,date,planCust,plan,actual,m,picks:{},cpicks:{},kgFix:{},addAlias:{},addCAlias:{},importId:uuid()};
  return pend;
 }
-function eff(){
+function effRaw(){
  const p=pend;if(!p)return[];
  return p.lines.map(l=>{const o={...l};
   if(l.issues.includes("item")){const pk=p.picks[key(l.base)];if(pk){o.item=pk.item;o.inMaster=pk.inMaster}}
@@ -124,6 +144,17 @@ function eff(){
   if(o.kg===null&&o.boxes>0&&o.item){const sd=p.m?.std?.get(o.item);if(sd){o.kg=Math.round(o.boxes*sd*1000)/1000;o.pack=sd}}
   o.open=[];if(!o.item)o.open.push("品目");if(!o.customer)o.open.push("客先");if(l.issues.includes("qty")&&!(p.kgFix[l.cell+"|"+l.sheet]>0))o.open.push("数量");
   return o});
+}
+/* 重量の表の行（計量したkg）は、同じ客先・同じ品目（単協が同じものを先に）のケースの行の重さとして使い、重量の行そのものは出さない。
+   ケースの行がないときは、重量の行をそのまま1行として使う。 */
+function eff(){
+ const ls=effRaw(),used=new Set;
+ for(const w of ls.filter(l=>l.weight&&!l.open.length)){
+  const cands=ls.filter(l=>!l.weight&&!l.open.length&&l.customer===w.customer&&l.item===w.item&&!used.has(l));
+  const hit=cands.find(l=>w.coop&&key(l.coop).includes(key(w.coop).replace(/\(.*$/,"")))||cands[0];
+  if(hit){used.add(hit);hit.note=`計量 ${num(w.kg)}kg（重量の表）。ケースからだと ${num(hit.kg)}kg`;hit.kg=w.kg;w.merged=true}
+ }
+ return ls.filter(l=>!l.merged);
 }
 function c142PreviewPage(){
  const p=pend;if(!p)return c142ImportPage();
@@ -196,7 +227,7 @@ try{
    "「産地報告書を選ぶ」でファイルを選びます。納品日は産地報告書の1行目から読みます。シートごとに日付が違うときは止まります。",
    "確認画面に、積み込み表と書き方が違う客先・知らない品名・読めない数量が「要確認」で出ます。客先はこの日の積み込み表の客先から選びます（選んだ対応は次から自動で当てはまります）。",
    "「この内容で確定数量を登録する」を押します。出荷予定の画面に「予定」と「確定」が並び、kgが違う品目に「違い」が付きます。"],
-  check:"規格だけ書いてあって数のない行は、出していないものとして読みません。「重量」の表（納品先・kg）は読みません。",
+  check:"規格だけ書いてあって数のない行は、出していないものとして読みません。「重量」の表（レタスを計量して出す客先）は、計量したkgをその客先のレタスの重さとして使います。",
   caution:"確定数量があるのは産地報告書にある社外の客先だけです。埼玉・深谷・本社はQR出庫と伝票で確認します。"};
  if(typeof V195_ROLE_GUIDES!=="undefined")for(const r of ["admin","worker","clerk"]){const gg=V195_ROLE_GUIDES[r];if(gg&&Array.isArray(gg.sections)&&!gg.sections.some(x=>x&&x.title===g.title))gg.sections.push(g)}
 }catch(e){}

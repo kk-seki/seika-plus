@@ -24,8 +24,8 @@ BOOK = """(date)=>{
   ['品目','産地','単協名','cs',null,'品目','産地','cs'],
   ['キャベツ','茨城','架空農協(JGAP)','10ｋ',null,'人参','北海道','15ｋ13　5ｋ1'],
   [null,null,null,12],
-  ['レタス','茨城',null,'8ｋ',null,'胡瓜　BM','宮崎','15ｋ2'],
-  [],
+  ['レタス','茨城','架空(JGAP)','8ｋ58',null,'胡瓜　BM','宮崎','15ｋ2'],
+  ['水菜','茨城',null,'5ｋ'],
   ['大葉','愛知',null,'3ｋ1',null,'小松菜','茨城','7ｋ1　3ｋ1'],
   [null,null,null,null,null,null,null,'10ｋ1'],
  ]);
@@ -95,11 +95,12 @@ class ShipActualBrowserTests(unittest.TestCase):
         self.assertEqual(r["dates"], ["2026-11-23"])
         self.assertEqual(r["errors"], [])
         self.assertEqual(r["file"], "産地報告.xlsx")
-        self.assertEqual(len(r["skipped"]), 1)
-        self.assertIn("重量", r["skipped"][0])
+        self.assertEqual(r["skipped"], [])
         rows = {(x[0], x[1]): x for x in r["lines"]}
         self.assertEqual(rows[("シート1", "A7")][2:8], ["架空デリカ 龍ケ崎工場", "キャベツ", 120, 12, "茨城", "架空農協(JGAP)"])
-        self.assertNotIn(("シート1", "A9"), rows)                       # レタス：規格だけ＝出していない
+        self.assertNotIn(("シート1", "A10"), rows)                      # 水菜：規格だけ＝出していない
+        self.assertEqual(rows[("シート1", "A9")][3:5], ["レタス", 464])
+        self.assertEqual(rows[("シート2", "A7")][2:5], ["龍ヶ崎", "レタス", 403])   # 重量の表（計量したkg）
         self.assertEqual(rows[("シート1", "A11")][4], 3)
         self.assertEqual(rows[("シート1", "F7")][2:6], ["架空フーズ", "人参", 200, 14])
         self.assertEqual(rows[("シート1", "F11")][4:6], [20, 3])          # 次の行の「10ｋ1」も同じ品目
@@ -121,9 +122,10 @@ class ShipActualBrowserTests(unittest.TestCase):
         text = page.inner_text("#app")
         self.assertIn("架空フーズ", text)
         self.assertNotIn("架空デリカ 龍ケ崎工場（", text.split("要確認：積み込み表と書き方が違う客先")[1].split("要確認：数量")[0])  # ケ・ヶの違いは自動でそろう
-        self.assertIn("重量の表", text)
         self.assertEqual(page.locator("text=この内容で確定数量を登録する").count(), 0)
         page.evaluate("()=>c142PickCustomer(c142Parse.ckey('架空フーズ'),'架空フーズ(八千代)')")
+        page.wait_for_timeout(50)
+        page.evaluate("()=>c142PickCustomer(c142Parse.ckey('龍ヶ崎'),'架空デリカ 龍ヶ崎工場')")
         page.locator("input[placeholder=kg]").first.fill("15")
         page.locator("input[placeholder=kg]").first.dispatch_event("change")
         page.wait_for_selector("text=この内容で確定数量を登録する")
@@ -139,6 +141,10 @@ class ShipActualBrowserTests(unittest.TestCase):
         self.assertEqual(by[("シート1", "F7")]["customer_name"], "架空フーズ(八千代)")
         self.assertEqual(by[("シート2", "A15")]["kg"], 15)
         self.assertEqual(by[("シート1", "A7")]["coop"], "架空農協(JGAP)")
+        # 計量したkgがケースの行に入り、重量の行そのものは送らない
+        self.assertEqual(by[("シート1", "A9")]["kg"], 403)
+        self.assertIn("計量 403kg", by[("シート1", "A9")]["note"])
+        self.assertNotIn(("シート2", "A7"), by)
 
     def test_view_shows_plan_and_actual_side_by_side(self):
         page = self.open_app("buyer")

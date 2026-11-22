@@ -85,6 +85,12 @@ create table if not exists public.ship_customer_aliases_v1199c142(
   updated_at timestamptz not null default now()
 );
 
+-- 産地報告書の書き方（品名）の初期登録：「剝きレタス」（剝の字・順番が積み込み表と違う）→ レタス
+insert into public.ship_plan_item_aliases_v1199c140(raw_key, raw_name, item_name, in_master, updated_by_name) values
+  ('剝きレタス','剝きレタス','レタス',true,'初期値'),
+  ('剥きレタス','剥きレタス','レタス',true,'初期値')
+on conflict (raw_key) do nothing;
+
 do $block$
 declare t text;
 begin
