@@ -52,12 +52,32 @@ def test_buyer_daily_buttons_average_by_shipping_days(self):
         if(t==='qr_lots'){const ids=decodeURIComponent(String(q).match(/id=in\\.\\(([^)]*)\\)/)[1]).split(',');return T.qr_lots.filter(l=>ids.includes(l.id))}return base(t,q)};
       v1153BuyerOptimalItems=()=>[{id:'i1',name:'キャベツ'},{id:'i2',name:'人参'},{id:'i3',name:'白菜'}];
       v163LotKgAtQuantity=(l,q)=>l.pack_weight==='10kg'?10*q:0;}""")
-    page.evaluate("()=>{currentScreen='home';document.getElementById('c134Daily')?.remove();document.querySelector('#app').insertAdjacentHTML('afterbegin','<div class=\"homeSummary\"></div>');return c134InjectBuyer()}")
+    page.evaluate("()=>{currentScreen='home';document.getElementById('c134Daily')?.remove();document.querySelector('#app').insertAdjacentHTML('afterbegin','<div class=\"homeSummary\"></div>');c134ResetCache();return c134InjectBuyer()}")  # c151：アプリを開いたときの先読みの結果は使わない
     page.wait_for_selector("#c134DailyBtns button")
     texts = page.eval_on_selector_all("#c134DailyBtns button", "els=>els.map(e=>{let t=e.innerText;for(const x of e.querySelectorAll('.c147Add'))t=t.replace(x.innerText,'');return t.replace(/\\s+/g,' ').trim()})")  # c147 が書き足す「明日の予定」は除いて比べる
     self.assertEqual(texts, ["キャベツ 日量 60kg 出庫2日", "人参 日量 － 出庫1日・重さ不明1件", "白菜 出庫なし"])
     page.click("#c134DailyBtns button:has-text('キャベツ')")
     page.wait_for_selector("text=在庫・出庫の分析")
+
+
+@_t
+def test_hq_share_counts_honsha_and_oginuma_carrot_radish(self):
+    # c151：本社への出庫は本社の分。荻沼（本社管轄の協力工場）への人参・大根も本社からの発注なので本社の分。玉葱は入れない
+    page = self.open_app("buyer")
+    by = page.evaluate("""async()=>{const now=Date.now(),day=k=>new Date(now-k*864e5).toISOString();
+      const lots=[{id:'L1',item_name:'人参'},{id:'L2',item_name:'カット大根'},{id:'L3',item_name:'玉葱'},{id:'L4',item_name:'キャベツ'}];
+      const moves=[
+        {id:'a',lot_id:'L1',movement_type:'出庫',qty:1,weight:100,destination:'荻沼',occurred_at:day(1)},
+        {id:'b',lot_id:'L1',movement_type:'出庫',qty:1,weight:40,destination:'現場作業',occurred_at:day(2)},
+        {id:'c',lot_id:'L2',movement_type:'出庫',qty:1,weight:60,destination:'荻沼',occurred_at:day(1)},
+        {id:'d',lot_id:'L3',movement_type:'出庫',qty:1,weight:70,destination:'荻沼',occurred_at:day(1)},
+        {id:'e',lot_id:'L4',movement_type:'出庫',qty:1,weight:30,destination:'本社',occurred_at:day(1)}];
+      qrSelect=async(t,q)=>t==='qr_lot_movements'?moves:t==='qr_lots'?lots:[];
+      c134ResetCache();const r=(await c134Load()).by;const o={};for(const k in r)o[k]=[r[k].kg,r[k].hqKg,r[k].days.size];return o}""")
+    self.assertEqual(by["人参"], [140, 100, 2])
+    self.assertEqual(by["カット大根"], [60, 60, 1])
+    self.assertEqual(by["玉葱"], [70, 0, 1])
+    self.assertEqual(by["キャベツ"], [30, 30, 1])
 
 
 @_t
