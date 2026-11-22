@@ -146,6 +146,25 @@ class ShipActualBrowserTests(unittest.TestCase):
         self.assertIn("計量 403kg", by[("シート1", "A9")]["note"])
         self.assertNotIn(("シート2", "A7"), by)
 
+    def test_compare_uses_kg_and_only_customers_with_actuals(self):
+        page = self.open_app("admin")
+        page.evaluate("""()=>{const T=window.__T;
+          T.ship_plan_imports_v1199c140=[{id:'P1',delivery_date:'2026-11-23',ship_date:'2026-11-22',status:'active',files:[],line_count:3,total_kg:1000,imported_by_name:'事務',imported_at:'2026-11-21T08:00:00Z'}];
+          T.ship_plan_lines_v1199c140=[{import_id:'P1',line_no:1,customer_name:'架空デリカ',item_name:'ほうれん草',item_in_master:true,item_raw:'業務用ほうれん草 5kg',qty_raw:'120',unit:'cs',kg:600,pack_kg:5,boxes:120},
+            {import_id:'P1',line_no:2,customer_name:'架空フーズ',item_name:'ほうれん草',item_in_master:true,item_raw:'ほうれん草 8kg',qty_raw:'14',unit:'cs',kg:112,pack_kg:8,boxes:14},
+            {import_id:'P1',line_no:3,customer_name:'(株)せき 埼玉工場',item_name:'ほうれん草',item_in_master:true,item_raw:'ほうれん草',qty_raw:'400',unit:'kg',kg:400,pack_kg:null}];
+          T.ship_actual_imports_v1199c142=[{id:'A1',delivery_date:'2026-11-23',ship_date:'2026-11-22',status:'active',line_count:2,total_kg:712,imported_by_name:'社員',imported_at:'2026-11-22T08:00:00Z'}];
+          T.ship_actual_lines_v1199c142=[{import_id:'A1',line_no:1,customer_name:'架空デリカ',item_name:'ほうれん草',item_in_master:true,item_raw:'ほうれん草',kg:600,pack_kg:6,boxes:100},
+            {import_id:'A1',line_no:2,customer_name:'架空フーズ',item_name:'ほうれん草',item_in_master:true,item_raw:'ほうれん草',kg:112,pack_kg:null,boxes:19}]}""")
+        page.evaluate("()=>c140ShipPlanPage('2026-11-23','')")
+        page.wait_for_selector("text=品目ごとの合計")
+        text = page.inner_text("#app")
+        self.assertNotIn("違い", text.split("品目ごとの合計")[1].split("ケース数は")[0])   # kgが同じなら、ケースの数が違っても「違い」にしない
+        self.assertIn("確定のある客先の予定：", text)                                      # 埼玉は比べない
+        self.assertIn("1,112kg（8kg×14・5kg×120）", text)     # 書いてある箱の重さ×箱数のまま
+        self.assertIn("712kg（6kg×100・重さ混在19箱）", text)
+        self.assertNotIn("違い1", text)                                   # 確定のない客先（埼玉）は「違い」にしない
+
     def test_view_shows_plan_and_actual_side_by_side(self):
         page = self.open_app("buyer")
         page.evaluate("""()=>{const T=window.__T;
