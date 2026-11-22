@@ -116,13 +116,13 @@ class ShipPlanBrowserTests(unittest.TestCase):
         page = self.open_app("clerk")
         page.evaluate(f"""async()=>{{const books=({BOOKS})('2026-11-21');const m={MASTERS};c140Prepare(books,'2026-11-21',m,{{active:null,lines:[]}});return c140PreviewPage()}}""")
         page.wait_for_selector("text=要確認：知らない品名")
-        self.assertEqual(page.locator("text=この内容で登録する").count(), 0)
+        self.assertEqual(page.locator("text=選んだ日を登録する").count(), 0)
         self.assertGreater(page.locator("text=カット大根・葉付き大根などを取り違えない").count(), 0)
         page.evaluate("()=>c140PickItem('大根','カット大根')")
         page.locator("input[placeholder=kg]").first.fill("152")
         page.locator("input[placeholder=kg]").first.dispatch_event("change")
-        page.wait_for_selector("text=この内容で登録する")
-        page.click("text=この内容で登録する")
+        page.wait_for_selector("text=選んだ日を登録する")
+        page.click("text=選んだ日を登録する")
         page.wait_for_function("()=>window.__rpc.some(r=>r[0]==='replace_ship_plan_v1199c140')")
         rpc = page.evaluate("()=>window.__rpc")
         self.assertEqual(rpc[0][0], "save_ship_plan_alias_v1199c140")
@@ -148,6 +148,46 @@ class ShipPlanBrowserTests(unittest.TestCase):
         page.wait_for_function("()=>window.__rpc.some(r=>r[0]==='save_ship_plan_alias_v1199c140')")
         self.assertEqual(page.evaluate("()=>window.__rpc.find(r=>r[0]==='save_ship_plan_alias_v1199c140')[1]"),
                          {"p_key": "馬鈴薯", "p_raw": "馬鈴薯", "p_item": "とうや", "p_in_master": True})
+
+    MULTI = """()=>{
+     const serial=d=>Math.round((new Date(d+'T00:00:00Z')-new Date('1899-12-30T00:00:00Z'))/864e5);
+     const D=n=>{const t=new Date(todayKey()+'T00:00:00+09:00');t.setDate(t.getDate()+n);return ymdKey(t)};
+     const mk=(d,kg)=>{const ws=XLSX.utils.aoa_to_sheet([[null,null],['架空便'],[],['架空デリカ'],['キャベツ　10kg',kg,'cs']]);ws['!merges']=[{s:{r:1,c:0},e:{r:2,c:4}},{s:{r:3,c:0},e:{r:3,c:2}}];ws['B1']={t:'n',v:serial(d)};return ws};
+     const mk2=(d)=>{const ws=XLSX.utils.aoa_to_sheet([[null,null],['架空 引き取り便'],[],['架空フーズ'],['人参　10kg','15kg*2','cs']]);ws['!merges']=[{s:{r:1,c:0},e:{r:2,c:4}},{s:{r:3,c:0},e:{r:3,c:2}}];ws['B1']={t:'n',v:serial(d)};return ws};
+     const b1={SheetNames:['a','b','c','d'],Sheets:{a:mk(D(-1),5),b:mk(D(1),12),c:mk(D(2),3),d:mk(D(3),7)}};
+     const b2={SheetNames:['a','b','c'],Sheets:{a:mk2(D(-1)),b:mk2(D(1)),c:mk2(D(2))}};
+     window.__D=[D(-1),D(1),D(2),D(3)];
+     return [{name:'その1.xlsx',wb:b1},{name:'その2.xlsx',wb:b2}];
+    }"""
+
+    def test_many_days_at_once_skips_unchanged_days_and_resumes(self):
+        page = self.open_app("worker")
+        page.evaluate(f"""async()=>{{const books=({self.MULTI})();const [p,t1,t2,t3]=window.__D;const m={MASTERS};
+          const cur=new Map(window.__D.map(d=>[d,{{active:null,lines:[]}}]));
+          cur.set(t1,{{active:{{id:'old',delivery_date:t1}},lines:[{{customer:'架空デリカ',item:'キャベツ',kg:120}},{{customer:'架空フーズ',item:'人参',kg:30}}]}});
+          c140Prepare(books,null,m,cur);return c140PreviewPage()}}""")
+        page.wait_for_selector("text=取り込む納品日を選ぶ")
+        days = page.evaluate("()=>[...document.querySelectorAll('#app label')].filter(l=>l.querySelector('input[type=checkbox]')&&/（/.test(l.textContent)&&!/マスタに追加/.test(l.textContent)).map(l=>[l.querySelector('input').checked,l.textContent.replace(/\\s+/g,' ').trim()])")
+        self.assertEqual([d[0] for d in days], [True, True, False, False])          # 片方にしかない日・過去の日（たたんである）は外れている
+        self.assertIn("変わらない", days[0][1])
+        self.assertIn("新しく登録", days[1][1])
+        self.assertIn("シートがありません", days[2][1])
+        self.assertIn("過去の日", days[3][1])
+        self.assertIn("1日分・変わらない1日は登録しません", page.inner_text("#app"))
+        # 過去の日も選べる。2つ目の登録で通信が切れたら、もう一度押すと残りから続ける
+        page.evaluate("()=>c140ToggleDate(window.__D[0],true)")
+        page.wait_for_selector("text=2日分")
+        page.evaluate("""()=>{let n=0;const base=callRpc;callRpc=async(name,a)=>{if(name==='replace_ship_plan_v1199c140'&&++n===2){window.__rpc.push(['fail',a]);throw new Error('通信が切れました')}return base(name,a)};window.alert=()=>{}}""")
+        page.click("text=選んだ日を登録する")
+        page.wait_for_function("()=>window.__rpc.some(r=>r[0]==='fail')")
+        page.wait_for_selector("text=選んだ日を登録する")
+        page.click("text=選んだ日を登録する")
+        page.wait_for_selector("text=出荷予定を")
+        rpc = page.evaluate("()=>window.__rpc.filter(r=>r[0]!=='save_ship_plan_alias_v1199c140').map(r=>[r[0],r[1].p_delivery_date,r[1].p_import_id,(r[1].p_lines||[]).length])")
+        D = page.evaluate("()=>window.__D")
+        self.assertEqual([(r[0], r[1]) for r in rpc], [("replace_ship_plan_v1199c140", D[0]), ("fail", D[2]), ("replace_ship_plan_v1199c140", D[2])])
+        self.assertEqual(rpc[1][2], rpc[2][2])     # 同じ日は同じ取り込みIDで送り直す
+        self.assertEqual(rpc[2][3], 2)
 
     def test_home_button_by_role(self):
         for role, expect in (("buyer", "明日の出荷予定を見る"), ("worker", "明日の出荷予定を見る・取り込む"), ("hq_prep", None)):

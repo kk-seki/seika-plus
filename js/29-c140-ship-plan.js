@@ -7,7 +7,8 @@
    ・ケース数＝kg ÷ 標準ケース（マスタ。なければ積み込み表の1箱の重さ）を切り上げ。割り切れないときは「端数あり」。
      全客先を合わせても10kg以下の品目は、ケースではなく重さ（kg・g）で表示する。
    ・出荷日＝納品日の前日。同じ納品日をもう一度取り込んだら置き換え（前の分は「置き換え済み」で残る）。
-   ・取り込み：管理者・青果社員・事務員。見る：石岡の役割（営業・仕入れ担当者を含む）。 */
+   ・取り込み：管理者・青果社員・事務員。見る：石岡の役割（営業・仕入れ担当者を含む）。
+   ・c141：ファイルに入っている何日分もまとめて取り込む（はじめは明日以降の日。中身が変わらない日は登録し直さない。1日ずつ順に登録し、途中で止まっても続きから）。 */
 (()=>{
 const IMPORT_ROLES=["admin","worker","clerk"],VIEW_ROLES=["admin","worker","buyer","sales","clerk","office_viewer","viewer"];
 const SMALL_KG=10;
@@ -194,51 +195,80 @@ async function c140ShipPlanPage(dateKey="",msg=""){
  pageShell("出荷予定（積み込み表）","客先ごとの出荷予定（翌日分を前日の夕方に取り込み）",`${okHtml(msg)}<div class="card">${nav}${tools}</div>${body}${hist}`);
 }
 
-/* ---------- 取り込み ---------- */
+/* ---------- 取り込み（c141：ファイルに入っている何日分もまとめて） ---------- */
 let pending=null;
 function c140ImportPage(dateKey=""){
  if(!canImport()){alert("取り込みは管理者・青果社員・事務員だけが使えます");return c140ShipPlanPage()}
- const d=dateKey||addDays(todayKey(),1);
- setScreen("c140ImportPage",[d]);
- pageShell("積み込み表の取り込み","納品日を選んで、その月の積み込み表を選びます",`<div class="card">
-  <label class="label">納品日</label><input id="c140ImportDate" type="date" value="${esc(d)}" style="font-size:18px;padding:6px">
-  <div class="small" style="margin-top:6px">出荷日（セット日）は納品日の前日として保存します。</div>
+ setScreen("c140ImportPage",[dateKey]);
+ pageShell("積み込み表の取り込み","その月の積み込み表を選ぶと、入っている納品日が一覧で出ます",`<div class="card">
   <input id="c140Files" type="file" accept=".xlsx,.xls" multiple style="display:none" ${seikaEventAttrs("change","c140ReadFiles",[{__seikaElement:true}])}>
-  <button class="btn c140Btn" style="width:100%;margin-top:12px" ${seikaEventAttrs("click","c140PickFiles",[])}>積み込み表を選ぶ（同じ月の2ファイル）</button>
-  <div class="small" style="margin-top:8px">2つのファイルを一度に選びます（スマホは長押しで複数選べます）。ファイルはこの端末の中で読み、サーバーには送りません。積み込み表は保存してから選んでください。</div></div>
-  <button class="btn btn2" style="width:100%" ${seikaEventAttrs("click","c140ShipPlanPage",[d,""])}>戻る</button>`);
+  <button class="btn c140Btn" style="width:100%" ${seikaEventAttrs("click","c140PickFiles",[])}>積み込み表を選ぶ（同じ月の2ファイル）</button>
+  <div class="small" style="margin-top:8px">2つのファイルを一度に選びます（スマホは長押しで複数選べます）。ファイルの中の何日分もまとめて取り込めます。はじめは明日以降の納品日が選ばれていて、中身が変わらない日は登録し直しません。ファイルはこの端末の中で読み、サーバーには送りません。積み込み表は保存してから選んでください。</div></div>
+  <button class="btn btn2" style="width:100%" ${seikaEventAttrs("click","c140ShipPlanPage",[dateKey,""])}>戻る</button>`);
 }
 function c140PickFiles(){const f=document.getElementById("c140Files");if(f){f.value="";f.click()}}
 async function c140ReadFiles(input){
  const files=[...(input?.files||[])];if(!files.length)return;
  if(typeof XLSX==="undefined")return alert("Excelの部品が読み込まれていません。");
- const d=document.getElementById("c140ImportDate")?.value||addDays(todayKey(),1);
  busy(true,"積み込み表を読み込んでいます");
  try{
   const books=[];for(const f of files)books.push({name:f.name,wb:XLSX.read(await f.arrayBuffer(),{type:"array",cellDates:false})});
-  const [m,plan]=await Promise.all([loadMasters(true),loadPlan(d).catch(()=>({active:null,lines:[]}))]);
-  c140Prepare(books,d,m,plan);
+  const dates=listDates(books);
+  if(!dates.length)return alert("積み込み表の形のシートが見つかりませんでした（シートのB1に納品日がありません）。ファイルを確かめてください。");
+  const [m,cur]=await Promise.all([loadMasters(true),loadPlans(dates.map(d=>d.date))]);
+  c140Prepare(books,null,m,cur);
   return c140PreviewPage();
  }catch(e){alert(sqlMissing(e)?NEED_SQL:`積み込み表を読み込めませんでした。\n${e?.message||e}`)}finally{busy(false)}
 }
-/* 読んだ行に品目・ケースを付ける（テストからも呼ぶ） */
-function c140Prepare(books,dateKey,m,plan){
+/* ブックに入っている納品日（シートのB1）の一覧。2ファイルのどちらかにしかない日は missing に名前が入る */
+function listDates(books){
+ const by=new Map;
+ for(const {wb,name} of books)for(const sn of wb.SheetNames){const d=cellDate(wb.Sheets[sn],0,1);if(!d)continue;if(!by.has(d))by.set(d,new Set);by.get(d).add(name)}
+ return[...by].sort((a,b)=>a[0]<b[0]?-1:1).map(([date,fs])=>({date,files:[...fs],missing:books.map(b=>b.name).filter(n=>!fs.has(n))}));
+}
+/* 保存済みの出荷予定（今有効なもの）を何日分もまとめて読む：日付 → {active, lines} */
+async function loadPlans(dates){
+ const out=new Map(dates.map(d=>[d,{active:null,lines:[]}]));if(!dates.length)return out;
+ const imps=await qrSelect(T.imp,`select=*&status=eq.active&delivery_date=in.(${dates.join(",")})&limit=500`);
+ const ids=(imps||[]).map(i=>i.id);
+ const lines=ids.length?await qrSelect(T.line,`select=*&import_id=in.(${ids.join(",")})&order=line_no.asc&limit=50000`):[];
+ for(const i of imps||[])out.set(i.delivery_date,{active:i,lines:[]});
+ const byId=new Map((imps||[]).map(i=>[i.id,i.delivery_date]));
+ for(const l of lines||[]){const d=byId.get(l.import_id);if(d&&out.has(d))out.get(d).lines.push({...l,item:l.item_name,customer:l.customer_name,kg:l.kg===null?null:Number(l.kg)})}
+ return out;
+}
+const lk=l=>`${l.file}|${l.sheet}|${l.col}${l.row}`;
+/* 読んだ行に品目・ケースを付ける（テストからも呼ぶ）。dateKey を渡すとその日だけ選ぶ（なければ明日以降の日を選ぶ） */
+function c140Prepare(books,dateKey,m,cur){
  masters=m||masters;
- const r=readBooks(books,dateKey);
- for(const l of r.lines){const it=resolveItem(l.base,masters);if(it){l.item=it.item;l.inMaster=it.inMaster}else{l.item="";l.inMaster=true;l.issues.push("item")}}
- pending={date:dateKey,...r,picks:{},kgFix:{},custFix:{},addAlias:{},current:plan||{active:null,lines:[]},importId:uuid()};
+ const dates=listDates(books),tomorrow=addDays(todayKey(),1);
+ const curMap=cur instanceof Map?cur:new Map(dateKey?[[dateKey,cur||{active:null,lines:[]}]]:[]);
+ const selected=new Set(dateKey?[dateKey]:dates.filter(d=>d.date>=tomorrow&&!d.missing.length).map(d=>d.date));
+ pending={books,dates,selected,current:curMap,picks:{},kgFix:{},custFix:{},addAlias:{},importIds:{},done:{},date:dateKey||[...selected][0]||""};
+ readSelected();
  return pending;
 }
+function readSelected(){
+ const p=pending,lines=[],sheets=[],errors=[],bad=new Set;
+ for(const d of [...p.selected].sort()){
+  const r=readBooks(p.books.filter(b=>p.dates.find(x=>x.date===d)?.files.includes(b.name)),d);
+  if(r.errors.length){errors.push(...r.errors.map(e=>`${md(d)}：${e}`));bad.add(d)}
+  for(const l of r.lines){l.date=d;const it=resolveItem(l.base,masters);if(it){l.item=it.item;l.inMaster=it.inMaster}else{l.item="";l.inMaster=true;l.issues.push("item")}lines.push(l)}
+  sheets.push(...r.sheets.map(s=>({...s,date:d})));
+ }
+ Object.assign(p,{lines,sheets,errors,bad});
+}
+function c140ToggleDate(d,on){if(!pending)return;on?pending.selected.add(d):pending.selected.delete(d);readSelected();return rerender()}
 function effective(){
  const p=pending;if(!p)return[];
- return p.lines.map((l,i)=>{const o={...l,idx:i};
+ return p.lines.map(l=>{const o={...l},k=lk(l);
   if(l.issues.includes("item")){const pk=p.picks[key(l.base)];if(pk){o.item=pk.item;o.inMaster=pk.inMaster}}
-  if((l.issues.includes("qty")||l.issues.includes("unit")||l.kg===null)&&p.kgFix[i]!==undefined&&p.kgFix[i]!==""){o.kg=Number(p.kgFix[i]);if(!o.unit)o.unit="kg"}
-  if(l.issues.includes("customer")&&p.custFix[i])o.customer=p.custFix[i];
+  if((l.issues.includes("qty")||l.issues.includes("unit")||l.kg===null)&&p.kgFix[k]!==undefined&&p.kgFix[k]!==""){o.kg=Number(p.kgFix[k]);if(!o.unit)o.unit="kg"}
+  if(l.issues.includes("customer")&&p.custFix[k])o.customer=p.custFix[k];
   /* ケースの数だけで規格（kg）が書いていない行は、標準ケースの重さで kg にする */
   if(o.unit==="cs"&&(o.kg===null||o.kg===undefined)&&o.boxes>0&&o.item){const sd=masters?.std?.get(o.item);if(sd){o.kg=Math.round(o.boxes*sd*1000)/1000;o.pack=sd}}
   o.open=[];if(!o.item)o.open.push("品目を選んでください");
-  if((l.issues.includes("qty")||l.issues.includes("unit"))&&!(p.kgFix[i]>0))o.open.push("数量（kg）を入れてください");
+  if((l.issues.includes("qty")||l.issues.includes("unit"))&&!(p.kgFix[k]>0))o.open.push("数量（kg）を入れてください");
   if(!o.customer)o.open.push("客先を入れてください");
   if(!o.unit)o.unit="kg";
   return o});
@@ -250,65 +280,95 @@ function diffOf(now,cur){
  for(const [k,v] of b)if(!a.has(k))del.push([k,v]);
  return{add,chg,del};
 }
+/* 日ごとの状態：new 新しく登録 ／ change 変わる ／ same 変わらない（登録し直さない） ／ bad 読めない */
+function dayStates(){
+ const p=pending,eff=effective(),out=[];
+ for(const d of [...p.selected].sort()){
+  const ls=eff.filter(l=>l.date===d),cur=p.current.get(d)||{active:null,lines:[]},open=ls.filter(l=>l.open.length).length;
+  if(p.bad.has(d)||!ls.length){out.push({date:d,state:"bad",lines:ls,open});continue}
+  const df=diffOf(ls,cur.lines);
+  const st=p.done[d]?"done":!cur.active?"new":(df.add.length||df.chg.length||df.del.length)?"change":"same";
+  out.push({date:d,state:st,lines:ls,open,diff:df,cur});
+ }
+ return out;
+}
 function c140PreviewPage(){
  const p=pending;if(!p)return c140ImportPage();
  setScreen("c140PreviewPage",[]);
- const lines=effective(),items=seikaItems(),open=lines.filter(l=>l.open.length);
- const errs=p.errors.length?`<div class="card err"><b>読めなかったファイル</b>${p.errors.map(e=>`<div class="small">${esc(e)}</div>`).join("")}</div>`:"";
- if(!p.lines.length)return pageShell("積み込み表の取り込み（確認）",`納品日 ${md(p.date)}`,`${errs}<div class="card err">登録できる行がありません。間違った数字で登録しないよう、ここで止めています。</div><button class="btn btn2" style="width:100%" ${seikaEventAttrs("click","c140ImportPage",[p.date])}>選び直す</button>`);
- /* 品目の要確認は、同じ品名ごとにまとめて1回選ぶ */
+ const items=seikaItems(),days=dayStates(),eff=days.flatMap(d=>d.lines),open=eff.filter(l=>l.open.length);
+ const tomorrow=addDays(todayKey(),1);
+ const stTxt={new:"新しく登録",change:"変わる",same:"変わらない（登録しません）",bad:"読めません（登録しません）",done:"登録済み"};
+ const dayInfo=new Map(days.map(d=>[d.date,d]));
+ const dateRow=x=>{const on=p.selected.has(x.date),di=dayInfo.get(x.date);let info="";
+  if(on&&di){info=`<b class="c140St c140St_${di.state}">${stTxt[di.state]}</b>`;if(di.state==="change")info+=`<span class="small">（追加${di.diff.add.length}・変更${di.diff.chg.length}・なくなる${di.diff.del.length}）</span>`;if(di.state!=="bad")info+=` <span class="small">${di.lines.length}行${di.open?`・要確認${di.open}`:""}</span>`}
+  const warn=x.missing.length?`<div class="small" style="color:#b45309">⚠ ${esc(x.missing.join("、"))} にこの日のシートがありません（片方だけで登録すると数が足りなくなります）</div>`:"";
+  return `<label style="display:flex;gap:8px;align-items:flex-start;border-top:1px solid #e2e8f0;padding:6px 0;cursor:pointer"><input type="checkbox" style="width:20px;height:20px;margin-top:2px;flex:none" ${on?"checked":""} ${seikaEventAttrs("change","c140ToggleDate",[x.date,{__seikaChecked:true}])}><span><b>${md(x.date)}</b>${x.date<tomorrow?'<span class="small">（過去の日）</span>':""} ${info}${warn}</span></label>`};
+ const dateCard=`<div class="card"><b>取り込む納品日を選ぶ</b><div class="small">ファイルに入っている納品日です。はじめは明日（${md(tomorrow)}）以降が選ばれています。出荷日は納品日の前日です。</div>
+  ${p.dates.filter(x=>x.date>=tomorrow).map(dateRow).join("")||'<div class="small">明日以降の納品日のシートはありません。</div>'}
+  ${p.dates.some(x=>x.date<tomorrow)?`<details ${p.dates.some(x=>x.date<tomorrow&&p.selected.has(x.date))?"open":""} style="margin-top:6px"><summary style="cursor:pointer" class="small">過去の日（${p.dates.filter(x=>x.date<tomorrow).length}日）も取り込むときは開く</summary>${p.dates.filter(x=>x.date<tomorrow).map(dateRow).join("")}</details>`:""}</div>`;
+ const errs=p.errors.length?`<div class="card err"><b>読めなかったシート</b>${p.errors.map(e=>`<div class="small">${esc(e)}</div>`).join("")}</div>`:"";
  const needItem=new Map;for(const l of p.lines)if(l.issues.includes("item")){const k=key(l.base);if(!needItem.has(k))needItem.set(k,{base:l.base,rows:[]});needItem.get(k).rows.push(l)}
  const opt=(sel)=>`<option value="">選んでください</option>${items.map(x=>`<option value="${esc(x)}" ${sel===x?"selected":""}>${esc(x)}</option>`).join("")}<option value="__raw__" ${sel==="__raw__"?"selected":""}>SEIKA＋の品目にない（この名前で保存）</option>`;
- const itemCard=needItem.size?`<div class="card warn"><b>要確認：知らない品名（${needItem.size}種類）</b><div class="small">品名読み替えマスタにない書き方です。推測はしません。SEIKA＋のどの品目か選んでください。「大根」とだけ書いてあるものは、カット大根・葉付き大根などを取り違えないよう特に注意してください。</div>
+ const itemCard=needItem.size?`<div class="card warn"><b>要確認：知らない品名（${needItem.size}種類）</b><div class="small">品名読み替えマスタにない書き方です。推測はしません。SEIKA＋のどの品目か選んでください（何日分あっても同じ品名は1回で全部に当たります）。「大根」とだけ書いてあるものは、カット大根・葉付き大根などを取り違えないよう特に注意してください。</div>
   ${[...needItem].map(([k,v])=>{const pk=p.picks[k],sel=pk?(pk.inMaster?pk.item:"__raw__"):"";return `<div style="border-top:1px solid #e2e8f0;margin-top:8px;padding-top:8px"><b>${esc(v.base)}</b><span class="small">（${v.rows.length}行：${esc([...new Set(v.rows.map(r=>r.raw))].slice(0,3).join("、"))}${v.rows.length>3?"…":""}）</span>
    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:4px"><select style="font-size:16px;padding:6px;min-width:12em" ${seikaEventAttrs("change","c140PickItem",[k,{__seikaValue:true}])}>${opt(sel)}</select>
    <label class="small"><input type="checkbox" ${p.addAlias[k]!==false?"checked":""} ${seikaEventAttrs("change","c140ToggleAlias",[k,{__seikaChecked:true}])}> 品名読み替えマスタに追加する</label></div></div>`}).join("")}</div>`:"";
- const qtyRows=lines.filter(l=>l.issues.includes("qty")||l.issues.includes("unit"));
+ const qtyRows=eff.filter(l=>l.issues.includes("qty")||l.issues.includes("unit"));
  const qtyCard=qtyRows.length?`<div class="card warn"><b>要確認：数量の書き方が読めない行（${qtyRows.length}行）</b><div class="small">積み込み表の書き方を見て、合計のkgを入れてください（例：「15kg*13.5kg*1」→ 15kg×13箱＋5kg×1箱なら 200）。</div>
-  ${qtyRows.map(l=>`<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid #e2e8f0;margin-top:6px;padding-top:6px"><div style="flex:1;min-width:14em">${esc(l.customer||"-")}・${esc(l.raw)}<div class="small">書き方：「${esc(l.qtyRaw)}」${l.unit?"":"（単位なし）"}・${esc(l.file)} シート${esc(l.sheet)} ${esc(l.col)}${l.row}</div></div><input type="number" inputmode="decimal" min="0" step="0.1" value="${esc(p.kgFix[l.idx]??"")}" placeholder="kg" style="width:7em;font-size:16px;padding:6px" ${seikaEventAttrs("change","c140FixKg",[l.idx,{__seikaValue:true}])}> kg</div>`).join("")}</div>`:"";
- const custRows=lines.filter(l=>l.issues.includes("customer"));
- const custCard=custRows.length?`<div class="card warn"><b>要確認：客先が分からない行（${custRows.length}行）</b>${custRows.map(l=>`<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px"><div style="flex:1;min-width:14em">${esc(l.raw)}（${esc(l.qtyRaw)}）<div class="small">${esc(l.file)} シート${esc(l.sheet)} ${esc(l.col)}${l.row}</div></div><input type="text" value="${esc(p.custFix[l.idx]||"")}" placeholder="客先" style="width:12em;font-size:16px;padding:6px" ${seikaEventAttrs("change","c140FixCust",[l.idx,{__seikaValue:true}])}></div>`).join("")}</div>`:"";
- const ready=lines.filter(l=>l.item&&!l.open.length),tots=itemTotals(ready,masters),totMap=new Map(tots.map(o=>[o.item,o]));
- const fracN=ready.filter(l=>!totMap.get(l.item)?.small&&casesOf(l.item,l.kg,l.pack,masters).frac).length;
- const d=diffOf(ready,p.current?.lines||[]);
- const diff=p.current?.active?`<div class="card"><b>今の出荷予定との違い</b>（${esc(String(p.current.active.imported_at).slice(0,16).replace("T"," "))}の取り込み）<div class="row" style="margin-top:6px;flex-wrap:wrap"><div class="box">追加<b>${d.add.length}</b></div><div class="box">数量が変わる<b>${d.chg.length}</b></div><div class="box">なくなる<b>${d.del.length}</b></div></div>
-  ${d.chg.length?`<details ${d.chg.length<=20?"open":""}><summary style="cursor:pointer">数量が変わる（${d.chg.length}件）</summary>${d.chg.map(([k,a,b])=>`<div class="small">${esc(k)}：${num(a)}kg → <b>${num(b)}kg</b></div>`).join("")}</details>`:""}
-  ${d.add.length?`<details><summary style="cursor:pointer">追加（${d.add.length}件）</summary>${d.add.map(([k,v])=>`<div class="small">${esc(k)}：${num(v)}kg</div>`).join("")}</details>`:""}
-  ${d.del.length?`<details open><summary style="cursor:pointer">なくなる（${d.del.length}件）</summary>${d.del.map(([k,v])=>`<div class="small">${esc(k)}：${num(v)}kg</div>`).join("")}</details>`:""}
-  <div class="small">登録すると、今の出荷予定は「置き換え済み」として残り、この内容に置き換わります（足し算はしません）。</div></div>`:"";
- const sheets=p.sheets.map(s=>`<div class="small">${esc(s.file)}：シート「${esc(s.sheet)}」${s.count}行</div>`).join("");
- const ok=!open.length&&ready.length>0;
- pageShell("積み込み表の取り込み（確認）",`納品日 ${md(p.date)} ／ 出荷日 ${md(addDays(p.date,-1))}`,`${errs}<div class="card"><b>読んだ行：${p.lines.length}行</b>${sheets}
-  <div class="row" style="margin-top:8px;flex-wrap:wrap"><div class="box">要確認<b>${open.length}</b></div><div class="box">端数あり<b>${fracN}</b></div><div class="box">客先<b>${new Set(ready.map(l=>l.customer)).size}</b></div><div class="box">品目<b>${tots.length}</b></div></div></div>
-  ${itemCard}${qtyCard}${custCard}${diff}
-  <div class="card"><b>品目ごとの合計</b>${open.length?`<div class="small">要確認の行（${open.length}行）は入っていません。</div>`:""}<div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>品目</th><th>数量</th></tr>${tots.map(o=>`<tr><td>${esc(o.item)}</td><td>${totalText(o)}</td></tr>`).join("")}</table></div></div>
-  <div class="card">${ok?`<button class="btn green" style="width:100%" ${seikaEventAttrs("click","c140Save",[])}>この内容で登録する（${ready.length}行）</button>`:`<div class="err">要確認の行（${open.length}行）を直すと登録できます。</div>`}
+  ${qtyRows.map(l=>`<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid #e2e8f0;margin-top:6px;padding-top:6px"><div style="flex:1;min-width:14em">${md(l.date)}・${esc(l.customer||"-")}・${esc(l.raw)}<div class="small">書き方：「${esc(l.qtyRaw)}」${l.unit&&!l.issues.includes("unit")?"":"（単位なし）"}・${esc(l.file)} シート${esc(l.sheet)} ${esc(l.col)}${l.row}</div></div><input type="number" inputmode="decimal" min="0" step="0.1" value="${esc(p.kgFix[lk(l)]??"")}" placeholder="kg" style="width:7em;font-size:16px;padding:6px" ${seikaEventAttrs("change","c140FixKg",[lk(l),{__seikaValue:true}])}> kg</div>`).join("")}</div>`:"";
+ const custRows=eff.filter(l=>l.issues.includes("customer"));
+ const custCard=custRows.length?`<div class="card warn"><b>要確認：客先が分からない行（${custRows.length}行）</b>${custRows.map(l=>`<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px"><div style="flex:1;min-width:14em">${md(l.date)}・${esc(l.raw)}（${esc(l.qtyRaw)}）<div class="small">${esc(l.file)} シート${esc(l.sheet)} ${esc(l.col)}${l.row}</div></div><input type="text" value="${esc(p.custFix[lk(l)]||"")}" placeholder="客先" style="width:12em;font-size:16px;padding:6px" ${seikaEventAttrs("change","c140FixCust",[lk(l),{__seikaValue:true}])}></div>`).join("")}</div>`:"";
+ const dayCards=days.filter(d=>d.state!=="bad").map((d,i)=>{const ready=d.lines.filter(l=>l.item&&!l.open.length),tots=itemTotals(ready,masters);
+  const df=d.diff,cur=d.cur;
+  const diff=cur?.active&&d.state==="change"?`<div style="margin:6px 0">${df.chg.length?`<div class="small"><b>数量が変わる</b>：${df.chg.map(([k,a,b])=>`${esc(k)} ${num(a)}→<b>${num(b)}</b>kg`).join("、")}</div>`:""}${df.add.length?`<div class="small"><b>追加</b>：${df.add.map(([k,v])=>`${esc(k)} ${num(v)}kg`).join("、")}</div>`:""}${df.del.length?`<div class="small"><b>なくなる</b>：${df.del.map(([k,v])=>`${esc(k)} ${num(v)}kg`).join("、")}</div>`:""}</div>`:"";
+  return `<details ${i===0&&days.length<=1?"open":""} style="margin-top:6px"><summary style="font-weight:800;cursor:pointer">${md(d.date)}　${stTxt[d.state]}<span class="small">（${d.lines.length}行・${tots.length}品目）</span></summary>${diff}<div style="overflow:auto"><table class="table" style="font-size:14px"><tr><th>品目</th><th>数量</th></tr>${tots.map(o=>`<tr><td>${esc(o.item)}</td><td>${totalText(o)}</td></tr>`).join("")}</table></div></details>`}).join("");
+ const toSave=days.filter(d=>d.state==="new"||d.state==="change"),same=days.filter(d=>d.state==="same").length;
+ const ok=!open.length&&toSave.length>0;
+ const sheets=p.sheets.length?`<div class="small">${[...new Set(p.sheets.map(s=>s.file))].map(f=>esc(f)).join("、")}</div>`:"";
+ pageShell("積み込み表の取り込み（確認）",`選んだ納品日：${p.selected.size}日`,`${dateCard}${errs}
+  <div class="card"><b>読んだ行：${p.lines.length}行</b>${sheets}
+  <div class="row" style="margin-top:8px;flex-wrap:wrap"><div class="box">要確認<b>${open.length}</b></div><div class="box">登録する日<b>${toSave.length}</b></div><div class="box">変わらない日<b>${same}</b></div></div></div>
+  ${itemCard}${qtyCard}${custCard}
+  ${dayCards?`<div class="card"><b>日ごとの品目の合計</b>${open.length?`<div class="small">要確認の行（${open.length}行）は入っていません。</div>`:""}${dayCards}<div class="small" style="margin-top:6px">登録すると、その日の今の出荷予定は「置き換え済み」として残り、この内容に置き換わります（足し算はしません）。</div></div>`:""}
+  <div class="card">${ok?`<button class="btn green" style="width:100%" ${seikaEventAttrs("click","c140Save",[])}>選んだ日を登録する（${toSave.length}日分${same?`・変わらない${same}日は登録しません`:""}）</button>`:open.length?`<div class="err">要確認の行（${open.length}行）を直すと登録できます。</div>`:`<div class="notice">登録する日がありません（選んだ日はどれも変わっていないか、読めません）。</div>`}
   <button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c140CancelImport",[])}>登録せずに戻る</button></div>`);
 }
 /* 入力欄の変更で画面を描き直すときは、先にフォーカスを外してから（描き直しの途中で blur が走らないように） */
 function rerender(){try{document.activeElement?.blur?.()}catch(_){}setTimeout(()=>{if(currentScreen==="c140PreviewPage")c140PreviewPage()},0)}
 function c140PickItem(k,v){if(!pending)return;if(!v)delete pending.picks[k];else pending.picks[k]=v==="__raw__"?{item:pending.lines.find(l=>key(l.base)===k)?.base||k,inMaster:false}:{item:v,inMaster:true};return rerender()}
 function c140ToggleAlias(k,on){if(pending)pending.addAlias[k]=!!on}
-function c140FixKg(i,v){if(!pending)return;const n=Number(v);if(v===""||!(n>0))delete pending.kgFix[i];else pending.kgFix[i]=n;return rerender()}
-function c140FixCust(i,v){if(!pending)return;const s=N(v);if(s)pending.custFix[i]=s;else delete pending.custFix[i];return rerender()}
-function c140CancelImport(){const d=pending?.date;pending=null;return c140ShipPlanPage(d||"","")}
-function payload(){
- return effective().map(l=>({customer_name:l.customer,customer_norm:key(l.customer),route:l.route||"",item_name:l.item,item_in_master:l.inMaster!==false,item_raw:l.raw,qty_raw:l.qtyRaw,unit:l.unit||"kg",
+function c140FixKg(k,v){if(!pending)return;const n=Number(v);if(v===""||!(n>0))delete pending.kgFix[k];else pending.kgFix[k]=n;return rerender()}
+function c140FixCust(k,v){if(!pending)return;const s=N(v);if(s)pending.custFix[k]=s;else delete pending.custFix[k];return rerender()}
+function c140CancelImport(){const d=[...(pending?.selected||[])].sort()[0];pending=null;return c140ShipPlanPage(d||"","")}
+function payload(lines){
+ return lines.map(l=>({customer_name:l.customer,customer_norm:key(l.customer),route:l.route||"",item_name:l.item,item_in_master:l.inMaster!==false,item_raw:l.raw,qty_raw:l.qtyRaw,unit:l.unit||"kg",
   boxes:l.boxes,pack_kg:l.pack,kg:l.kg,note:l.note||"",source_file:l.file,source_sheet:l.sheet,source_row:l.row,source_col:l.col}));
 }
 let saving=false;
+/* 1日ずつ順に登録。途中で止まっても、もう一度押せば登録済みの日は飛ばして続きから（取り込みIDは日ごとに固定） */
 async function c140Save(){
  const p=pending;if(!p||!canImport()||saving)return;
- const lines=effective();if(lines.some(l=>l.open.length))return alert("要確認の行が残っています。");
- saving=true;busy(true,"出荷予定を登録しています");
+ const days=dayStates();if(days.some(d=>d.open))return alert("要確認の行が残っています。");
+ const todo=days.filter(d=>d.state==="new"||d.state==="change");if(!todo.length)return alert("登録する日がありません。");
+ saving=true;const saved=[];
  try{
-  for(const [k,pk] of Object.entries(p.picks)){if(p.addAlias[k]===false)continue;const base=p.lines.find(l=>key(l.base)===k)?.base||k;
-   await callRpc("save_ship_plan_alias_v1199c140",{p_key:k,p_raw:base,p_item:pk.item,p_in_master:pk.inMaster})}
-  const a=await callRpc("replace_ship_plan_v1199c140",{p_import_id:p.importId,p_delivery_date:p.date,p_files:p.sheets.map(s=>({file:s.file,sheet:s.sheet})),p_lines:payload()});
-  if(a&&a.ok===false)throw new Error(a.message||"登録できませんでした");
-  const d=p.date;pending=null;masters=null;
-  await c140ShipPlanPage(d,`納品日 ${md(d)} の出荷予定を${a?.count??lines.length}行で登録しました${a?.replaced?"（前の取り込みは置き換え済みとして残しました）":""}。`);
- }catch(e){alert(sqlMissing(e)?NEED_SQL:`登録できませんでした。\n${e?.message||e}`)}
+  busy(true,"品名の読み替えを保存しています");
+  for(const [k,pk] of Object.entries(p.picks)){if(p.addAlias[k]===false||p.aliasDone?.[k])continue;const base=p.lines.find(l=>key(l.base)===k)?.base||k;
+   await callRpc("save_ship_plan_alias_v1199c140",{p_key:k,p_raw:base,p_item:pk.item,p_in_master:pk.inMaster});(p.aliasDone||(p.aliasDone={}))[k]=true}
+  for(const d of todo){
+   busy(true,`${md(d.date)} の出荷予定を登録しています（${saved.length+1}/${todo.length}）`);
+   p.importIds[d.date]=p.importIds[d.date]||uuid();
+   const files=p.sheets.filter(s=>s.date===d.date).map(s=>({file:s.file,sheet:s.sheet}));
+   const a=await callRpc("replace_ship_plan_v1199c140",{p_import_id:p.importIds[d.date],p_delivery_date:d.date,p_files:files,p_lines:payload(d.lines)});
+   if(a&&a.ok===false)throw new Error(a.message||"登録できませんでした");
+   p.done[d.date]=true;saved.push(d.date);
+  }
+  const first=todo[0].date,same=days.filter(d=>d.state==="same").length;pending=null;masters=null;
+  await c140ShipPlanPage(first,`${todo.map(d=>md(d.date)).join("・")} の出荷予定を登録しました（${todo.length}日分${same?`・変わらない${same}日はそのまま`:""}）。前の取り込みは置き換え済みとして残しています。`);
+ }catch(e){
+  alert(`${saved.length?`${saved.map(md).join("・")} は登録できました。\n`:""}登録できなかった日があります。もう一度「登録する」を押すと、残りの日から続けます。\n${sqlMissing(e)?NEED_SQL:(e?.message||e)}`);
+  if(pending)c140PreviewPage();
+ }
  finally{saving=false;busy(false)}
 }
 
@@ -354,20 +414,21 @@ function c140InjectHome(){
 }
 const app=document.getElementById("app");
 if(app)new MutationObserver(()=>{if(currentScreen==="home"&&!document.getElementById("c140HomeBtn")&&document.querySelector("#app .homePrimary"))c140InjectHome()}).observe(app,{childList:true,subtree:true});
-{const st=document.createElement("style");st.textContent=".homeBtnShipPlan,.c140Btn{background:linear-gradient(90deg,#1e293b 0%,#1d4ed8 55%,#f59e0b 100%) !important;color:#fff !important;border-color:transparent !important;}.c140Frac{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;border:1px solid #f59e0b}";document.head.appendChild(st)}
+{const st=document.createElement("style");st.textContent=".homeBtnShipPlan,.c140Btn{background:linear-gradient(90deg,#1e293b 0%,#1d4ed8 55%,#f59e0b 100%) !important;color:#fff !important;border-color:transparent !important;}.c140St{margin-left:6px;font-size:13px}.c140St_new,.c140St_change{color:#1d4ed8}.c140St_same{color:#64748b}.c140St_bad{color:#b91c1c}.c140St_done{color:#15803d}.c140Frac{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;border:1px solid #f59e0b}";document.head.appendChild(st)}
 
-Object.assign(window,{c140ShipPlanPage,c140ImportPage,c140PickFiles,c140ReadFiles,c140Prepare,c140PreviewPage,c140PickItem,c140ToggleAlias,c140FixKg,c140FixCust,c140CancelImport,c140Save,
+Object.assign(window,{c140ShipPlanPage,c140ImportPage,c140PickFiles,c140ReadFiles,c140Prepare,c140PreviewPage,c140ToggleDate,c140PickItem,c140ToggleAlias,c140FixKg,c140FixCust,c140CancelImport,c140Save,
  c140AliasPage,c140ChangeAlias,c140DeleteAlias,c140SaveStd,c140AddStd,c140InjectHome,
- c140Parse:{unitOf,specKg,baseName,parseQty,readSheet,readBooks,casesOf,itemTotals,resolveItem,weightText}});
+ c140Parse:{unitOf,specKg,baseName,parseQty,readSheet,readBooks,listDates,casesOf,itemTotals,resolveItem,weightText}});
 
 /* ---------- 操作ガイド ---------- */
 try{
  const imp={title:"積み込み表から出荷予定を取り込む",where:"ホーム →「出荷予定（積み込み表）」→「積み込み表を取り込む」",
   steps:["前日の夕方、積み込み表（同じ月の2ファイル）を保存してから取り込みます。",
-   "納品日を選び（はじめは明日）、「積み込み表を選ぶ」で2つのファイルを一度に選びます。ファイルは端末の中で読み、サーバーには送りません。",
-   "2つのファイルから、シートのB1の日付が納品日と同じシートを読みます。見つからない・形が違うときは「この形は読めません」と出て、登録しません。",
+   "「積み込み表を選ぶ」で、同じ月の2つのファイルを一度に選びます。ファイルは端末の中で読み、サーバーには送りません。",
+   "ファイルに入っている納品日（シートのB1の日付）が一覧で出ます。はじめは明日以降の日が選ばれています。チェックで日を足したり外したりできます。片方のファイルにしかない日・形が違うシートは、登録しないよう止めます。",
    "確認画面に、知らない品名・読めない数量・客先が分からない行が「要確認」で出ます。品名はSEIKA＋の品目を選び（同じ品名はまとめて1回）、数量は合計のkgを入れます。選んだ品名は「品名読み替えマスタ」に追加され、次から自動で当てはまります。",
-   "要確認がなくなったら「この内容で登録する」を押します。同じ納品日をもう一度取り込むと、足し算はせず置き換わります（前の取り込みは「置き換え済み」で残り、確認画面に前との違いが出ます）。"],
+   "日ごとに「新しく登録」「変わる（追加・変更・なくなる）」「変わらない」が出ます。要確認がなくなったら「選んだ日を登録する」を押します。変わらない日は登録し直しません。変わった日は足し算せず置き換わります（前の取り込みは「置き換え済み」で残ります）。",
+   "途中で通信が切れて止まったときは、もう一度「登録する」を押すと残りの日から続きます（同じ日が二重に入ることはありません）。"],
   check:"出荷日（セット日）は納品日の前日で保存します。ケース数は標準ケースで割って切り上げ、割り切れないときは「端数あり」が付きます。",
   caution:"「大根」とだけ書いてある品名は、カット大根・葉付き大根などを取り違えないよう、選ぶときに特に注意してください。"};
  const view={title:"出荷予定を見る",where:"ホーム →「出荷予定（積み込み表）」",
