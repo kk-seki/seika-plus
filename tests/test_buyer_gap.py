@@ -160,6 +160,26 @@ class BuyerGapTests(unittest.TestCase):
         self.assertNotIn("仕入れ担当の品目", text)
         self.assertEqual(page.locator("textarea").count(), 0)
 
+    def test_sales_home_card_shows_only_own_customers(self):
+        # c155：営業担当者のホームのカードは、自分の担当客先の分だけ（担当客先がない人・SQL 064 の前は全品目）
+        page = self.open_app("sales")
+        page.evaluate("()=>{db.userId='sales_warabioka_aki'}")
+        page.evaluate("()=>home()")
+        page.locator("#c147Ship[data-ready='1']").wait_for()
+        text = page.inner_text("#c147Ship")
+        self.assertIn("（担当客先）", text)
+        self.assertIn("人参", text)
+
+        plan = page.evaluate("()=>Object.fromEntries([...document.querySelectorAll('#c147Ship .c147Sec')[0].querySelectorAll('tr')].slice(1).map(tr=>[tr.cells[0].textContent,tr.cells[1].querySelector('b').textContent]))")
+        # 担当外の「ない客先」の小松菜500kg・深谷のキャベツ400kg・埼玉の人参100kgは入らない
+        self.assertEqual(plan, {"人参": "400kg", "キャベツ": "300kg", "小松菜": "50kg", "トマト": "100kg", "大葉": "3kg"})
+        self.assertIn("担当客先のちがいを詳しく", text)
+        other = self.open_app("sales")
+        other.evaluate("()=>{db.userId='ikeda'}")
+        other.evaluate("()=>home()")
+        other.locator("#c147Ship[data-ready='1']").wait_for()
+        self.assertIn("担当客先が未設定のため全品目", other.inner_text("#c147Ship"))
+
     def test_before_sql_064_only_buyers(self):
         page = self.open_app("worker")
         page.evaluate("()=>{window.__noSql=true}")
