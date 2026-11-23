@@ -137,6 +137,17 @@ async function c154LoadStaff(force=false){
  try{const a=await callRpc("list_sales_customers_v1199c154",{});staffCache={rules:a?.rules||[],staff:a?.staff||[]};staffAt=Date.now();return staffCache}
  catch(e){if(L()?.sqlMissing?.(e)||/list_sales_customers_v1199c154|PGRST202|Could not find/i.test(String(e?.message||e)))return null;throw e}
 }
+/* c155：営業担当者のホームのカード用。自分の担当客先かどうかを返す関数。
+   SQL 064 がまだ・読み込めない・自分の担当客先がない ときは null（全品目のまま） */
+async function c155MyCustomerFilter(){
+ if(db?.role!=="sales")return null;
+ let st;try{st=await c154LoadStaff()}catch(_){return null}
+ if(!st)return null;
+ const me=(st.staff||[]).find(s=>canon(s.legacy_user_id)===canon(db.userId));
+ if(!me||!(st.rules||[]).some(r=>r.staff_profile_id===me.id))return null;
+ const memo=new Map;
+ return c=>{const k=String(c||"");if(!memo.has(k))memo.set(k,c154StaffOf(k,st.rules)?.staff_profile_id===me.id);return memo.get(k)};
+}
 const canon=id=>typeof v1151CanonicalBuyerId==="function"?v1151CanonicalBuyerId(id):id;
 function c154People(staff){
  return (staff||[]).map(s=>{const legacy=s.legacy_user_id||"";let name=s.display_name||legacy;try{name=buyerFullName(canon(legacy),name)||name}catch(_){}
@@ -308,11 +319,12 @@ try{if(typeof V195_ROLE_GUIDES!=="undefined"){
 .c153Warn{color:#b91c1c;font-weight:900}
 .c153Tbl{font-size:14px;width:100%;margin-top:6px}
 .c153Tbl td,.c153Tbl th{padding:4px 6px;vertical-align:top}
+.c153Tbl td:first-child{min-width:4.5em;word-break:keep-all;overflow-wrap:anywhere}
 .c153Big td{background:#fff7ed}
 .c153R{display:inline-block;font-weight:900;font-size:12px;padding:1px 6px;border-radius:999px;background:#e5e7eb}
 .c153R.up{background:#fee2e2;color:#b91c1c}.c153R.down{background:#dbeafe;color:#1d4ed8}
 .c154Sub{font-weight:900;color:#1e3a8a;margin-top:10px}
 .c153Ta{margin-top:8px;font-size:14px}`;document.head.appendChild(st)}
 
-Object.assign(window,{c153GapPage,c154SalesCustomersPage,c154SaveRule,c154AddRule,c154DeleteRule,c153Lib:{c153Compare,c153Group,c154Group,c154Customers,c154StaffOf,c153Text,shortCust,RATE,MIN_KG}});
+Object.assign(window,{c155MyCustomerFilter,c153GapPage,c154SalesCustomersPage,c154SaveRule,c154AddRule,c154DeleteRule,c153Lib:{c153Compare,c153Group,c154Group,c154Customers,c154StaffOf,c153Text,shortCust,RATE,MIN_KG}});
 })();

@@ -124,25 +124,35 @@ function c149BuyerItemNames(userId=db?.userId){
 function myItems(){if(db?.role!=="buyer")return null;const set=new Set(c149BuyerItemNames());return set.size?set:null}
 async function myDaily(){if(db?.role!=="buyer"||typeof window.c134Load!=="function")return null;try{return (await window.c134Load()).by}catch(_){return null}}
 
+/* c155：営業担当者は、自分の担当客先の分だけ（予定・確定・埼玉や深谷の出庫） */
+function c155ForCustomers(data,isMine){
+ if(!isMine)return data;
+ const keep=d=>d?{...d,lines:(d.lines||[]).filter(l=>isMine(l.customer||l.customer_name))}:d;
+ let inhouse=data.inhouse;
+ if(inhouse){inhouse={...inhouse};const names=[...(data.actPlan?.lines||[]),...(data.plan?.lines||[])].map(l=>l.customer||l.customer_name);
+  for(const [k] of INHOUSE)if(!names.some(c=>inhouseOf(c)===k&&isMine(c)))inhouse[k]=new Map()}
+ return {...data,plan:keep(data.plan),actPlan:keep(data.actPlan),act:data.act?keep(data.act):data.act,inhouse,custOnly:true};
+}
 /* ---------- 表示 ---------- */
 function timesText(r){if(r.times==null)return r.daily==null?'<span class="small">日量なし</span>':"";return `<span class="c147T ${r.mark}">日量の${r.times.toFixed(1)}倍${r.mark==="many"?"・多い":r.mark==="few"?"・少ない":""}</span>`}
 function rateText(d){if(d.rate===null)return '<span class="c147R up">予定なし→確定あり</span>';const pc=Math.round(d.rate*100);return `<span class="c147R ${pc>0?"up":"down"}">${pc>0?"+":""}${pc}%</span>`}
 function c147Html(data,mine,daily){
  const buyer=!!mine,noMine=db?.role==="buyer"&&!mine,tom=c147Tomorrow(data.plan?.lines,mine,daily);
- const head=`<div class="c147Head"><b>出荷予定と確定</b>${buyer?'<span class="small">（担当品目）</span>':noMine?'<span class="small">（担当品目が未設定のため全品目）</span>':""}</div>`;
+ const cust=!!data.custOnly,noCust=db?.role==="sales"&&!cust,word=buyer?"担当品目":cust?"担当客先の品目":"品目";
+ const head=`<div class="c147Head"><b>出荷予定と確定</b>${buyer?'<span class="small">（担当品目）</span>':noMine?'<span class="small">（担当品目が未設定のため全品目）</span>':cust?'<span class="small">（担当客先）</span>':noCust?'<span class="small">（担当客先が未設定のため全品目）</span>':""}</div>`;
  let s1;
  if(!data.plan?.active)s1=`<div class="small">明日（${md(data.tomorrow)}納品）の積み込み表はまだ取り込まれていません。</div>`;
- else if(!tom.length)s1=`<div class="small">明日（${md(data.tomorrow)}納品）の予定に${buyer?"担当品目は":"品目が"}ありません。</div>`;
- else{const max=buyer?50:8,show=tom.slice(0,max);
+ else if(!tom.length)s1=`<div class="small">明日（${md(data.tomorrow)}納品）の予定に${word}はありません。</div>`;
+ else{const max=buyer||cust?50:8,show=tom.slice(0,max);
   s1=`<table class="table c147Tbl"><tr><th>品目</th><th>予定</th>${buyer?"<th>日量とくらべて</th>":""}</tr>${show.map(r=>`<tr class="${r.mark?`c147Row ${r.mark}`:""}"><td>${esc(r.item)}</td><td><b>${fmt(r.kg)}kg</b>${r.inh.length?`<div class="small">うち${r.inh.map(([k,v])=>`${k} ${fmt(v)}kg`).join("・")}</div>`:""}${r.hq>0?`<div class="small">＋本社 ${fmt(r.hq)}kg<br>＝${fmt(r.total)}kg</div>`:""}</td>${buyer?`<td>${r.daily!=null?`<span class="small">日量${fmt(r.daily)}kg</span><br>`:""}${timesText(r)}</td>`:""}</tr>`).join("")}</table>${tom.length>max?`<div class="small">ほか${tom.length-max}品目</div>`:""}`;
   if(buyer){const none=[...mine].filter(n=>!tom.some(r=>r.item===n)).sort((a,b)=>a.localeCompare(b,"ja"));if(none.length)s1+=`<div class="small">予定なし：${esc(none.join("、"))}</div>`}}
  let s2;
  if(!data.act)s2=`<div class="small">明日〜${BACK-1}日前の確定（産地報告書）はまだ取り込まれていません。</div>`;
  else{const diffs=c147Diffs(data.actPlan?.lines,data.act.lines,mine,data.inhouse);
   const partText=d=>d.parts.length>1||d.parts[0]?.label!=="社外"?`<div class="small">${d.parts.map(x=>`${x.label} ${fmt(x.plan)}→${fmt(x.actual)}`).join("・")}</div>`:"";
-  s2=diffs.length?`<table class="table c147Tbl"><tr><th>品目</th><th>予定→確定</th></tr>${diffs.map(d=>`<tr><td>${esc(d.item)}</td><td>${fmt(d.plan)}kg → <b>${fmt(d.actual)}kg</b> ${rateText(d)}${partText(d)}</td></tr>`).join("")}</table>`:`<div class="c147Ok">予定と2割以上違う${buyer?"担当品目":"品目"}はありません。</div>`;
+  s2=diffs.length?`<table class="table c147Tbl"><tr><th>品目</th><th>予定→確定</th></tr>${diffs.map(d=>`<tr><td>${esc(d.item)}</td><td>${fmt(d.plan)}kg → <b>${fmt(d.actual)}kg</b> ${rateText(d)}${partText(d)}</td></tr>`).join("")}</table>`:`<div class="c147Ok">予定と2割以上違う${word}はありません。</div>`;
   if(data.inhouse===null)s2+=`<div class="small">埼玉・深谷への出庫を読み込めなかったので、社外だけで比べています。</div>`;
-  else if(data.shipDate>=data.today)s2+=`<div class="small">埼玉・深谷の確定は、出荷日 ${md(data.shipDate)} の出庫です（今日の分は途中までです）。</div>`}
+  else if(data.shipDate>=data.today&&!data.custOnly)s2+=`<div class="small">埼玉・深谷の確定は、出荷日 ${md(data.shipDate)} の出庫です（今日の分は途中までです）。</div>`}
  return `${head}
   <div class="c147Sec"><div class="c147Sub">明日（${md(data.tomorrow)}納品）の出荷予定</div>${s1}${buyer?'<div class="small">日量は社内（埼玉・深谷・本社など）への出庫も含みます。本社は積み込み表に入らないので、本社への出庫（昨日までの7日間。荻沼への人参・大根は本社の分）から1日分を足して比べます。</div>':""}</div>
   <div class="c147Sec"><div class="c147Sub">${data.act?`${md(data.actDate)}納品の確定と予定の違い（2割以上）`:"確定と予定の違い"}</div>${s2}
@@ -172,6 +182,7 @@ async function c147InjectHome(){
   try{[data,daily]=await Promise.all([c147Load(),myDaily()])}
   catch(e){const c=document.getElementById("c147Ship");if(c)c.innerHTML=`<b>出荷予定と確定</b><div class="small">${esc(L().sqlMissing(e)?"出荷予定の機能（SQL 061）がまだ実行されていません。":"出荷予定を読み込めませんでした。")}</div>`;return}
   const mine=myItems();
+  if(db?.role==="sales"&&typeof window.c155MyCustomerFilter==="function"){try{data=c155ForCustomers(data,await window.c155MyCustomerFilter())}catch(_){}}
   lastTom=mine?c147Tomorrow(data.plan?.lines,mine,daily):null;
   if(currentScreen!=="home")return;
   let c=document.getElementById("c147Ship");
@@ -186,7 +197,7 @@ async function c147InjectHome(){
 }
 /* c151：アプリを開いたら、ホームを描く前に出荷予定と日量を先に読んでおく（ホームでは読み込み待ちなしで出る） */
 function c151Prefetch(n=0){
- if(ROLES.includes(db?.role)&&L()?.canView?.()&&typeof qrSelect==="function"&&(db?.items||[]).length){/* 品目（アプリのデータ）を読み終えてから */Promise.all([c147Load(),myDaily()]).catch(()=>{});return}
+ if(ROLES.includes(db?.role)&&L()?.canView?.()&&typeof qrSelect==="function"&&(db?.items||[]).length){/* 品目（アプリのデータ）を読み終えてから */Promise.all([c147Load(),myDaily(),db?.role==="sales"&&window.c155MyCustomerFilter?window.c155MyCustomerFilter():null]).catch(()=>{});return}
  if(n<120)setTimeout(()=>c151Prefetch(n+1),500);
 }
 setTimeout(()=>c151Prefetch(),0);
@@ -214,5 +225,5 @@ if(app)new MutationObserver(()=>{
 .c147Add{display:block;font-size:13px;font-weight:800;color:#334155}
 .c147Add.many{color:#c2410c}.c147Add.few{color:#1d4ed8}`;document.head.appendChild(st)}
 
-Object.assign(window,{c147InjectHome,c147Load,c151Prefetch,c151InhouseOut,c154InhouseFor,c154AheadMerge,c149BuyerItemNames,c147Lib:{c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
+Object.assign(window,{c147InjectHome,c147Load,c151Prefetch,c151InhouseOut,c154InhouseFor,c154AheadMerge,c149BuyerItemNames,c147Lib:{c155ForCustomers,c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
 })();
