@@ -81,6 +81,25 @@ def test_hq_share_counts_honsha_and_oginuma_carrot_radish(self):
 
 
 @_t
+def test_big_container_uses_slip_measured_kg_c158(self):
+    # c158：大型容器（基）の出庫は伝票の実測kgを使う。伝票で直した実測 → 出庫画面の実測（operation_meta.slip.kg） → 出庫の重さ
+    page = self.open_app("buyer")
+    by = page.evaluate("""async()=>{const now=Date.now(),day=k=>new Date(now-k*864e5).toISOString();
+      const lots=[{id:'L1',item_name:'キャベツ',unit:'基',container_type:'網コンテナ'},{id:'L2',item_name:'人参',unit:'ケース',container_type:'ダンボール'}];
+      const moves=[
+        {id:'a',lot_id:'L1',movement_type:'出庫',qty:4,weight:1625.75,destination:'深谷',occurred_at:day(1),operation_meta:{slip:{kg:1560}}},
+        {id:'b',lot_id:'L1',movement_type:'出庫',qty:2,weight:777.25,destination:'埼玉',occurred_at:day(1),operation_meta:{slip:{kg:770}}},
+        {id:'c',lot_id:'L1',movement_type:'出庫',qty:1,weight:388.6,destination:'深谷',occurred_at:day(2)},
+        {id:'d',lot_id:'L2',movement_type:'出庫',qty:3,weight:60,destination:'深谷',occurred_at:day(1),operation_meta:{slip:{kg:999}}}];
+      window.__adjq=[];
+      qrSelect=async(t,q)=>{if(t==='qr_slip_adjust_v1199c86'){__adjq.push(q);return [{movement_id:'b',total_kg:766}]}return t==='qr_lot_movements'?moves:t==='qr_lots'?lots:[]};
+      c134ResetCache();const r=(await c134Load()).by;return {cab:r['キャベツ'].kg,car:r['人参'].kg,q:__adjq.join('|')}}""")
+    self.assertAlmostEqual(by["cab"], 1560 + 766 + 388.6, places=3)  # a＝出庫画面の実測、b＝伝票で直した実測、c＝実測なしは出庫の重さ
+    self.assertEqual(by["car"], 60)  # ケースは出庫の重さのまま
+    self.assertNotIn("d", by["q"].split("in.(")[1])  # 伝票の訂正はケースの出庫では読まない
+
+
+@_t
 def test_range_excel_splits_by_destination_and_can_pick_one(self):
     lots, moves, history = self.slip_data()
     page = self.open_app(lots=lots, moves=moves, history=history)

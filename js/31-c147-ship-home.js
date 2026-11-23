@@ -83,8 +83,9 @@ function c157Early(memo,day){let t="";try{t=typeof v1144OutboundMemoParts==="fun
  /* 日曜積込分は日曜の出荷分。日曜より前（土曜など）に出庫したときだけ次の日の出荷分にする（日曜に出庫したものはその日の出荷分） */
  if(t.startsWith("日曜積込分"))return !day||new Date(day+"T00:00:00+09:00").getDay()!==0;
  return t==="翌日分先送り"}
-/* 出庫した日の社内への出庫（埼玉・深谷）を品目ごとのkgに（c151）。重さは出庫の重さ、なければロットの量目×数（日量と同じ）。
+/* 出庫した日の社内への出庫（埼玉・深谷）を品目ごとのkgに（c151）。重さは日量と同じ（c158：大型容器は伝票の実測kg、ほかは出庫の重さ、なければロットの量目×数）。
    c157：先送り（翌日の出荷分）は out.early に分ける */
+function c158Fallback(m,l){if(m?.weight!==null&&m?.weight!==undefined&&m.weight!==""&&Number.isFinite(Number(m.weight)))return Number(m.weight);try{const v=l?v163LotKgAtQuantity(l,Number(m.qty||0)):0;return v>0?v:null}catch(_){return null}}
 async function c151InhouseOut(day){
  const from=new Date(day+"T00:00:00+09:00"),to=new Date(from.getTime()+864e5),dest=INHOUSE.map(([k])=>encodeURIComponent(k)).join(",");
  const q=`select=*&movement_type=eq.${encodeURIComponent("出庫")}&destination=in.(${dest})&occurred_at=gte.${encodeURIComponent(from.toISOString())}&occurred_at=lt.${encodeURIComponent(to.toISOString())}&limit=3000`;
@@ -92,9 +93,10 @@ async function c151InhouseOut(day){
  const ids=[...new Set(moves.map(m=>m.lot_id).filter(Boolean))],lots=new Map,parts=[];
  for(let i=0;i<ids.length;i+=80)parts.push(ids.slice(i,i+80));
  for(const rows of await Promise.all(parts.map(part=>qrSelect("qr_lots",`select=*&id=in.(${part.join(",")})`))))for(const l of rows||[])lots.set(l.id,l);
+ const adj=typeof window.c158SlipAdjust==="function"?await window.c158SlipAdjust(moves,lots):new Map();
  const out={early:{}};for(const [k] of INHOUSE){out[k]=new Map;out.early[k]=new Map}let unknown=0;
  for(const m of moves){const k=String(m.destination||"").trim();if(!out[k])continue;const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=c157Canon(name||String(l?.item_name||m.item_name||"").trim());if(!name)continue;
-  let kg=null;if(m.weight!==null&&m.weight!==undefined&&m.weight!==""&&Number.isFinite(Number(m.weight)))kg=Number(m.weight);else{try{const v=l?v163LotKgAtQuantity(l,Number(m.qty||0)):0;kg=v>0?v:null}catch(_){}}
+  const kg=(window.c158MoveKg||c158Fallback)(m,l,adj.get(String(m.id)));  /* c158：大型容器は伝票の実測kg */
   if(kg==null){unknown++;continue}const mp=c157Early(m.memo,day)?out.early[k]:out[k];mp.set(name,(mp.get(name)||0)+kg)}
  out.unknown=unknown;return out;
 }

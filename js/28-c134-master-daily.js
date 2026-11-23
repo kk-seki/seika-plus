@@ -38,6 +38,25 @@ const DAYS=7;
 let cache=null,cacheAt=0,loading=null;
 const ymd=d=>ymdKey(d);
 function c134Range(){const t=new Date();t.setHours(0,0,0,0);const to=new Date(t),from=new Date(t);from.setDate(from.getDate()-DAYS);return{from,to,fromKey:ymd(from),toKey:ymd(new Date(to.getTime()-864e5))}}
+/* c158：出庫の重さ。大型容器（網コンテナ・鉄コンテナ・パレテーナ、またはロットの単位が「基」）は、伝票の実測kgを先に使う
+   （伝票で直した実測 → 出庫画面で入れた実測〔operation_meta.slip.kg〕 → 出庫の重さ → ロットの量目×数。納品伝票と同じ順番）。
+   ケースなどはこれまでどおり 出庫の重さ → ロットの量目×数 */
+const C158_BIG=["網コンテナ","鉄コンテナ","パレテーナ"];
+function c158IsBig(m,l){return C158_BIG.includes(String(m?.container_type||l?.container_type||"").trim())||String(l?.unit||m?.unit||"").trim()==="基"}
+function c158MoveKg(m,l,adj){
+ if(c158IsBig(m,l)){const a=adj&&Number(adj.total_kg),sm=m?.operation_meta&&typeof m.operation_meta==="object"?Number(m.operation_meta.slip?.kg):NaN;
+  if(a>0)return a;if(sm>0)return sm}
+ if(m?.weight!==null&&m?.weight!==undefined&&m.weight!==""&&Number.isFinite(Number(m.weight)))return Number(m.weight);
+ try{const k=l?v163LotKgAtQuantity(l,Number(m.qty||0)):0;return k>0?k:null}catch(_){return null}
+}
+/* 伝票で直した実測（qr_slip_adjust）。大型容器の出庫だけ読む。表がまだなければ空 */
+async function c158SlipAdjust(moves,lots){
+ const ids=moves.filter(m=>c158IsBig(m,lots.get(m.lot_id))).map(m=>m.id).filter(Boolean),out=new Map;if(!ids.length)return out;
+ const parts=[];for(let i=0;i<ids.length;i+=80)parts.push(ids.slice(i,i+80));
+ try{for(const rows of await Promise.all(parts.map(part=>qrSelect("qr_slip_adjust_v1199c86",`select=movement_id,total_kg&movement_id=in.(${part.join(",")})`))))for(const a of rows||[])out.set(String(a.movement_id),a)}catch(_){}
+ return out;
+}
+window.c158MoveKg=c158MoveKg;window.c158SlipAdjust=c158SlipAdjust;
 async function c134Load(){
  if(cache&&Date.now()-cacheAt<10*60000)return cache;
  if(loading)return loading;
@@ -49,10 +68,11 @@ async function c134Load(){
   /* c151：ロットは80件ずつまとめて同時に読む（1つずつ順番に待たない） */
   const parts=[];for(let i=0;i<ids.length;i+=80)parts.push(ids.slice(i,i+80));
   for(const rows of await Promise.all(parts.map(part=>qrSelect("qr_lots",`select=*&id=in.(${part.join(",")})`))))for(const l of rows||[])lots.set(l.id,l);
+  const adj=await c158SlipAdjust(moves,lots);
   const by={};
   for(const m of moves){const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=name||String(l?.item_name||m.item_name||"").trim();if(!name)continue;if(typeof window.c157Canon==="function")name=window.c157Canon(name);  /* c157：品目名をそろえる */
    const d=ymd(new Date(m.occurred_at||m.created_at)),o=by[name]=by[name]||{days:new Set,kg:0,unk:0,hqKg:0};o.days.add(d);const dest=String(m.destination||"").trim(),toHq=dest==="本社"||(dest==="荻沼"&&/人参|大根/.test(name));
-   let kg=null;if(m.weight!==null&&m.weight!==undefined&&m.weight!==""&&Number.isFinite(Number(m.weight)))kg=Number(m.weight);else{try{const k=l?v163LotKgAtQuantity(l,Number(m.qty||0)):0;kg=k>0?k:null}catch(_){}}
+   const kg=c158MoveKg(m,l,adj.get(String(m.id)));  /* c158：大型容器は伝票の実測kg */
    if(kg==null)o.unk++;else{o.kg+=kg;if(toHq)o.hqKg+=kg}}  // c151：本社への出庫は分けても数える（本社は積み込み表に入らないため）。荻沼（本社管轄の協力工場）への人参・大根は本社からの発注なので本社の分に入れる
   cache={by,fromKey,toKey};cacheAt=Date.now();return cache})();
  try{return await loading}finally{loading=null}
