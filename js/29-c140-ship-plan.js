@@ -177,7 +177,11 @@ async function loadPlan(dateKey){
  const imps=await qrSelect(T.imp,`select=*&delivery_date=eq.${dateKey}&order=imported_at.desc&limit=20`);
  const act=(imps||[]).find(i=>i.status==="active")||null;
  const lines=act?await qrSelect(T.line,`select=*&import_id=eq.${act.id}&order=line_no.asc&limit=5000`):[];
- return{imports:imps||[],active:act,lines:(lines||[]).map(l=>({...l,item:l.item_name,inMaster:l.item_in_master,kg:l.kg===null?null:Number(l.kg),pack:l.pack_kg===null?null:Number(l.pack_kg),customer:l.customer_name}))};
+ const out=(lines||[]).map(l=>({...l,item:l.item_name,inMaster:l.item_in_master,kg:l.kg===null?null:Number(l.kg),pack:l.pack_kg===null?null:Number(l.pack_kg),customer:l.customer_name}));
+ /* c157：ケース数だけで重さのない行（例：深谷のトマト M 10cs）は、標準ケースの重さで kg を出す（見るときだけ。保存した行は変えない） */
+ if(out.some(l=>l.kg===null&&Number(l.boxes)>0)){let m=null;try{m=await loadMasters()}catch(_){}
+  for(const l of out)if(l.kg===null&&Number(l.boxes)>0){const sd=m?.std?.get(l.item);if(sd>0){l.kg=Math.round(Number(l.boxes)*sd*1000)/1000;l.pack=l.pack||sd;l.kgFromStd=true}}}
+ return{imports:imps||[],active:act,lines:out};
 }
 /* c142：確定数量（産地報告書）。表がまだない（SQL 062 前）ときは null */
 async function loadActual(dateKey){

@@ -50,7 +50,7 @@ async function c134Load(){
   const parts=[];for(let i=0;i<ids.length;i+=80)parts.push(ids.slice(i,i+80));
   for(const rows of await Promise.all(parts.map(part=>qrSelect("qr_lots",`select=*&id=in.(${part.join(",")})`))))for(const l of rows||[])lots.set(l.id,l);
   const by={};
-  for(const m of moves){const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=name||String(l?.item_name||m.item_name||"").trim();if(!name)continue;
+  for(const m of moves){const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=name||String(l?.item_name||m.item_name||"").trim();if(!name)continue;if(typeof window.c157Canon==="function")name=window.c157Canon(name);  /* c157：品目名をそろえる */
    const d=ymd(new Date(m.occurred_at||m.created_at)),o=by[name]=by[name]||{days:new Set,kg:0,unk:0,hqKg:0};o.days.add(d);const dest=String(m.destination||"").trim(),toHq=dest==="本社"||(dest==="荻沼"&&/人参|大根/.test(name));
    let kg=null;if(m.weight!==null&&m.weight!==undefined&&m.weight!==""&&Number.isFinite(Number(m.weight)))kg=Number(m.weight);else{try{const k=l?v163LotKgAtQuantity(l,Number(m.qty||0)):0;kg=k>0?k:null}catch(_){}}
    if(kg==null)o.unk++;else{o.kg+=kg;if(toHq)o.hqKg+=kg}}  // c151：本社への出庫は分けても数える（本社は積み込み表に入らないため）。荻沼（本社管轄の協力工場）への人参・大根は本社からの発注なので本社の分に入れる
@@ -68,7 +68,7 @@ async function c134InjectBuyer(){
  let data;try{data=await c134Load()}catch(e){const s=document.getElementById("c134DailySub");if(s)s.textContent="日量を読み込めませんでした。";return}
  const sub=document.getElementById("c134DailySub"),box=document.getElementById("c134DailyBtns");if(!sub||!box)return;
  sub.textContent=`${data.fromKey.slice(5).replace("-","/")}〜${data.toKey.slice(5).replace("-","/")}（昨日までの${DAYS}日間）の出庫 ÷ 出庫した日数。QR品目だけです。押すと在庫・出庫の分析が開きます。`;
- const names=[...new Set(items.map(i=>i.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));
+ const cn=n=>typeof window.c157Canon==="function"?window.c157Canon(n):n,names=[...new Set(items.map(i=>cn(i.name)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));
  box.innerHTML=names.map(nm=>{const o=data.by[nm];let main,cls="";
   if(!o){main="出庫なし";cls=" none"}
   else{const d=o.days.size,avg=d?o.kg/d:0;main=o.kg>0?`日量 ${c134Fmt(avg)}kg`:"日量 －";main+=`<span>出庫${d}日${o.unk?`・重さ不明${o.unk}件`:""}</span>`}
