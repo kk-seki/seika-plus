@@ -95,6 +95,36 @@ class ShipPlanBrowserTests(unittest.TestCase):
         self.assertEqual(rows["トヨシロ 10kg"][:2], ["架空 引き取り便", "架空青果 第二工場"])
         self.assertEqual(rows["胡瓜 BM/15kg"][3:9], ["胡瓜", "胡瓜", "cs", 30, 2, 15])
 
+    def test_sample_rows_and_unit_less_cases_c156(self):
+        # c156 B-1：メモが「サンプル」で品目が分からない行は、品名のまま（マスタにない品）で要確認にしない。読み替えには足さない
+        # c156 B-2：単位が空でも品名の最後に「◯kg」があり数量が整数ならケース。同じ客先に品名・数量が同じ行がもう1つあれば要確認のまま
+        page = self.open_app()
+        out = page.evaluate(f"""()=>{{const serial=d=>Math.round((new Date(d+'T00:00:00Z')-new Date('1899-12-30T00:00:00Z'))/864e5);
+          const ws=XLSX.utils.aoa_to_sheet([[null,null],['架空便'],[],['架空デリカ'],
+            ['輸入ブロッコリー','6kg*1','cs','サンプル'],['エリンギ',0.8,'kg','サンプル'],['大根',3,'kg'],['人参',3,'kg','サンプル'],
+            ['ほうれん草(加熱用)5kg',30,'cs'],['ほうれん草(加熱用)5kg',30],['小松菜 7kg',4],['大葉 3kg',2.5],
+            ['架空フーズ'],['小松菜 7kg',4]]);
+          ws['!merges']=[{{s:{{r:1,c:0}},e:{{r:2,c:4}}}},{{s:{{r:3,c:0}},e:{{r:3,c:2}}}},{{s:{{r:12,c:0}},e:{{r:12,c:2}}}}];ws['B1']={{t:'n',v:serial('2026-11-25')}};
+          const p=c140Prepare([{{name:'11月.xlsx',wb:{{SheetNames:['25'],Sheets:{{'25':ws}}}}}}],'2026-11-25',{MASTERS},null);
+          const eff=c140Auto.effective();
+          return {{lines:eff.map(l=>[l.customer,l.raw,l.item,l.inMaster,l.unit,l.boxes,l.pack,l.kg,l.note,l.open.join()]),pay:c140Auto.payload(eff.filter(l=>!l.open.length)).filter(x=>x.note==='サンプル').map(x=>[x.item_name,x.item_in_master,x.kg,x.note])}}}}""")
+        rows = out["lines"]
+        by = lambda raw, cust="架空デリカ": [r for r in rows if r[1] == raw and r[0] == cust]
+        self.assertEqual(by("輸入ブロッコリー")[0][2:10], ["輸入ブロッコリー", False, "cs", 1, 6, 6, "サンプル", ""])
+        self.assertEqual(by("エリンギ")[0][2:10], ["エリンギ", False, "kg", None, None, 0.8, "サンプル", ""])
+        self.assertEqual(by("人参")[0][2:4], ["人参", True])            # マスタにある品はそのまま
+        self.assertIn("品目を選んでください", by("大根")[0][9])          # サンプルでない知らない品は今までどおり要確認
+        self.assertIn(["輸入ブロッコリー", False, 6, "サンプル"], out["pay"])
+        self.assertEqual(page.evaluate("()=>window.__rpc.filter(x=>/alias/.test(x[0])).length"), 0)
+        # B-2：小松菜 7kg×4 → 4cs×7kg＝28kg（別の客先の同じ行は重複にしない）
+        self.assertEqual(by("小松菜 7kg")[0][4:8], ["cs", 4, 7, 28])
+        self.assertEqual(by("小松菜 7kg", "架空フーズ")[0][4:8], ["cs", 4, 7, 28])
+        # 同じ客先に「ほうれん草(加熱用)5kg 30」がもう1行（cs付き）ある → 単位なしの行は要確認のまま
+        spin = by("ほうれん草(加熱用)5kg")
+        self.assertEqual(sorted(r[9] for r in spin), ["", "数量（kg）を入れてください"])
+        # 数量が整数でない（2.5）ときはケースにしない
+        self.assertIn("数量（kg）を入れてください", by("大葉 3kg")[0][9])
+
     def test_wrong_file_is_not_registered(self):
         page = self.open_app()
         out = page.evaluate("""()=>{const ws=XLSX.utils.aoa_to_sheet([['作業予定表'],['長葱',1,'本']]);

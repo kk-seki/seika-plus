@@ -180,6 +180,23 @@ class BuyerGapTests(unittest.TestCase):
         other.locator("#c147Ship[data-ready='1']").wait_for()
         self.assertIn("担当客先が未設定のため全品目", other.inner_text("#c147Ship"))
 
+    def test_stock_report_gets_tomorrows_samples_c156(self):
+        # c156：在庫報告コピーの最後に「明日（納品日）出荷のサンプル」。客先ごとに1行、積み込み表の順。マスタにない品も名前のまま
+        page = self.open_app("worker")
+        out = page.evaluate("""()=>{const L=(n,c,i,kg,note,m=true)=>({line_no:n,customer_name:c,item_name:i,item_in_master:m,kg,note});
+          const plan={active:{id:'X'},lines:[L(1,'プライムデリカ 龍ヶ崎工場','キャベツ',300,''),L(7,'プライムデリカ 龍ヶ崎工場','小葱',0.5,'サンプル'),
+            L(112,'(株)武蔵野 千葉工場','大葉',0.1,'サンプル'),L(10,'プライムデリカ 龍ヶ崎工場','輸入ブロッコリー',6,'サンプル',false),L(11,'プライムデリカ 龍ヶ崎工場','エリンギ',0.8,'サンプル',false)]};
+          return [c156SampleText('2026-11-25',plan),c156SampleText('2026-11-25',{active:{id:'X'},lines:[L(1,'A','キャベツ',3,'')]}),
+            c156SampleText('2026-11-25',{active:null,lines:[]}),c156SampleText('2026-11-25',null)]}""")
+        self.assertEqual(out[0], "\n\n■ 明日（11/25）出荷のサンプル\n・プライムデリカ 龍ヶ崎工場：小葱 0.5kg／輸入ブロッコリー 6kg／エリンギ 0.8kg\n・(株)武蔵野 千葉工場：大葉 0.1kg")
+        self.assertEqual(out[1], "\n\n■ 明日（11/25）出荷のサンプル なし")
+        self.assertIn("積み込み表がまだ取り込まれていません", out[2])
+        self.assertIn("読み込めませんでした", out[3])
+        # 今の文章の後ろに足すだけ。明日＝報告を作る日（11/23）の翌日
+        page.evaluate("""()=>{__plan['2026-11-24']=[{line_no:5,customer_name:'わらべや日洋食品(株)吉川工場',item_name:'胡瓜',kg:1,note:'サンプル'}]}""")
+        text = page.evaluate("()=>c156SampleSection()")
+        self.assertEqual(text, "\n\n■ 明日（11/24）出荷のサンプル\n・わらべや日洋食品(株)吉川工場：胡瓜 1kg")
+
     def test_before_sql_064_only_buyers(self):
         page = self.open_app("worker")
         page.evaluate("()=>{window.__noSql=true}")

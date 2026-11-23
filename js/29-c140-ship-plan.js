@@ -84,11 +84,17 @@ function readSheet(ws,fileName,sheetName){
    if(m&&m.rows>=2&&m.cols>=4){route=name;cust="";continue}
    if(m&&m.cols>=3){if(/引き?取り/.test(name)||/便$/.test(name))route=name;else cust=name;continue}
    const qq=parseQty(q);
-   if(qq&&!(qq.kind==="n"&&qq.n===0)){lines.push({...base,unit:"",boxes:null,pack:null,kg:null,spec:specKg(name),issues:["unit"]});continue}
+   if(qq&&!(qq.kind==="n"&&qq.n===0)){
+    /* c156：単位が空でも、品名の最後に「◯kg」があり数量が整数ならケース（例「ほうれん草(加熱用)5kg」30 → 30cs×5kg＝150kg）。
+       同じ客先に品名・数量が同じ行がもう1つあるときは書き間違いかもしれないので、下で要確認に戻す */
+    const tail=N(name).toLowerCase().match(/(\d+(?:\.\d+)?)\s*kg$/);
+    if(tail&&qq.kind==="n"&&Number.isInteger(qq.n)&&qq.n>0){const pk=Number(tail[1]);lines.push({...base,unit:"cs",boxes:qq.n,pack:pk,kg:Math.round(pk*qq.n*1000)/1000,spec:pk,guessCs:true});continue}
+    lines.push({...base,unit:"",boxes:null,pack:null,kg:null,spec:specKg(name),issues:["unit"]});continue}
    cust=name;
   }
  });
  for(const l of lines)if(!l.customer)l.issues.push("customer");
+ for(const l of lines)if(l.guessCs&&lines.some(o=>o!==l&&o.customer===l.customer&&key(o.raw)===key(l.raw)&&N(o.qtyRaw)===N(l.qtyRaw))){Object.assign(l,{unit:"",boxes:null,pack:null,kg:null});delete l.guessCs;l.issues.push("unit")}
  return{date,lines,ok:!!date&&unitCells>0,why:!date?"B1に納品日がありません":unitCells?"":"単位（cs・kg）の列が見つかりません"};
 }
 /* ブック（複数）から納品日のシートを探して読む */
@@ -292,7 +298,10 @@ function readSelected(){
  for(const d of [...p.selected].sort()){
   const r=readBooks(p.books.filter(b=>p.dates.find(x=>x.date===d)?.files.includes(b.name)),d);
   if(r.errors.length){errors.push(...r.errors.map(e=>`${md(d)}：${e}`));bad.add(d)}
-  for(const l of r.lines){l.date=d;const it=resolveItem(l.base,masters);if(it){l.item=it.item;l.inMaster=it.inMaster}else{l.item="";l.inMaster=true;l.issues.push("item")}lines.push(l)}
+  for(const l of r.lines){l.date=d;const it=resolveItem(l.base,masters);if(it){l.item=it.item;l.inMaster=it.inMaster}
+   /* c156：メモが「サンプル」の行は、品目が分からなくても要確認にせず、品名のまま（マスタにない品）で登録する。読み替えには足さない */
+   else if(/サンプル/.test(l.note||"")){l.item=N(l.raw);l.inMaster=false;l.sampleRaw=true}
+   else{l.item="";l.inMaster=true;l.issues.push("item")}lines.push(l)}
   sheets.push(...r.sheets.map(s=>({...s,date:d})));
  }
  Object.assign(p,{lines,sheets,errors,bad});
@@ -485,7 +494,9 @@ try{
    "ファイルに入っている納品日（シートのB1の日付）が一覧で出ます。はじめは明日以降の日が選ばれています。チェックで日を足したり外したりできます。片方のファイルにしかない日・形が違うシートは、登録しないよう止めます。",
    "確認画面に、知らない品名・読めない数量・客先が分からない行が「要確認」で出ます。品名はSEIKA＋の品目を選び（同じ品名はまとめて1回）、数量は合計のkgを入れます。選んだ品名は「品名読み替えマスタ」に追加され、次から自動で当てはまります。",
    "日ごとに「新しく登録」「変わる（追加・変更・なくなる）」「変わらない」が出ます。要確認がなくなったら「選んだ日を登録する」を押します。変わらない日は登録し直しません。変わった日は足し算せず置き換わります（前の取り込みは「置き換え済み」で残ります）。",
-   "途中で通信が切れて止まったときは、もう一度「登録する」を押すと残りの日から続きます（同じ日が二重に入ることはありません）。"],
+   "途中で通信が切れて止まったときは、もう一度「登録する」を押すと残りの日から続きます（同じ日が二重に入ることはありません）。",
+   "メモが「サンプル」の行は、品目マスタにない品名でも要確認にせず、書いてある名前のまま（マスタにない品）で登録します。品名読み替えマスタには追加しません。",
+   "単位（cs・kg）の欄が空でも、品名の最後に「5kg」のように入れ数があり、数量が整数ならケースとして読みます（例：「ほうれん草(加熱用)5kg」30 → 30ケース×5kg＝150kg）。ただし同じ客先に品名・数量が同じ行がもう1つあるときは、書き間違いかもしれないので要確認のままです。"],
   check:"出荷日（セット日）は納品日の前日で保存します。ケース数は標準ケースで割って切り上げ、割り切れないときは「端数あり」が付きます。",
   caution:"「大根」とだけ書いてある品名は、カット大根・葉付き大根などを取り違えないよう、選ぶときに特に注意してください。"};
  const view={title:"出荷予定を見る",where:"ホーム →「出荷予定（積み込み表）」",
