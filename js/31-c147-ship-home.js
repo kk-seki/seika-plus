@@ -71,6 +71,27 @@ async function c151InhouseOut(day){
   if(kg==null){unknown++;continue}out[k].set(name,(out[k].get(name)||0)+kg)}
  out.unknown=unknown;return out;
 }
+/* c154：埼玉・深谷の先送り。翌日分を前の日にまとめて出庫したときは、積み込み表（納品日）と出庫日がずれる。
+   納品日Dの比べる出庫＝出荷日（D−1）の出庫＋「D−2の出庫のうち、前日分（Dの前日の積み込み表）を超えた分」（品目ごと）。
+   前日分の積み込み表がないときは足さない（どこまでが前日分か分からないため）。 */
+function c154AheadMerge(outShip,outPrev,prevPlanLines){
+ if(!outShip)return outShip;
+ const res={unknown:outShip.unknown||0,ahead:{}};
+ for(const [k] of INHOUSE){
+  const m=new Map(outShip[k]||new Map()),ah=new Map();
+  if(outPrev&&prevPlanLines){
+   const pp=sumKg(prevPlanLines,l=>inhouseOf(l.customer||l.customer_name)===k);
+   for(const [it,kg] of outPrev[k]||new Map()){const extra=kg-(pp.get(it)||0);if(extra>0.05){ah.set(it,extra);m.set(it,(m.get(it)||0)+extra)}}
+  }
+  res[k]=m;res.ahead[k]=ah;
+ }
+ return res;
+}
+async function c154InhouseFor(planDate){
+ const lib=L(),ship=lib.addDays(planDate,-1),prev=lib.addDays(planDate,-2),get=window.c151InhouseOut||c151InhouseOut;
+ const [a,b,pp]=await Promise.all([get(ship),get(prev).catch(()=>null),lib.loadPlan(ship).catch(()=>null)]);
+ return c154AheadMerge(a,b,pp?.lines?.length?pp.lines:null);
+}
 /* c151：まとめて同時に読む（明日の予定・確定の候補4日分）。社内の出庫は確定の日が決まってから */
 async function c147Load(){
  if(cache&&Date.now()-cacheAt<5*60000)return cache;
@@ -82,7 +103,7 @@ async function c147Load(){
   let act=null,actDate="",actPlan=null,inhouse=null,shipDate="";
   const k=acts.findIndex(a=>a?.active);
   if(k>=0){act=acts[k];actDate=days[k];shipDate=lib.addDays(actDate,-1);
-   [actPlan,inhouse]=await Promise.all([actDate===tomorrow?plan:lib.loadPlan(actDate),c151InhouseOut(shipDate).catch(()=>null)])}
+   [actPlan,inhouse]=await Promise.all([actDate===tomorrow?plan:lib.loadPlan(actDate),c154InhouseFor(actDate).catch(()=>null)])}
   cache={tomorrow,plan,actDate,act,actPlan,inhouse,shipDate,today};cacheAt=Date.now();return cache})();
  try{return await loading}finally{loading=null}
 }
@@ -125,7 +146,7 @@ function c147Html(data,mine,daily){
  return `${head}
   <div class="c147Sec"><div class="c147Sub">明日（${md(data.tomorrow)}納品）の出荷予定</div>${s1}${buyer?'<div class="small">日量は社内（埼玉・深谷・本社など）への出庫も含みます。本社は積み込み表に入らないので、本社への出庫（昨日までの7日間。荻沼への人参・大根は本社の分）から1日分を足して比べます。</div>':""}</div>
   <div class="c147Sec"><div class="c147Sub">${data.act?`${md(data.actDate)}納品の確定と予定の違い（2割以上）`:"確定と予定の違い"}</div>${s2}
-   <div class="small">社外は産地報告書の確定と、確定のある客先の予定で比べます。埼玉・深谷は積み込み表の予定と、出荷日（納品日の前日）の出庫で比べます。kgで比べ、予定・確定とも${MIN_KG}kg以下の品目は出しません。</div></div>
+   <div class="small">社外は産地報告書の確定と、確定のある客先の予定で比べます。埼玉・深谷は積み込み表の予定と、出荷日（納品日の前日）の出庫で比べます（翌日分を前の日に先送りした出庫も足します）。kgで比べ、予定・確定とも${MIN_KG}kg以下の品目は出しません。</div></div>
   <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" class="btn c147Btn" ${seikaEventAttrs("click","c140ShipPlanPage",[data.tomorrow,""])}>明日の出荷予定を開く</button>${data.act?`<button type="button" class="btn btn2" ${seikaEventAttrs("click","c140ShipPlanPage",[data.actDate,""])}>${md(data.actDate)}の確定を開く</button>`:""}</div>`;
 }
 /* 担当品目の日量のボタンに、明日の予定を書き足す */
@@ -193,5 +214,5 @@ if(app)new MutationObserver(()=>{
 .c147Add{display:block;font-size:13px;font-weight:800;color:#334155}
 .c147Add.many{color:#c2410c}.c147Add.few{color:#1d4ed8}`;document.head.appendChild(st)}
 
-Object.assign(window,{c147InjectHome,c147Load,c151Prefetch,c151InhouseOut,c149BuyerItemNames,c147Lib:{c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
+Object.assign(window,{c147InjectHome,c147Load,c151Prefetch,c151InhouseOut,c154InhouseFor,c154AheadMerge,c149BuyerItemNames,c147Lib:{c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
 })();
