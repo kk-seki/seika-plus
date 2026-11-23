@@ -17,7 +17,26 @@ const fmt=v=>r1(v).toLocaleString("ja-JP");
 const md=k=>`${Number(k.slice(5,7))}/${Number(k.slice(8,10))}`;
 
 /* ---------- 計算（画面に依存しない。テストから直接呼ぶ） ---------- */
-function sumKg(lines,filter){const mp=new Map;for(const l of lines||[]){const it=l.item||l.item_name;if(!it||(filter&&!filter(l)))continue;const kg=Number(l.kg);if(!Number.isFinite(kg)||l.kg===null||l.kg===undefined)continue;mp.set(it,(mp.get(it)||0)+kg)}return mp}
+/* c157：品目名をそろえる。通常在庫の名前（リーフ・サニー・ロメインなど）と、積み込み表・QRの名前（グリーンリーフ・サニーレタス・ロメインレタス）が
+   別の品目に分かれないよう、QRで管理する品目の名前（QR管理品目の別名を含む）にそろえる。じゃがいもの品種名はそのまま */
+const canonMemo=new Map;
+function c157Canon(name){
+ const n=String(name||"").trim();if(!n)return n;
+ if(canonMemo.has(n))return canonMemo.get(n);
+ let out=n;
+ try{if(!(typeof qrIsPotatoVarietyName==="function"&&qrIsPotatoVarietyName(n))&&typeof qrManagedRuleForName==="function"){const r=qrManagedRuleForName(n);const b=r&&(typeof r==="string"?r:r.name||r.item_name);if(b)out=String(b).trim()}}catch(_){}
+ canonMemo.set(n,out);return out;
+}
+function c157ResetCanon(){canonMemo.clear()}
+/* 日量（c134）の品目名をそろえる：同じ品目になったものは kg・日・本社分を合わせる */
+function c157CanonDaily(by){
+ if(!by)return by;const out={};
+ for(const [name,o] of Object.entries(by)){const k=c157Canon(name),t=out[k]=out[k]||{days:new Set,kg:0,unk:0,hqKg:0};
+  for(const d of o.days||[])t.days.add(d);t.kg+=o.kg||0;t.unk+=o.unk||0;t.hqKg+=o.hqKg||0}
+ return out;
+}
+
+function sumKg(lines,filter){const mp=new Map;for(const l of lines||[]){const it=c157Canon(l.item||l.item_name);if(!it||(filter&&!filter(l)))continue;const kg=Number(l.kg);if(!Number.isFinite(kg)||l.kg===null||l.kg===undefined)continue;mp.set(it,(mp.get(it)||0)+kg)}return mp}
 /* 予定と確定の違い：確定のある客先の予定だけと比べる（埼玉・深谷など確定のない客先は除く） */
 /* 社内の客先：積み込み表の客先名で見分ける（(株)せき 埼玉工場・(株)せき 深谷青果センター） */
 const INHOUSE=[["埼玉",/埼玉/],["深谷",/深谷/]];
@@ -58,6 +77,14 @@ function c147Tomorrow(planLines,mine,daily){
 /* ---------- 読み込み ---------- */
 let cache=null,cacheAt=0,loading=null;
 /* 出荷日の社内への出庫（埼玉・深谷）を品目ごとのkgに（c151）。重さは出庫の重さ、なければロットの量目×数（日量と同じ） */
+/* c157：出庫のメモの「翌日分先送り」「日曜積込分（・先送り）」は、出庫した日の翌日が出荷日（＝その次の日の納品分）。それ以外（当日分・メモなし）は出庫した日が出荷日 */
+function c157Early(memo,day){let t="";try{t=typeof v1144OutboundMemoParts==="function"?v1144OutboundMemoParts(memo).timing:""}catch(_){}
+ if(!t){const m=String(memo||"").trim().match(/^(当日分|翌日分先送り|日曜積込分・先送り|日曜積込分)/);t=m?m[1]:""}
+ /* 日曜積込分は日曜の出荷分。日曜より前（土曜など）に出庫したときだけ次の日の出荷分にする（日曜に出庫したものはその日の出荷分） */
+ if(t.startsWith("日曜積込分"))return !day||new Date(day+"T00:00:00+09:00").getDay()!==0;
+ return t==="翌日分先送り"}
+/* 出庫した日の社内への出庫（埼玉・深谷）を品目ごとのkgに（c151）。重さは出庫の重さ、なければロットの量目×数（日量と同じ）。
+   c157：先送り（翌日の出荷分）は out.early に分ける */
 async function c151InhouseOut(day){
  const from=new Date(day+"T00:00:00+09:00"),to=new Date(from.getTime()+864e5),dest=INHOUSE.map(([k])=>encodeURIComponent(k)).join(",");
  const q=`select=*&movement_type=eq.${encodeURIComponent("出庫")}&destination=in.(${dest})&occurred_at=gte.${encodeURIComponent(from.toISOString())}&occurred_at=lt.${encodeURIComponent(to.toISOString())}&limit=3000`;
@@ -65,32 +92,25 @@ async function c151InhouseOut(day){
  const ids=[...new Set(moves.map(m=>m.lot_id).filter(Boolean))],lots=new Map,parts=[];
  for(let i=0;i<ids.length;i+=80)parts.push(ids.slice(i,i+80));
  for(const rows of await Promise.all(parts.map(part=>qrSelect("qr_lots",`select=*&id=in.(${part.join(",")})`))))for(const l of rows||[])lots.set(l.id,l);
- const out={};for(const [k] of INHOUSE)out[k]=new Map;let unknown=0;
- for(const m of moves){const k=String(m.destination||"").trim();if(!out[k])continue;const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=name||String(l?.item_name||m.item_name||"").trim();if(!name)continue;
+ const out={early:{}};for(const [k] of INHOUSE){out[k]=new Map;out.early[k]=new Map}let unknown=0;
+ for(const m of moves){const k=String(m.destination||"").trim();if(!out[k])continue;const l=lots.get(m.lot_id);let name="";try{name=qrResolveInventoryItem(l)?.item?.name||""}catch(_){}name=c157Canon(name||String(l?.item_name||m.item_name||"").trim());if(!name)continue;
   let kg=null;if(m.weight!==null&&m.weight!==undefined&&m.weight!==""&&Number.isFinite(Number(m.weight)))kg=Number(m.weight);else{try{const v=l?v163LotKgAtQuantity(l,Number(m.qty||0)):0;kg=v>0?v:null}catch(_){}}
-  if(kg==null){unknown++;continue}out[k].set(name,(out[k].get(name)||0)+kg)}
+  if(kg==null){unknown++;continue}const mp=c157Early(m.memo,day)?out.early[k]:out[k];mp.set(name,(mp.get(name)||0)+kg)}
  out.unknown=unknown;return out;
 }
-/* c154：埼玉・深谷の先送り。翌日分を前の日にまとめて出庫したときは、積み込み表（納品日）と出庫日がずれる。
-   納品日Dの比べる出庫＝出荷日（D−1）の出庫＋「D−2の出庫のうち、前日分（Dの前日の積み込み表）を超えた分」（品目ごと）。
-   前日分の積み込み表がないときは足さない（どこまでが前日分か分からないため）。 */
-function c154AheadMerge(outShip,outPrev,prevPlanLines){
+/* c157：納品日Dの比べる出庫＝出荷日（D−1）の当日分＋その前の日（D−2）の先送り分（メモの「翌日分先送り」「日曜積込分」）。
+   D−1 の先送り分は D+1 の分なので入れない。（c154 の「前日分を超えた分を足す」見込みのやり方は、メモで分かるのでやめる） */
+function c157InhouseMerge(outShip,outPrev){
  if(!outShip)return outShip;
- const res={unknown:outShip.unknown||0,ahead:{}};
- for(const [k] of INHOUSE){
-  const m=new Map(outShip[k]||new Map()),ah=new Map();
-  if(outPrev&&prevPlanLines){
-   const pp=sumKg(prevPlanLines,l=>inhouseOf(l.customer||l.customer_name)===k);
-   for(const [it,kg] of outPrev[k]||new Map()){const extra=kg-(pp.get(it)||0);if(extra>0.05){ah.set(it,extra);m.set(it,(m.get(it)||0)+extra)}}
-  }
-  res[k]=m;res.ahead[k]=ah;
- }
+ const res={unknown:(outShip.unknown||0)+(outPrev?.unknown||0),ahead:{}};
+ for(const [k] of INHOUSE){const m=new Map(outShip[k]||new Map()),ah=new Map(outPrev?.early?.[k]||new Map());
+  for(const [it,kg] of ah)m.set(it,(m.get(it)||0)+kg);res[k]=m;res.ahead[k]=ah}
  return res;
 }
 async function c154InhouseFor(planDate){
  const lib=L(),ship=lib.addDays(planDate,-1),prev=lib.addDays(planDate,-2),get=window.c151InhouseOut||c151InhouseOut;
- const [a,b,pp]=await Promise.all([get(ship),get(prev).catch(()=>null),lib.loadPlan(ship).catch(()=>null)]);
- return c154AheadMerge(a,b,pp?.lines?.length?pp.lines:null);
+ const [a,b]=await Promise.all([get(ship),get(prev).catch(()=>null)]);
+ return c157InhouseMerge(a,b);
 }
 /* c151：まとめて同時に読む（明日の予定・確定の候補4日分）。社内の出庫は確定の日が決まってから */
 async function c147Load(){
@@ -118,11 +138,12 @@ function c149BuyerItemNames(userId=db?.userId){
   const names=typeof qrAllowedItemNames==="function"?qrAllowedItemNames()||[]:[];
   for(const n of names){if(!n||set.has(n))continue;const c=window.v1144AutoPurchaseStaffForItemName?.(n);const id=c?.legacy_user_id;if(id&&(typeof v1151CanonicalBuyerId==="function"?v1151CanonicalBuyerId(id):id)===me)set.add(n)}
  }catch(_){}
- return [...set].sort((a,b)=>a.localeCompare(b,"ja"));
+ /* c157：名前をそろえて同じ品目は1つに（リーフ・リーフレタス・グリーンカール → グリーンリーフ など） */
+ return [...new Set([...set].map(c157Canon))].sort((a,b)=>a.localeCompare(b,"ja"));
 }
 /* 担当品目が1つもない仕入れ担当者は、全品目を出す（何も出ないと役に立たないため） */
-function myItems(){if(db?.role!=="buyer")return null;const set=new Set(c149BuyerItemNames());return set.size?set:null}
-async function myDaily(){if(db?.role!=="buyer"||typeof window.c134Load!=="function")return null;try{return (await window.c134Load()).by}catch(_){return null}}
+function myItems(){if(db?.role!=="buyer")return null;const set=new Set(c149BuyerItemNames().map(c157Canon));return set.size?set:null}
+async function myDaily(){if(db?.role!=="buyer"||typeof window.c134Load!=="function")return null;try{return c157CanonDaily((await window.c134Load()).by)}catch(_){return null}}
 
 /* c155：営業担当者は、自分の担当客先の分だけ（予定・確定・埼玉や深谷の出庫） */
 function c155ForCustomers(data,isMine){
@@ -156,7 +177,7 @@ function c147Html(data,mine,daily){
  return `${head}
   <div class="c147Sec"><div class="c147Sub">明日（${md(data.tomorrow)}納品）の出荷予定</div>${s1}${buyer?'<div class="small">日量は社内（埼玉・深谷・本社など）への出庫も含みます。本社は積み込み表に入らないので、本社への出庫（昨日までの7日間。荻沼への人参・大根は本社の分）から1日分を足して比べます。</div>':""}</div>
   <div class="c147Sec"><div class="c147Sub">${data.act?`${md(data.actDate)}納品の確定と予定の違い（2割以上）`:"確定と予定の違い"}</div>${s2}
-   <div class="small">社外は産地報告書の確定と、確定のある客先の予定で比べます。埼玉・深谷は積み込み表の予定と、出荷日（納品日の前日）の出庫で比べます（翌日分を前の日に先送りした出庫も足します）。kgで比べ、予定・確定とも${MIN_KG}kg以下の品目は出しません。</div></div>
+   <div class="small">社外は産地報告書の確定と、確定のある客先の予定で比べます。埼玉・深谷は積み込み表の予定と、出荷日（納品日の前日）の出庫で比べます（出庫のメモが「翌日分先送り」「日曜積込分」のものは、次の日の出荷分として数えます）。kgで比べ、予定・確定とも${MIN_KG}kg以下の品目は出しません。</div></div>
   <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" class="btn c147Btn" ${seikaEventAttrs("click","c140ShipPlanPage",[data.tomorrow,""])}>明日の出荷予定を開く</button>${data.act?`<button type="button" class="btn btn2" ${seikaEventAttrs("click","c140ShipPlanPage",[data.actDate,""])}>${md(data.actDate)}の確定を開く</button>`:""}</div>`;
 }
 /* 担当品目の日量のボタンに、明日の予定を書き足す */
@@ -164,7 +185,7 @@ function c147Decorate(tom){
  const box=document.getElementById("c134DailyBtns");if(!box)return false;
  const btns=[...box.querySelectorAll("button.c134Btn")];if(!btns.length)return false;
  const by=new Map(tom.map(r=>[r.item,r]));
- for(const b of btns){if(b.querySelector(".c147Add"))continue;const name=b.querySelector("b")?.textContent||"";const r=by.get(name);
+ for(const b of btns){if(b.querySelector(".c147Add"))continue;const name=b.querySelector("b")?.textContent||"";const r=by.get(c157Canon(name));
   b.insertAdjacentHTML("beforeend",`<span class="c147Add ${r?.mark||""}">${r?`明日 ${fmt(r.total)}kg${r.hq>0?`（本社込み）`:""}${r.times!=null?`（${r.times.toFixed(1)}倍）`:""}`:"明日 予定なし"}</span>`)}
  return true;
 }
@@ -225,5 +246,5 @@ if(app)new MutationObserver(()=>{
 .c147Add{display:block;font-size:13px;font-weight:800;color:#334155}
 .c147Add.many{color:#c2410c}.c147Add.few{color:#1d4ed8}`;document.head.appendChild(st)}
 
-Object.assign(window,{c147InjectHome,c147Load,c151Prefetch,c151InhouseOut,c154InhouseFor,c154AheadMerge,c149BuyerItemNames,c147Lib:{c155ForCustomers,c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
+Object.assign(window,{c157Canon,c157ResetCanon,c147InjectHome,c147Load,c151Prefetch,c151InhouseOut,c154InhouseFor,c157InhouseMerge,c157Early,c149BuyerItemNames,c147Lib:{c155ForCustomers,c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
 })();

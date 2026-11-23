@@ -197,6 +197,14 @@ class BuyerGapTests(unittest.TestCase):
         text = page.evaluate("()=>c156SampleSection()")
         self.assertEqual(text, "\n\n■ 明日（11/24）出荷のサンプル\n・わらべや日洋食品(株)吉川工場：胡瓜 1kg")
 
+    def test_item_names_are_unified_c157(self):
+        # c157：通常在庫の名前（リーフ・サニー・ロメイン）と、積み込み表・QRの名前（グリーンリーフ・サニーレタス・ロメインレタス）をそろえる
+        page = self.open_app("buyer")
+        out = page.evaluate("()=>['リーフ','リーフレタス','グリーンカール','サニー','ロメイン','キャベツ','男爵','知らない品'].map(n=>c157Canon(n))")
+        self.assertEqual(out, ["グリーンリーフ", "グリーンリーフ", "グリーンリーフ", "サニーレタス", "ロメインレタス", "キャベツ", "男爵", "知らない品"])
+        rows = page.evaluate("""()=>c153Lib.c153Compare([{customer:'東部アシード',item:'グリーンリーフ',kg:100}],[{customer:'東部アシード',item:'リーフ',kg:60}],null).map(r=>[r.item,r.plan,r.actual])""")
+        self.assertEqual(rows, [["グリーンリーフ", 100, 60]])
+
     def test_before_sql_064_only_buyers(self):
         page = self.open_app("worker")
         page.evaluate("()=>{window.__noSql=true}")

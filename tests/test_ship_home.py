@@ -228,27 +228,25 @@ class ShipHomeTests(unittest.TestCase):
         self.assertIn("うち埼玉 50kg", text)
 
     def test_inhouse_shipped_a_day_early_is_not_shown_as_cancelled(self):
-        # c154：翌日分を前の日に先送りしたとき。納品日11/23の人参（埼玉200kg）を、11/22分といっしょに11/21に出庫した。
-        # 11/22（出荷日）の出庫には人参がないが、11/21の出庫のうち前日分（11/22の積み込み表 埼玉 人参100kg）を超えた200kgを足す
+        # c157：出庫のメモで先送りを見分ける。納品日11/23の比べる出庫＝11/22（出荷日）の当日分＋11/21の「翌日分先送り」。
+        # 11/21の当日分（11/22納品分）と、11/22の先送り（11/24納品分）は入れない
         extra = self.INHOUSE[:-1] + """
-      __plan['2026-11-22']=[{customer:'(株)せき 埼玉工場',item:'人参',kg:100}];
       window.qrSelect=async(t,q)=>{__q.push([t,q]);if(t==='qr_lot_movements'){
-        if(q.includes(encodeURIComponent('2026-11-20T15')))return [{lot_id:'L1',qty:30,destination:'埼玉',movement_type:'出庫'}];
-        if(q.includes(encodeURIComponent('2026-11-21T15')))return [{lot_id:'L2',qty:3,destination:'深谷',movement_type:'出庫'}];
+        if(q.includes(encodeURIComponent('2026-11-20T15')))return [{lot_id:'L1',qty:20,destination:'埼玉',movement_type:'出庫',memo:'翌日分先送り'},{lot_id:'L1',qty:5,destination:'埼玉',movement_type:'出庫',memo:'当日分'}];
+        if(q.includes(encodeURIComponent('2026-11-21T15')))return [{lot_id:'L2',qty:3,destination:'深谷',movement_type:'出庫',memo:'当日分'},{lot_id:'L1',qty:7,destination:'埼玉',movement_type:'出庫',memo:'翌日分先送り / 朝便'}];
         return []}
         if(t==='qr_lots')return [{id:'L1',item_name:'人参'},{id:'L2',item_name:'キャベツ'}];return []};}"""
         page = self.page_with("sales", extra)
         text = page.locator("#c147Ship").inner_text()
-        # 人参：予定 A社100＋埼玉200＝300 → 確定 A社105＋埼玉200（先送り分）＝305 → 2割未満なので違いに出ない
+        # 人参：予定 A社100＋埼玉200＝300 → 確定 A社105＋埼玉200（11/21の先送り）＝305 → 2割未満なので違いに出ない
         diff = page.locator("#c147Ship .c147Sec").nth(1).inner_text()
         self.assertNotIn("人参", diff)
-        self.assertIn("先送りした出庫も足します", text)
-        merged = page.evaluate("""()=>{const r=c154AheadMerge({'埼玉':new Map([['人参',50]]),'深谷':new Map()},{'埼玉':new Map([['人参',300],['レタス',80]]),'深谷':new Map()},[{customer:'(株)せき 埼玉工場',item:'人参',kg:100},{customer:'(株)せき 埼玉工場',item:'レタス',kg:80}]);
-          return [r['埼玉'].get('人参'),r['埼玉'].get('レタス')||0,r.ahead['埼玉'].get('人参')]}""")
-        self.assertEqual(merged, [250, 0, 200])
-        # 前日分の積み込み表がないときは足さない
-        none = page.evaluate("()=>c154AheadMerge({'埼玉':new Map([['人参',50]])},{'埼玉':new Map([['人参',300]])},null)['埼玉'].get('人参')")
-        self.assertEqual(none, 50)
+        self.assertIn("次の日の出荷分として数えます", text)
+        out = page.evaluate("async()=>{const r=await c154InhouseFor('2026-11-23');return [r['埼玉'].get('人参'),r.ahead['埼玉'].get('人参'),r['深谷'].get('キャベツ')]}")
+        self.assertEqual(out, [200, 200, 30])
+        # 日曜積込分：土曜に出庫したら次の日（日曜）の出荷分、日曜に出庫したらその日の出荷分
+        early = page.evaluate("()=>[c157Early('日曜積込分','2026-11-21'),c157Early('日曜積込分','2026-11-22'),c157Early('当日分 / メモ','2026-11-21'),c157Early('翌日分先送り / x','2026-11-22'),c157Early('','2026-11-21')]")
+        self.assertEqual(early, [True, False, False, True, False])
 
     def test_card_shows_at_once_when_already_loaded(self):
         # c151：アプリを開いたときに先に読んでおけば、「読み込んでいます」を出さずに一度で出る

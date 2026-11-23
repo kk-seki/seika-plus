@@ -22,7 +22,7 @@ const mdw=k=>`${md(k)}（${WD[new Date(k+"T00:00:00Z").getUTCDay()]}）`;
 const INHOUSE=[["埼玉",/埼玉/],["深谷",/深谷/]];
 const inhouseOf=c=>{const n=String(c||"");for(const [k,re] of INHOUSE)if(re.test(n))return k;return ""};
 const cust=l=>l.customer||l.customer_name||"";
-const itemOf=l=>l.item||l.item_name||"";
+const itemOf=l=>{const n=l.item||l.item_name||"";return typeof window.c157Canon==="function"?window.c157Canon(n):n};  /* c157：品目名をそろえる */
 const kgOf=l=>{const v=Number(l.kg);return l.kg===null||l.kg===undefined||!Number.isFinite(v)?null:v};
 /* 客先の名前を短く（送る文面用）："(株)せき 埼玉工場"→"埼玉"、"フジフーズ(株) 千葉工場(ニチノウ)"→"フジフーズ 千葉工場" */
 function shortCust(c){const h=inhouseOf(c);if(h)return h;return String(c||"").replace(/[（(](株|有)[)）]|株式会社|有限会社/g,"").replace(/[（(][^）)]*[）)]/g,"").replace(/\s+/g," ").trim()}
@@ -201,7 +201,7 @@ async function c153GapPage(date="",msg=""){
   return pageShell("出荷予定と確定のちがい",`${mdw(date)}納品`,`${msg?`<div class="ok">${esc(msg)}</div>`:""}<div class="card">${nav}<div class="notice" style="margin-top:10px">この日の確定（産地報告書）はまだ取り込まれていません。産地報告書は翌日の納品分が10時ごろに届きます。</div>${sqlNote}</div>${editBtn}${back}`);
  }
  const rows=c153Compare(data.plan?.lines,data.actual.lines,data.inhouse);
- const note=`<div class="small">社外は産地報告書の確定と、確定のある客先の予定で比べます。埼玉・深谷は積み込み表の予定と、出荷日のQRの出庫で比べます（翌日分を前の日に先送りした出庫も足します）。本社は積み込み表に入らないので比べません。予定・確定とも${MIN_KG}kg以下の品目は出しません。</div>${data.inhouse===null?'<div class="small">埼玉・深谷への出庫を読み込めなかったので、社外だけで比べています。</div>':""}${sqlNote}`;
+ const note=`<div class="small">社外は産地報告書の確定と、確定のある客先の予定で比べます。埼玉・深谷は積み込み表の予定と、出荷日のQRの出庫で比べます（出庫のメモが「翌日分先送り」「日曜積込分」のものは、次の日の出荷分として数えます）。本社は積み込み表に入らないので比べません。予定・確定とも${MIN_KG}kg以下の品目は出しません。</div>${data.inhouse===null?'<div class="small">埼玉・深谷への出庫を読み込めなかったので、社外だけで比べています。</div>':""}${sqlNote}`;
  const people=st?c154People(st.staff):buyersAll(),rules=st?st.rules:[];
  if(!canCopy()){
   /* 仕入れ担当者・営業担当者：自分の分だけ */
