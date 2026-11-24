@@ -7,7 +7,7 @@
 (()=>{
 const KINDS=[["内","社内"],["外","社外の客先（産地報告に入る）"],["販","外販先（産地報告に入らない）"]];
 const kindLabel=k=>k==="外"?"社外の客先":k==="販"?"外販先":"社内";
-const st={loaded:false,missing:false,loading:null,error:""};
+const st={loaded:false,missing:false,loading:null,error:"",rows:[]};
 const toRow=r=>({name:String(r.name||""),formal:String(r.formal||""),kind:["内","外","販"].includes(r.kind)?r.kind:"内",
  group:String(r.group||r.group_name||""),outbound:r.outbound!==false,weight:!!r.weight,active:r.active!==false,sort:Number(r.sort)||0});
 
@@ -18,7 +18,7 @@ async function c160LoadDests(force){
    const ans=await callRpc("list_dest_master_v1199c160",{});
    const rows=(Array.isArray(ans)?ans:[]).map(toRow).filter(r=>r.name);
    if(!rows.length)throw new Error("empty");
-   db.v194Destinations=rows;st.loaded=true;st.missing=false;st.error="";
+   st.rows=rows;db.v194Destinations=rows;st.loaded=true;st.missing=false;st.error="";
    try{v194SyncOutDestinations()}catch(_){}
   }catch(e){
    const m=String(e?.message||e);
@@ -32,7 +32,8 @@ async function c160LoadDests(force){
 /* データ：クラウドから読めたらその内容。読めないときは今までの端末の中の内容 */
 const baseEnsure=v194EnsureDestinations;
 const ensure=function(){
- if(st.loaded&&Array.isArray(db?.v194Destinations))return db.v194Destinations;
+ /* c161：クラウドから読んだ内容は st.rows に持つ。再読込などで db が入れ替わって端末の古い内容に戻っても、こちらを使う */
+ if(st.loaded){if(db&&db.v194Destinations!==st.rows)db.v194Destinations=st.rows;return st.rows}
  return baseEnsure();
 };
 window.v194EnsureDestinations=ensure;try{v194EnsureDestinations=ensure}catch(_){}
@@ -71,7 +72,7 @@ function c160Page(msg=""){
  if(typeof c130MasterTabs==="function"){const main=document.querySelector("#app main.wrap");if(main&&!document.getElementById("c134DestTabs"))main.insertAdjacentHTML("afterbegin",`<div id="c134DestTabs" class="card">${c130MasterTabs("dest")}</div>`)}
 }
 async function c160OpenPage(msg=""){
- if(!st.loaded)await c160LoadDests(true);
+ await c160LoadDests(true);  /* c161：開くたびにクラウドの最新を読む */
  c160Page(msg);
 }
 
@@ -93,7 +94,7 @@ function c160AddDest(){
  const name=(document.getElementById("v194DestName")?.value||"").trim().replace(/\s+/g," ");
  if(!name)return alert("納品先名を入力してください");
  const kind=document.getElementById("v194DestKind")?.value||"内";
- if(ensure().some(r=>r.name===name))return alert("同じ名前の納品先がすでにあります");
+ {const dup=ensure().find(r=>r.name===name);if(dup)return alert(`「${name}」はすでに「${kindLabel(dup.kind)}」に入っています。区分や表示は、その行で変えてください。`)}
  const g=(document.getElementById("v194DestGroup")?.value||"").trim();
  const row={name,formal:(document.getElementById("v194DestFormal")?.value||"").trim(),kind,
   group:kind==="外"?(g||"未分類"):kind==="販"?"外販先":"社内",
