@@ -108,6 +108,64 @@ class ShipActualBrowserTests(unittest.TestCase):
         self.assertEqual(rows[("シート2", "A14")][9], 1)
         self.assertIn("qty", rows[("シート2", "A15")][8])
 
+    def test_c162_split_origins_and_weight_rows(self):
+        """c162：産地が分かれて2段（かっこの合計kgが段ごと・JGAPの印つき）、重量の表の2段目（納品先が空の行・品名の行）を読む"""
+        page = self.open_app()
+        q = page.evaluate("""()=>{const q=c142Parse.parseReportQty;return ['8ｋ30(198ｋ)JGAP 8ｋ46(358ｋ)','8ｋ30(198ｋ) 8ｋ46','8ｋ193(1191ｋ)JGAP','10ｋ6 (JGAP)'].map(s=>q(s))}""")
+        self.assertEqual([q[0]["kg"], q[0]["boxes"], q[0]["pack"], q[0]["calcKg"]], [556, 76, 8, 608])
+        self.assertEqual(q[1]["kg"], 566)                 # 合計の書いていない段は箱から計算
+        self.assertEqual(q[2]["kg"], 1191)
+        self.assertEqual(q[3]["kg"], 60)
+        r = page.evaluate("""()=>{
+          const serial=d=>Math.round((new Date(d+'T00:00:00Z')-new Date('1899-12-30T00:00:00Z'))/864e5);
+          const a=XLSX.utils.aoa_to_sheet([
+           ['産地報告'],[],['重量'],[],
+           ['納品先',null,'単協',null,'kg'],
+           ['龍ヶ崎',null,'SYC',null,213,'kg'],
+           [null,null,'市場商事',null,190],
+           ['プライム第二',null,'SYC',null,145,'kg'],
+           ['剝きレタス',null,'カルゲン',null,15],
+           [],[],
+           ['架空デリカ　龍ケ崎工場'],[],
+           ['品目','産地','単協名','cs'],
+           ['レタス','茨城','SYC協同組合(JGAP)30','8ｋ55'],
+           [null,null,'市場商事25'],
+           [],[],
+           ['架空デリカ　相模原第二工場'],[],
+           ['品目','産地','単協名','cs'],
+           ['レタス剥き','茨城','SYC協同組合(JGAP)24','8ｋ26'],
+           [null,null,'カルゲン会さしま(JGAP)2'],
+           [],[],
+           ['架空サービス'],[],
+           ['品目','産地','cs'],
+           ['レタス','茨城','8ｋ30(198ｋ)JGAP'],
+           [null,'長崎','8ｋ46(358ｋ)'],
+           [null,'(JGAP)'],
+           ['胡瓜','宮崎','15ｋ1　10ｋ1'],
+          ]);
+          a['C1']={t:'n',v:serial('2026-11-25')};
+          const rep=c142Parse.readReport({SheetNames:['S'],Sheets:{S:a}},'産地報告.xlsx');
+          const raw=rep.lines.map(l=>[l.cell,l.customerRaw,l.raw,l.kg,l.origin,l.coop,l.issues.join()]);
+          c142Prepare(rep,{alias:new Map([['剝きレタス',{item_name:'レタス',in_master:true}],['レタス剥き',{item_name:'レタス',in_master:true}]]),std:new Map(),aliasRows:[],stdRows:[]},
+            {active:{id:'P'},lines:[{customer_name:'架空デリカ 龍ヶ崎工場',item_name:'レタス',kg:440},{customer_name:'架空デリカ 相模原第二工場',item_name:'レタス',kg:208},{customer_name:'架空サービス',item_name:'レタス',kg:600},{customer_name:'架空サービス',item_name:'胡瓜',kg:25}]},
+            [{raw_key:'龍ケ崎',customer_name:'架空デリカ 龍ヶ崎工場'},{raw_key:'プライム第二',customer_name:'架空デリカ 相模原第二工場'}],null);
+          const eff=c142Auto.eff().map(l=>[l.cell,l.customer,l.item,l.kg,l.note,l.open.join()]);
+          return {raw,eff}}""")
+        raw = {x[0]: x for x in r["raw"]}
+        self.assertEqual(raw["A7"][1:4], ["龍ヶ崎", "レタス", 190])                 # 納品先が空の2段目は上の納品先の続き
+        self.assertEqual(raw["A8"][1:4], ["プライム第二", "剝きレタス", 145])
+        self.assertEqual(raw["A9"][1:4], ["プライム第二", "剝きレタス", 15])       # 品名の行は上の納品先の続き
+        self.assertEqual(raw["A29"][3:5], [556, "茨城・長崎(JGAP)"])
+        self.assertEqual(raw["A29"][6], "")
+        self.assertEqual(raw["A32"][3], 25)
+        eff = {x[0]: x for x in r["eff"]}
+        self.assertEqual(set(eff), {"A15", "A22", "A29", "A32"})                     # 重量の行はケースの行にまとまる
+        self.assertEqual(eff["A15"][3], 403)
+        self.assertIn("213＋190＝403kg", eff["A15"][4])
+        self.assertEqual(eff["A22"][1:4], ["架空デリカ 相模原第二工場", "レタス", 160])
+        self.assertEqual(eff["A29"][3], 556)
+        self.assertTrue(all(x[5] == "" for x in r["eff"]))
+
     def test_different_dates_stop(self):
         page = self.open_app()
         r = page.evaluate(f"""()=>{{const wb=({BOOK})('2026-11-23');wb.Sheets['シート2']['E1'].v+=1;return c142Parse.readReport(wb,'x').errors}}""")

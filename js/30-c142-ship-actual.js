@@ -16,37 +16,52 @@ const ckey=v=>key(v).replace(/ヶ/g,"ケ").replace(/ヵ/g,"カ");
 const tx=(ws,r,c)=>{const x=ws[XLSX.utils.encode_cell({r,c})];if(!x||x.v===null||x.v===undefined)return"";return N(x.v)};
 const raw=(ws,r,c)=>{const x=ws[XLSX.utils.encode_cell({r,c})];return x?x.v:undefined};
 
-/* 数量：{boxes,kg,pack,override} ／ null（数がない＝出していない）／ {bad:true} */
+/* 数量：{boxes,kg,pack,override} ／ null（数がない＝出していない）／ {bad:true}
+   c162：かっこの合計kgは、その直前の「規格・箱数」の合計として読む（産地が分かれて「8ｋ30(198ｋ)」「8ｋ46(358ｋ)」と2段のときは 198＋358）。
+   認証の印「JGAP」「(JGAP)」は数量ではないので読み飛ばす。 */
 function parseReportQty(v){
  let s=N(v).toLowerCase();if(!s)return null;
- s=s.replace(/[×x＊*]/g," ");
- let override=null;const om=s.match(/\((\d+(?:\.\d+)?)\s*kg?\)/);if(om)override=Number(om[1]);
+ s=s.replace(/[×x＊*]/g," ").replace(/\(\s*jgap\s*\)|jgap/g," ");
+ const ovs=[];s=s.replace(/\((\d+(?:\.\d+)?)\s*kg?\)/g,(_,n)=>{ovs.push(Number(n));return ` =${ovs.length-1} `});
  s=s.replace(/\([^)]*\)/g," ");
- const re=/(\d+(?:\.\d+)?)\s*kg?(?![a-z])\s*(\d+(?:\.\d+)?)?|(\d+(?:\.\d+)?)/g;
+ const re=/=(\d+)|(\d+(?:\.\d+)?)\s*kg?(?![a-z])\s*(\d+(?:\.\d+)?)?|(\d+(?:\.\d+)?)/g;
  const left=s.replace(re,"").replace(/[\s,、\/]/g,"");if(left)return{bad:true};
- const pairs=[];let pending=null,m;
+ const pairs=[],loose=[];let pending=null,m;
  while((m=re.exec(s))){
-  if(m[1]!==undefined&&/k/.test(m[0])){if(m[2]!==undefined)pairs.push([Number(m[1]),Number(m[2])]);else pending=Number(m[1])}
-  else{const n=Number(m[3]??m[1]);if(pending!==null){pairs.push([pending,n]);pending=null}else return{bad:true}}
+  if(m[1]!==undefined){const ov=ovs[Number(m[1])],last=pairs[pairs.length-1];if(pending===null&&last&&last[2]===undefined)last[2]=ov;else loose.push(ov);continue}
+  if(m[2]!==undefined&&/k/.test(m[0])){if(m[3]!==undefined)pairs.push([Number(m[2]),Number(m[3])]);else pending=Number(m[2])}
+  else{const n=Number(m[4]??m[2]);if(pending!==null){pairs.push([pending,n]);pending=null}else return{bad:true}}
  }
- if(!pairs.length)return override?{boxes:null,kg:override,pack:null,override}:null;
- let kg=0,boxes=0;const packs=new Set;for(const [p,c] of pairs){kg+=p*c;boxes+=c;packs.add(p)}
- kg=Math.round(kg*1000)/1000;
- return{boxes,kg:override??kg,pack:packs.size===1?[...packs][0]:null,override,calcKg:kg};
+ const r3=x=>Math.round(x*1000)/1000,sumLoose=r3(loose.reduce((a,b)=>a+b,0));
+ if(!pairs.length)return loose.length?{boxes:null,kg:sumLoose,pack:null,override:sumLoose}:null;
+ const hasOv=pairs.some(p=>p[2]!==undefined);
+ if(hasOv&&loose.length)return{bad:true};
+ let kg=0,calc=0,boxes=0;const packs=new Set;for(const [p,c,ov] of pairs){calc+=p*c;kg+=ov??p*c;boxes+=c;packs.add(p)}
+ calc=r3(calc);kg=loose.length?sumLoose:r3(kg);
+ const override=hasOv||loose.length?kg:null;
+ return{boxes,kg,pack:packs.size===1?[...packs][0]:null,override,calcKg:calc};
 }
 const LABELS={"産地":"origin","単協名":"coop","単協":"coop","仕入先":"supplier","入荷日":"recv","cs":"cs","c/s":"cs","ケース":"cs"};
 /* 重量の表（納品先・単協・kg）：レタスをケースでなく計量して出す客先（プライム龍ヶ崎・第二など）。
-   行＝納品先・単協・重さ（数字の右に「kg」）。次の行に品名（例「剝きレタス」）があればその品名、なければレタス。 */
+   行＝納品先・単協・重さ（数字の右に「kg」）。次の行に品名（例「剝きレタス」）があればその品名、なければレタス。
+   c162：・納品先のマスが空の行（龍ヶ崎のように1つの納品先に単協が2段）は、上の納品先の続きとして読む。
+         ・納品先の欄に品名（「剝きレタス」など、レタスの名前）が書いてあり、その行にも重さがあるときは、
+           その行は上の納品先（例：プライム第二）の続きで、品名がそれ。上の行の品名もそれにする。 */
+const isWeightLabel=t=>/レタス/.test(N(t));
 function readWeight(ws,sn,date,h,heads,range,out){
  const next=heads.filter(x=>x.c===h.c&&x.r>h.r).map(x=>x.r-2);const end=next.length?Math.min(...next):range.e.r+1;
- let n=0;
+ const kgOf=r=>{let kg=null;for(let cc=h.c+1;cc<=Math.min(h.c+10,range.e.c);cc++){const v=raw(ws,r,cc);if(typeof v==="number"&&kg===null&&/^kg$/i.test(tx(ws,r,cc+1)))kg=v}
+  if(kg===null){const v2=[...Array(8)].map((_,i)=>raw(ws,r,h.c+1+i)).find(v=>typeof v==="number");if(v2!==undefined)kg=v2}return kg};
+ let n=0,lastDest="";
  for(let r=h.r+1;r<end;r++){
-  const dest=tx(ws,r,h.c);if(!dest)continue;
-  let kg=null;for(let cc=h.c+1;cc<=Math.min(h.c+10,range.e.c);cc++){const v=raw(ws,r,cc);if(typeof v==="number"&&kg===null&&/^kg$/i.test(tx(ws,r,cc+1)))kg=v}
-  if(kg===null){const v2=[...Array(8)].map((_,i)=>raw(ws,r,h.c+1+i)).find(v=>typeof v==="number");if(v2!==undefined)kg=v2}
+  const cellText=tx(ws,r,h.c),kg=kgOf(r);
+  const own=cellText&&isWeightLabel(cellText)?cellText:"";
+  if(cellText&&!own)lastDest=cellText;
   if(kg===null)continue;                                 // 重さのない行（品名だけの行など）
-  const lab=r+1<end?tx(ws,r+1,h.c):"",labHasKg=lab&&[...Array(8)].some((_,i)=>typeof raw(ws,r+1,h.c+1+i)==="number");
-  const item=lab&&!labHasKg?lab:"レタス";
+  const dest=own?(lastDest||own):(cellText||lastDest);    // 上に納品先がないときは、そのまま要確認にする
+  if(!dest)continue;
+  let item=own;
+  if(!item){const lab=r+1<end?tx(ws,r+1,h.c):"";item=lab&&(isWeightLabel(lab)||kgOf(r+1)===null)?lab:"レタス"}
   const coop=h.cols.coop!==undefined?tx(ws,r,h.cols.coop):"";
   out.lines.push({date,file:out.file,sheet:sn,cell:XLSX.utils.encode_cell({r,c:h.c}),customerRaw:dest,raw:item,base:baseName(item),qtyRaw:`${kg}kg（計量）`,origin:"",coop,issues:[],boxes:null,pack:null,kg:Number(kg),weight:true,note:""});
   n++;
@@ -76,13 +91,16 @@ function readReport(wb,fileName){
    const next=heads.filter(x=>x.c===h.c&&x.r>h.r).map(x=>x.r-2);const end=next.length?Math.min(...next):range.e.r+1;
    for(let r=h.r+1;r<end;r++){
     const it=tx(ws,r,h.c);if(!it)continue;
-    const cont=r+1<end&&!tx(ws,r+1,h.c);
-    const q=[raw(ws,r,h.cols.cs),cont?raw(ws,r+1,h.cols.cs):undefined].filter(v=>v!==undefined&&v!==null&&N(v)!=="");
-    const qtyRaw=q.map(v=>N(v)).join(" ");
+    /* 品目のマスが空の下の行は同じ品目の続き（2段目の数量、産地が分かれたときの2つ目の産地など）。c162：3段以上も読む */
+    const rows=[r];
+    for(let k=r+1;k<end&&!tx(ws,k,h.c);k++){const any=["cs","origin","coop"].some(f=>h.cols[f]!==undefined&&tx(ws,k,h.cols[f]));if(!any)break;rows.push(k)}
+    const col=f=>h.cols[f]===undefined?[]:rows.map(k=>tx(ws,k,h.cols[f])).filter(Boolean);
+    const joinPlace=a=>a.reduce((s,x)=>s?(/^[（(]/.test(x)?s+x:s+"・"+x):x,"");   // 「茨城」「(JGAP)」は「茨城(JGAP)」、「茨城」「長崎」は「茨城・長崎」
+    const qtyRaw=col("cs").join(" ");
     const qq=parseReportQty(qtyRaw);
     if(!qq)continue;                                     // 数がない＝出していない
-    const o=h.cols.origin!==undefined?[tx(ws,r,h.cols.origin),cont?tx(ws,r+1,h.cols.origin):""].filter(Boolean).join(""):"";
-    const cp=h.cols.coop!==undefined?[tx(ws,r,h.cols.coop),cont?tx(ws,r+1,h.cols.coop):""].filter(Boolean).join(""):"";
+    const o=joinPlace(col("origin"));
+    const cp=joinPlace(col("coop"));
     const line={date,file:fileName,sheet:sn,cell:XLSX.utils.encode_cell({r,c:h.c}),customerRaw:title,raw:it,base:baseName(it),qtyRaw,origin:o,coop:cp,issues:[],
      boxes:qq.bad?null:qq.boxes,pack:qq.bad?null:qq.pack,kg:qq.bad?null:qq.kg,note:qq.override&&qq.calcKg!==qq.override?`合計${qq.override}kgと書いてあります（箱から計算すると${qq.calcKg}kg）`:""};
     if(qq.bad)line.issues.push("qty");if(!title)line.issues.push("customer");
@@ -147,12 +165,18 @@ function effRaw(){
 }
 /* 重量の表の行（計量したkg）は、同じ客先・同じ品目（単協が同じものを先に）のケースの行の重さとして使い、重量の行そのものは出さない。
    ケースの行がないときは、重量の行をそのまま1行として使う。 */
+/* c162：同じケースの行に重量の行が2つ以上（単協ごとに計量：龍ヶ崎 SYC 213kg＋市場商事 190kg など）あれば、足したkgを使う。 */
 function eff(){
- const ls=effRaw(),used=new Set;
+ const ls=effRaw(),got=new Map;
  for(const w of ls.filter(l=>l.weight&&!l.open.length)){
-  const cands=ls.filter(l=>!l.weight&&!l.open.length&&l.customer===w.customer&&l.item===w.item&&!used.has(l));
-  const hit=cands.find(l=>w.coop&&key(l.coop).includes(key(w.coop).replace(/\(.*$/,"")))||cands[0];
-  if(hit){used.add(hit);hit.note=`計量 ${num(w.kg)}kg（重量の表）。ケースからだと ${num(hit.kg)}kg`;hit.kg=w.kg;w.merged=true}
+  const cands=ls.filter(l=>!l.weight&&!l.open.length&&l.customer===w.customer&&l.item===w.item);
+  const hit=cands.find(l=>w.coop&&key(l.coop).includes(key(w.coop).replace(/\(.*$/,"")))||cands.find(l=>!got.has(l))||cands[0];
+  if(hit){if(!got.has(hit))got.set(hit,{caseKg:hit.kg,ws:[]});got.get(hit).ws.push(w);w.merged=true}
+ }
+ for(const [hit,g] of got){
+  const kg=Math.round(g.ws.reduce((a,w)=>a+w.kg,0)*1000)/1000;
+  const parts=g.ws.length>1?`${g.ws.map(w=>num(w.kg)).join("＋")}＝${num(kg)}`:num(kg);
+  hit.note=`計量 ${parts}kg（重量の表）。ケースからだと ${num(g.caseKg)}kg`;hit.kg=kg;
  }
  return ls.filter(l=>!l.merged);
 }
@@ -227,7 +251,7 @@ try{
    "「産地報告書を選ぶ」でファイルを選びます。納品日は産地報告書の1行目から読みます。シートごとに日付が違うときは止まります。",
    "確認画面に、積み込み表と書き方が違う客先・知らない品名・読めない数量が「要確認」で出ます。客先はこの日の積み込み表の客先から選びます（選んだ対応は次から自動で当てはまります）。",
    "「この内容で確定数量を登録する」を押します。出荷予定の画面に「予定」と「確定」が並び、kgが違う品目に「違い」が付きます。"],
-  check:"規格だけ書いてあって数のない行は、出していないものとして読みません。「重量」の表（レタスを計量して出す客先）は、計量したkgをその客先のレタスの重さとして使います。",
+  check:"規格だけ書いてあって数のない行は、出していないものとして読みません。「重量」の表（レタスを計量して出す客先）は、計量したkgをその客先のレタスの重さとして使います（単協ごとに2段あれば足します）。産地が分かれて2段に書いた数量（「8ｋ30(198ｋ)JGAP」「8ｋ46(358ｋ)」など）は、かっこの合計kgを足して読みます。",
   caution:"確定数量があるのは産地報告書にある社外の客先だけです。埼玉・深谷・本社はQR出庫と伝票で確認します。"};
  if(typeof V195_ROLE_GUIDES!=="undefined")for(const r of ["admin","worker","clerk"]){const gg=V195_ROLE_GUIDES[r];if(gg&&Array.isArray(gg.sections)&&!gg.sections.some(x=>x&&x.title===g.title))gg.sections.push(g)}
 }catch(e){}
