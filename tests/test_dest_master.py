@@ -83,6 +83,20 @@ class DestMasterTests(unittest.TestCase):
         page.wait_for_function("()=>document.body.innerText.includes('削除しました')")
         self.assertFalse(page.evaluate("()=>__srv.some(r=>r.name==='旭物産')"))
 
+    def test_cloud_rows_survive_when_db_is_replaced_c161(self):
+        # c161：再読込などで db が入れ替わり、端末の古い内容（旭物産なし）に戻っても、クラウドの内容を使う
+        page = self.open_app("admin")
+        page.evaluate("()=>c160LoadDests(true)")
+        page.evaluate("()=>{db.v194Destinations=[{name:'本社',kind:'内',group:'社内',outbound:true}]}")
+        self.assertIn("旭物産", page.evaluate("()=>v194EnsureDestinations().map(r=>r.name)"))
+        page.evaluate("()=>v194DestinationsPage()")
+        self.assertIn("旭物産", page.inner_text("#app"))
+        page.evaluate("()=>{window.__a=[];window.alert=m=>__a.push(m)}")
+        page.fill("#v194DestName", "旭物産")
+        page.evaluate("()=>c160AddDest()")
+        self.assertIn("すでに「外販先」に入っています", page.evaluate("()=>__a.join()"))
+        self.assertFalse(page.evaluate("()=>__calls.some(c=>c[0]==='save_dest_master_v1199c160')"))
+
     def test_before_sql_066_keeps_local_and_shows_notice(self):
         page = self.open_app("admin")
         page.evaluate("()=>{const base=callRpc;callRpc=async(n,a)=>{if(n==='list_dest_master_v1199c160')throw new Error('Could not find the function public.list_dest_master_v1199c160 PGRST202');return base(n,a)};c160State.loaded=false}")
