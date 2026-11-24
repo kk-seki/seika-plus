@@ -186,14 +186,14 @@ class BuyerGapTests(unittest.TestCase):
         out = page.evaluate("""()=>{const L=(n,c,i,kg,note,m=true)=>({line_no:n,customer_name:c,item_name:i,item_in_master:m,kg,note});
           const plan={active:{id:'X'},lines:[L(1,'プライムデリカ 龍ヶ崎工場','キャベツ',300,''),L(7,'プライムデリカ 龍ヶ崎工場','小葱',0.5,'サンプル'),
             L(112,'(株)武蔵野 千葉工場','大葉',0.1,'サンプル'),L(10,'プライムデリカ 龍ヶ崎工場','輸入ブロッコリー',6,'サンプル',false),L(11,'プライムデリカ 龍ヶ崎工場','エリンギ',0.8,'サンプル',false)]};
-          return [c156SampleText('2026-11-25',plan),c156SampleText('2026-11-25',{active:{id:'X'},lines:[L(1,'A','キャベツ',3,'')]}),
-            c156SampleText('2026-11-25',{active:null,lines:[]}),c156SampleText('2026-11-25',null)]}""")
+          return [c156SampleText('2026-11-26',plan),c156SampleText('2026-11-26',{active:{id:'X'},lines:[L(1,'A','キャベツ',3,'')]}),
+            c156SampleText('2026-11-26',{active:null,lines:[]}),c156SampleText('2026-11-26',null)]}""")
         self.assertEqual(out[0], "\n\n■ 明日（11/25）出荷のサンプル\n・プライムデリカ 龍ヶ崎工場：小葱 0.5kg／輸入ブロッコリー 6kg／エリンギ 0.8kg\n・(株)武蔵野 千葉工場：大葉 0.1kg")
         self.assertEqual(out[1], "\n\n■ 明日（11/25）出荷のサンプル なし")
         self.assertIn("積み込み表がまだ取り込まれていません", out[2])
         self.assertIn("読み込めませんでした", out[3])
-        # 今の文章の後ろに足すだけ。明日＝報告を作る日（11/23）の翌日
-        page.evaluate("""()=>{__plan['2026-11-24']=[{line_no:5,customer_name:'わらべや日洋食品(株)吉川工場',item_name:'胡瓜',kg:1,note:'サンプル'}]}""")
+        # c159：明日出荷＝報告を作る日（11/23）の翌日（11/24）に出荷する分＝11/25納品の行。今日出荷（11/24納品）の行は入れない
+        page.evaluate("""()=>{__plan['2026-11-24']=[{line_no:5,customer_name:'今日出荷の客先',item_name:'胡瓜',kg:1,note:'サンプル'}];__plan['2026-11-25']=[{line_no:5,customer_name:'わらべや日洋食品(株)吉川工場',item_name:'胡瓜',kg:1,note:'サンプル'}]}""")
         text = page.evaluate("()=>c156SampleSection()")
         self.assertEqual(text, "\n\n■ 明日（11/24）出荷のサンプル\n・わらべや日洋食品(株)吉川工場：胡瓜 1kg")
 
