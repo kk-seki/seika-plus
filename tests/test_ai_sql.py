@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SQL = (ROOT / 'db/068_AI導入.sql').read_text(encoding='utf-8')
+SQL_069 = (ROOT / 'db/069_AIの廃棄にトリミング廃棄.sql').read_text(encoding='utf-8')
 SCRATCH = Path('/tmp/jai-scratch/c165')
 TIMEOUT = 30
 
@@ -93,6 +94,8 @@ class AiSqlRuntimeTests(unittest.TestCase):
         cls.psql(SCHEMA)
         cls.psql(SQL)
         cls.psql(SQL)  # 2回実行しても同じ
+        cls.psql(SQL_069)
+        cls.psql(SQL_069)
 
     @classmethod
     def command(cls, command):
@@ -139,8 +142,9 @@ class AiSqlRuntimeTests(unittest.TestCase):
         self.assertEqual([(r['item'], r['qty'], r['lots'], r['oldest_received']) for r in stock], [('キャベツ', 8, 2, '2026-11-18')])
         out = self.ai(SALES, 'outbound', item="'キャ'")['rows']
         self.assertEqual([(r['destination'], r['qty'], r['times']) for r in out], [('埼玉', 3, 2)])  # 取消は入らない
-        waste = {r['source']: r['qty'] for r in self.ai(ADMIN, 'waste')['rows']}
-        self.assertEqual(waste, {'廃棄記録': 4, 'QR廃棄': 1})
+        self.psql("truncate public.trimming_jobs; insert into public.trimming_jobs(work_date,source_item_name,input_weight_kg,output_weight_kg,loss_weight_kg,waste_weight_kg) values (current_date,'キャベツ',100,94,6,6),(current_date,'キャベツ',50,50,0,0)")
+        waste = {r['source']: (r['qty'], r['unit']) for r in self.ai(ADMIN, 'waste')['rows']}
+        self.assertEqual(waste, {'廃棄記録': (4, None), 'QR廃棄': (1, 'CS'), 'トリミング廃棄': (6, 'kg')})  # c166：廃棄にトリミング廃棄も入る
         plan = self.ai(SALES, 'plan')['rows']
         self.assertEqual([(r['customer'], r['kg']) for r in plan], [('美野里デリカ', 100)])  # 置き換え済みは入らない
         pva = self.ai(SALES, 'plan_vs_actual')['rows']

@@ -49,23 +49,27 @@ class AiTests(unittest.TestCase):
         return page
 
     def test_home_summary_for_four_roles_and_cache(self):
-        for role in ("admin", "worker", "buyer", "sales"):
+        page = self.open_app("admin")
+        page.evaluate("()=>{c165State.sum.day='';home()}")
+        page.wait_for_function("()=>document.getElementById('c165Sum')?.innerText.includes('キャベツ 明日100kg')", timeout=8000)
+        self.assertEqual(page.evaluate("()=>__ai.filter(x=>x.action==='summary').length"), 1)
+        self.assertTrue(page.evaluate("()=>!!document.querySelector('#c165Sum button[data-seika-click-action=\"c165RefreshSummary\"]')"))
+        # c166：しばらくは管理者だけ。ほかの役割にはまとめもAIに聞くも出ない
+        for role in ("worker", "buyer", "sales", "clerk"):
             with self.subTest(role=role):
                 page = self.open_app(role)
-                page.evaluate("()=>{c165State.sum.day='';home()}")
-                page.wait_for_function("()=>document.getElementById('c165Sum')?.innerText.includes('キャベツ 明日100kg')", timeout=8000)
-                self.assertEqual(page.evaluate("()=>__ai.filter(x=>x.action==='summary').length"), 1)
-                self.assertEqual(page.evaluate("()=>!!document.querySelector('#c165Sum button[data-seika-click-action=\"c165RefreshSummary\"]')"), role == "admin")
-        page = self.open_app("sales")
+                page.evaluate("()=>{c165State.sum.day='';home()}"); page.wait_for_timeout(600)
+                self.assertFalse(page.evaluate("()=>!!document.getElementById('c165Sum')"))
+                self.assertEqual(page.evaluate("()=>__ai.length"), 0)
+                page.evaluate("()=>c165AskPage()")
+                self.assertIn("管理者だけ", page.evaluate("()=>window.__alert"))
+        page = self.open_app("admin")
         page.evaluate("()=>{window.__cached=[{body:'保存済みのまとめ',created_at:'2026-11-26T06:00:00+09:00'}];c165State.sum.day='';home()}")
         page.wait_for_function("()=>document.getElementById('c165Sum')?.innerText.includes('保存済みのまとめ')")
         self.assertEqual(page.evaluate("()=>__ai.length"), 0)  # 保存済みならAIを呼ばない
-        page = self.open_app("clerk")
-        page.evaluate("()=>home()"); page.wait_for_timeout(600)
-        self.assertFalse(page.evaluate("()=>!!document.getElementById('c165Sum')"))
 
     def test_ask_page(self):
-        page = self.open_app("buyer")
+        page = self.open_app("admin")
         page.evaluate("()=>c165AskPage()")
         page.wait_for_selector("#c165AskText")
         page.fill("#c165AskText", "先週のキャベツの廃棄は？")
@@ -83,12 +87,10 @@ class AiTests(unittest.TestCase):
         page.evaluate("()=>{c165State.ask.history.push({q:'x',a:'答えは **6kg** です',used:[]});c165AskPage()}")
         self.assertIn("<b>6kg</b>", page.inner_html("#app"))
         self.assertNotIn("**", page.inner_text("#app"))
-        page = self.open_app("clerk")
-        page.evaluate("()=>c165AskPage()")
-        self.assertIn("管理者・青果社員・仕入れ担当・営業", page.evaluate("()=>window.__alert"))
+
 
     def test_photo_candidate_fills_quality_form(self):
-        page = self.open_app("worker")
+        page = self.open_app("admin")
         page.evaluate("""()=>{setScreen('v1102QualityPage',[]);pageShell('QR品質評価','',`<div class="card"><input type="radio" name="v1102Grade" value="good"><input type="radio" name="v1102Grade" value="review"><input type="radio" name="v1102Grade" value="bad">
           <div id="v1102ProblemFields">${V1102_QUALITY_ISSUES.map(x=>`<input type="checkbox" name="v1102Issue" value="${x}">`).join('')}</div><textarea id="v1102QualityMemo"></textarea></div>`);c165InjectQuality()}""")
         page.wait_for_selector("#c165Photo")

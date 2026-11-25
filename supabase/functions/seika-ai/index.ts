@@ -65,7 +65,9 @@ Deno.serve(async (req) => {
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   const { data: me } = await admin.from('profiles').select('id,display_name,role,active').eq('id', who.user.id).maybeSingle()
   if (!me || !me.active) return json(403, { ok: false, message: 'このアカウントは使えません' })
-  if (!ROLES.has(me.role)) return json(403, { ok: false, message: 'AIは管理者・青果社員・仕入れ担当・営業が使えます' })
+  // c166：しばらくは管理者だけ。広げるときはシークレット AI_ALLOWED_ROLES（例：admin,worker,buyer,sales）
+  const allowed = new Set((Deno.env.get('AI_ALLOWED_ROLES') ?? 'admin').split(',').map((x) => x.trim()).filter((x) => ROLES.has(x)))
+  if (!ROLES.has(me.role) || !allowed.has(me.role)) return json(403, { ok: false, message: 'AIは今は管理者だけが使えます' })
 
   let body: Record<string, any>
   try { body = await req.json() } catch { return json(400, { ok: false, message: '送られた内容を読めません' }) }
@@ -134,7 +136,7 @@ Deno.serve(async (req) => {
       messages.push({ role: 'user', content: question })
       const tools = [{
         name: 'get_data',
-        description: `SEIKA＋のデータを読む（読むだけ）。kind：stock 今の在庫（品目ごと）／outbound 出庫（品目×出庫先、期間）／waste 廃棄の記録とQR廃棄（期間。トリミング廃棄は trimming）／plan 出荷予定（納品日×客先×品目）／actual 確定数量（産地報告書）／plan_vs_actual 予定と確定の差／trimming 下処理（トリミング）の原料・出来高・廃棄（トリミング廃棄）・歩留まり／quality 品質評価（要確認・不良）／gap GAP認証の期限（期限切れと90日以内）／prices 仕入れ価格（週ごと。管理者・仕入れ担当だけ）。from・to は YYYY-MM-DD（最大92日）。item・customer は名前の一部でしぼる。1回80行まで。`,
+        description: `SEIKA＋のデータを読む（読むだけ）。kind：stock 今の在庫（品目ごと）／outbound 出庫（品目×出庫先、期間）／waste 廃棄（期間。廃棄記録・QR廃棄・トリミング廃棄を品目ごとに。source で区別）／plan 出荷予定（納品日×客先×品目）／actual 確定数量（産地報告書）／plan_vs_actual 予定と確定の差／trimming 下処理（トリミング）の原料・出来高・歩留まり／quality 品質評価（要確認・不良）／gap GAP認証の期限（期限切れと90日以内）／prices 仕入れ価格（週ごと。管理者・仕入れ担当だけ）。from・to は YYYY-MM-DD（最大92日）。item・customer は名前の一部でしぼる。1回80行まで。`,
         input_schema: { type: 'object', properties: { kind: { type: 'string', enum: KINDS }, from: { type: 'string' }, to: { type: 'string' }, item: { type: 'string' }, customer: { type: 'string' } }, required: ['kind'] },
       }]
       const used: unknown[] = []
@@ -147,7 +149,7 @@ Deno.serve(async (req) => {
 ・結論を先に、2〜6行で。数字には単位（kg・ケースなど）と期間を付ける。必要なら「・」の箇条書き。
 ・データで分からないことは「SEIKA＋のデータでは分かりません」と言い、推測で数字を作らない。
 ・「先週」は今日の7日前から昨日まで、「今月」は今月1日から今日まで、のように日付に直して調べる。
-・「廃棄」と聞かれたら、waste（廃棄記録・QR廃棄）と trimming（下処理・トリミングで出た廃棄）の両方を調べ、分けて答える。
+・この会社では「廃棄」にはトリミング廃棄（下処理で出た廃棄）も含む。waste はトリミング廃棄も入った廃棄のデータなので、「廃棄」と聞かれたら waste を調べ、廃棄記録・QR廃棄・トリミング廃棄を足した合計を答え、内訳も書く（単位が違うものは足さずに分けて書く）。waste の行に source「トリミング廃棄」が1つもないときは、trimming も調べてその waste_kg をトリミング廃棄として足す。
 ・**などの記号（マークダウン）は使わない。
 ・在庫・伝票・設定を変えることはできない。頼まれたら、アプリのどの画面でできるかだけ案内する。`,
           messages,
