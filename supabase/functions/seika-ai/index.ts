@@ -109,17 +109,17 @@ Deno.serve(async (req) => {
       }
       const facts = await Promise.all(plan[role])
       const r = await claude(apiKey, {
-        max_tokens: 700,
+        max_tokens: 4000,
         system: `あなたは青果センターの業務アプリ「SEIKA＋」のアシスタントです。今日は ${today} です。読む人は「${ROLE_LABEL[role]}」です。
 渡したデータだけを使い、「今日のまとめ」を日本語で3〜5行に書きます。
 ・1行は40字くらいまで。行頭は「・」。結論から。品目名・客先名・数字（kg など）を入れる。
 ・その役割の人が今日すぐ動けること（足りない・余る・期限が近い・差が大きいなど）を先に書く。
 ・データにないことは書かない。推測で数字を作らない。データが空なら「該当するデータはありません」と書く。
-・難しい言葉を使わない。前置きや締めの言葉は書かない。`,
+・難しい言葉を使わない。前置きや締めの言葉は書かない。**などの記号（マークダウン）は使わない。`,
         messages: [{ role: 'user', content: JSON.stringify(facts) }],
       }, usage)
       const text = textOf(r)
-      if (!text) throw new Error('まとめを作れませんでした')
+      if (!text) throw new Error(r.stop_reason === 'max_tokens' ? 'まとめが長くなりすぎて作れませんでした' : 'まとめを作れませんでした')
       await admin.from('ai_daily_summaries_v1199c165').upsert({ day: today, role, body: text, model: MODEL, created_at: new Date().toISOString() })
       await log(true, role)
       return json(200, { ok: true, cached: false, day: today, role, body: text })
@@ -134,19 +134,21 @@ Deno.serve(async (req) => {
       messages.push({ role: 'user', content: question })
       const tools = [{
         name: 'get_data',
-        description: `SEIKA＋のデータを読む（読むだけ）。kind：stock 今の在庫（品目ごと）／outbound 出庫（品目×出庫先、期間）／waste 廃棄（期間）／plan 出荷予定（納品日×客先×品目）／actual 確定数量（産地報告書）／plan_vs_actual 予定と確定の差／trimming 下処理の原料・出来高・歩留まり／quality 品質評価（要確認・不良）／gap GAP認証の期限（期限切れと90日以内）／prices 仕入れ価格（週ごと。管理者・仕入れ担当だけ）。from・to は YYYY-MM-DD（最大92日）。item・customer は名前の一部でしぼる。1回80行まで。`,
+        description: `SEIKA＋のデータを読む（読むだけ）。kind：stock 今の在庫（品目ごと）／outbound 出庫（品目×出庫先、期間）／waste 廃棄の記録とQR廃棄（期間。トリミング廃棄は trimming）／plan 出荷予定（納品日×客先×品目）／actual 確定数量（産地報告書）／plan_vs_actual 予定と確定の差／trimming 下処理（トリミング）の原料・出来高・廃棄（トリミング廃棄）・歩留まり／quality 品質評価（要確認・不良）／gap GAP認証の期限（期限切れと90日以内）／prices 仕入れ価格（週ごと。管理者・仕入れ担当だけ）。from・to は YYYY-MM-DD（最大92日）。item・customer は名前の一部でしぼる。1回80行まで。`,
         input_schema: { type: 'object', properties: { kind: { type: 'string', enum: KINDS }, from: { type: 'string' }, to: { type: 'string' }, item: { type: 'string' }, customer: { type: 'string' } }, required: ['kind'] },
       }]
       const used: unknown[] = []
       let answer = ''
       for (let turn = 0; turn < 6; turn++) {
         const r = await claude(apiKey, {
-          max_tokens: 1200, tools,
+          max_tokens: 4000, tools,
           system: `あなたは青果センターの業務アプリ「SEIKA＋」のアシスタントです。今日は ${today}（日本時間）です。聞いている人は「${ROLE_LABEL[me.role]}」です。
 質問には、get_data で読んだデータだけを根拠に、日本語で短く答えます。
 ・結論を先に、2〜6行で。数字には単位（kg・ケースなど）と期間を付ける。必要なら「・」の箇条書き。
 ・データで分からないことは「SEIKA＋のデータでは分かりません」と言い、推測で数字を作らない。
 ・「先週」は今日の7日前から昨日まで、「今月」は今月1日から今日まで、のように日付に直して調べる。
+・「廃棄」と聞かれたら、waste（廃棄記録・QR廃棄）と trimming（下処理・トリミングで出た廃棄）の両方を調べ、分けて答える。
+・**などの記号（マークダウン）は使わない。
 ・在庫・伝票・設定を変えることはできない。頼まれたら、アプリのどの画面でできるかだけ案内する。`,
           messages,
         }, usage)
@@ -173,7 +175,7 @@ Deno.serve(async (req) => {
       if (!image || image.length > 1_400_000) return json(400, { ok: false, message: '写真を読み込めませんでした（大きすぎるか、空です）' })
       const item = clean(body.item_name, 40)
       const r = await claude(apiKey, {
-        max_tokens: 500,
+        max_tokens: 3000,
         system: `あなたは青果の品質を見る担当者を手伝います。写真の野菜（${item || '品目不明'}）の見た目から、品質評価の「候補」を出します。最後は人が決めます。
 答えは JSON だけ：{"grade":"good|review|bad","issues":[…],"memo":"40字くらいの日本語","confidence":"high|medium|low"}
 ・grade：good 良好／review 要確認／bad 不良。
@@ -199,7 +201,7 @@ Deno.serve(async (req) => {
     }
     if (!ask.items.length && !ask.qty.length && !ask.customers.length) return json(400, { ok: false, message: '読めなかった行がありません' })
     const r = await claude(apiKey, {
-      max_tokens: 4000,
+      max_tokens: 8000,
       system: `あなたは青果センターの「${kind}」の読み取りを手伝います。今のルールで読めなかった行について「候補」を出します。決めるのは管理者です。
 答えは JSON だけ：{"items":[{"key":"…","item":"品目マスタの名前 か null","reason":"20字まで"}],"qty":[{"key":"…","kg":数値 か null,"reason":"計算の式（例：15kg×13+5kg×1）"}],"customers":[{"key":"…","customer":"客先の一覧の名前 か null","reason":"20字まで"}]}
 ・item は必ず「品目マスタ」にある名前から選ぶ。自信がないときは null。「大根」とだけ書いてあるものは、カット大根・葉付き大根などと取り違えないよう、根拠がなければ null。

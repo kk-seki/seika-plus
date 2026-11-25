@@ -76,6 +76,13 @@ class AiTests(unittest.TestCase):
         page.evaluate("()=>c165AskSend()")
         page.wait_for_function("()=>__ai.length===2")
         self.assertEqual(page.evaluate("()=>__ai[1].history"), [{"q": "先週のキャベツの廃棄は？", "a": "先週のキャベツの廃棄は 12kg です。"}])
+        # c166：例を押しても聞かず、入力欄に入るだけ。答えの **太字** は記号を出さない
+        page.evaluate("()=>c165AskExample('今いちばん在庫が多い品目は？')")
+        self.assertEqual(page.input_value("#c165AskText"), "今いちばん在庫が多い品目は？")
+        self.assertEqual(page.evaluate("()=>__ai.length"), 2)
+        page.evaluate("()=>{c165State.ask.history.push({q:'x',a:'答えは **6kg** です',used:[]});c165AskPage()}")
+        self.assertIn("<b>6kg</b>", page.inner_html("#app"))
+        self.assertNotIn("**", page.inner_text("#app"))
         page = self.open_app("clerk")
         page.evaluate("()=>c165AskPage()")
         self.assertIn("管理者・青果社員・仕入れ担当・営業", page.evaluate("()=>window.__alert"))

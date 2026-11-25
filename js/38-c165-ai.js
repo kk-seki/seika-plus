@@ -20,7 +20,8 @@ async function c165Ai(action,payload={}){
  if(!res.ok||data?.ok===false)throw new Error(data?.message||`AIを使えませんでした（${res.status}）`);
  return data;
 }
-const lines=t=>esc(String(t||"")).replace(/\n/g,"<br>");
+/* c166：AIの文の **太字** は太字で見せる（記号は出さない） */
+const lines=t=>esc(String(t||"")).replace(/\*\*([^*\n]+)\*\*/g,"<b>$1</b>").replace(/\*\*/g,"").replace(/\n/g,"<br>");
 
 /* ---------- ① 毎日のまとめ ---------- */
 const sum={day:"",role:"",body:"",at:"",loading:false,error:""};
@@ -70,7 +71,7 @@ function c165AskPage(){
  const ex=(EXAMPLES[db.role]||[]).map(q=>`<button class="btn btn2 c165Ex" ${seikaEventAttrs("click","c165AskExample",[q])}>${esc(q)}</button>`).join("");
  const hist=ask.history.map(h=>`<div class="c165Q">${esc(h.q)}</div><div class="c165A">${lines(h.a)}${h.used?.length?`<div class="small" style="margin-top:4px">調べたデータ：${esc(h.used.map(u=>[KIND_LABEL[u.kind]||u.kind,u.from&&u.to?`${u.from}〜${u.to}`:"",u.item||"",u.customer||""].filter(Boolean).join(" ")).join("／"))}</div>`:""}</div>`).join("");
  pageShell("AIに聞く","SEIKA＋のデータを見て、AIが答えます（読むだけ。在庫や伝票は変わりません）",`
- <div class="card">${hist||'<div class="small">聞きたいことを書いて「聞く」を押してください。下の例を押すとそのまま聞けます。</div>'}
+ <div class="card">${hist||'<div class="small">聞きたいことを書いて「聞く」を押してください。下の例を押すと入力欄に入るので、付け足してから「聞く」を押せます。</div>'}
   <div id="c165AskBusy" class="small" style="display:${ask.busy?"block":"none"};margin-top:8px">AIが調べています…（10〜30秒ほど）</div></div>
  <div class="card"><textarea id="c165AskText" class="textarea" maxlength="500" placeholder="例：先週のキャベツの廃棄は何kg？"></textarea>
   <div class="row" style="gap:6px;margin-top:8px"><button id="c165AskBtn" class="btn green" style="flex:1" ${seikaEventAttrs("click","c165AskSend",[])}>聞く</button>${ask.history.length?`<button class="btn btn2" ${seikaEventAttrs("click","c165AskClear",[])}>はじめから</button>`:""}</div>
@@ -80,7 +81,8 @@ function c165AskPage(){
  if(db.role==="admin")c165LoadUsage();
 }
 const KIND_LABEL={stock:"在庫",outbound:"出庫",waste:"廃棄",plan:"出荷予定",actual:"確定数量",plan_vs_actual:"予定と確定の差",trimming:"下処理",quality:"品質評価",gap:"GAP",prices:"仕入れ価格"};
-function c165AskExample(q){const t=document.getElementById("c165AskText");if(t)t.value=q;return c165AskSend()}
+/* c166：例を押すと入力欄に入るだけ（付け足してから「聞く」を押す） */
+function c165AskExample(q){const t=document.getElementById("c165AskText");if(!t)return;t.value=q;try{t.focus();t.setSelectionRange(q.length,q.length);t.scrollIntoView({block:"center"})}catch(_){}}
 function c165AskClear(){ask.history=[];return c165AskPage()}
 async function c165AskSend(){
  if(ask.busy)return;
