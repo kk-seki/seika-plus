@@ -188,7 +188,10 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&l
 /* v1.10：QR対象品目マスタ、仕入れ担当者自動入力、荷姿別ロット、パレット別貼り紙、出庫/廃棄/調整、カメラ読取入口を追加。 */const QR_CONTAINER_TYPES=["ダンボール","コンテナ","紙袋","網コンテナ","鉄コンテナ","パレテーナ"]
 ;const QR_LARGE_CONTAINERS=["網コンテナ","鉄コンテナ","パレテーナ"];const QR_NORMAL_CONTAINERS=["ダンボール","コンテナ","紙袋"]
 ;const QR_STORAGE_LOCATIONS=["第2冷蔵庫","第3冷蔵庫","片岡冷蔵庫","その他"];const QR_ADJUST_REASONS=["実数合わせ","入力ミス","移動","廃棄","その他"]
-;const QR_OUT_DESTINATIONS=["本社","埼玉","深谷","社外","荻沼","石岡冷凍","その他","廃棄"];const QR_SHIP_TIMINGS=["当日分","翌日分先送り"]
+;const QR_OUT_DESTINATIONS=["本社","埼玉","深谷","社外","荻沼","石岡冷凍","その他","廃棄","返品"];
+/* v1.199-c163 出庫先「返品」（仕入先・産地へ返す）と「廃棄」は、当日発注分／翌日発注分の区分がいらない。返品は理由（メモ）が必須 */
+function c163NoTiming(d){d=String(d||"").trim();return d==="廃棄"||d==="返品"}function c163IsReturnDest(d){return String(d||"").trim()==="返品"}const C163_RETURN_MEMO_MSG="返品は理由（メモ）を入れてください（例：品質不良で産地へ返品）";
+const QR_SHIP_TIMINGS=["当日分","翌日分先送り"]
 ;const QR_PURCHASE_STAFF_BY_ITEM_DEFAULT={小蕪:"坂本",小かぶ:"坂本",こかぶ:"坂本",水菜:"坂本",小松菜:"坂本",ほうれん草:"坂本",ズッキーニ:"坂本",大葉:"坂本",小葱:"坂本",
 ニラ:"斎藤（大）",青梗菜:"斎藤（大）",茄子:"斎藤（大）",長茄子:"斎藤（大）",ゴーヤ:"斎藤（大）",ゴーヤー:"斎藤（大）",ピーマン:"斎藤（大）",胡瓜:"斎藤（大）",きゅうり:"斎藤（大）",キュウリ:"斎藤（大）",トマト:"斎藤（大）",ミニトマト:"斎藤（大）",南瓜:"斎藤（大）",キャベツ:"斎藤（大）",紫キャベツ:"斎藤（大）",長葱:"斎藤（大）",大根:"斎藤（大）",カット大根:"斎藤（大）",葉付き大根:"斎藤（大）",葉付大根:"斎藤（大）",蓮根:"斎藤（大）",レンコン:"斎藤（大）",れんこん:"斎藤（大）",
 国産人参:"荒木","人参（国産）":"荒木",人参:"荒木",
@@ -500,7 +503,7 @@ if(!canQrOperate())return pageShell(qrOpLabel(kind),"権限がありません",`
 ;qrCalcOperation(kind,lot.qr_key);if(kind==="out")qrToggleShipTiming()}catch(e){
 pageShell(qrOpLabel(kind),"エラー",`<div class="err">${esc(e.message)}</div>`)}}function qrToggleShipTiming(){
 const dest=document.getElementById("qrMoveDestination")?.value||"",box=document.getElementById("qrShipTimingBox"),sel=document.getElementById("qrShipTiming")
-;if(!box)return;if(dest==="廃棄"){box.style.display="none";if(sel)sel.value=""}else box.style.display="block"}async function qrCalcOperation(kind,q){
+;if(!box)return;if(c163NoTiming(dest)){box.style.display="none";if(sel)sel.value=""}else box.style.display="block"}async function qrCalcOperation(kind,q){
 const lot=await qrFindLot(q).catch(()=>null),box=document.getElementById("qrMoveCalc");if(!lot||!box)return
 ;const large=qrIsLargeContainer(lot.container_type),unit=qrLotUnit(lot),cur=Number((lot.current_qty??lot.current_quantity)||0),raw=document.getElementById("qrMoveQty")?.value
 ;if(raw===""||raw===undefined){box.innerHTML=kind==="adjust"?"実際に残っている数を入力してください":"処理する数を入力してください";return}const val=Number(raw),per=qrPerWeight(lot)
@@ -996,12 +999,12 @@ const actual=parseDecimalInput(raw),out=outRaw===""?0:parseDecimalInput(outRaw),
 ;if(large&&weightMode==="manual"&&(!Number.isFinite(weight)||weight<0))return alert("大型容器の棚卸し重量は0以上で入力してください（0も入力してください）")
 ;if(!Number.isFinite(out)||out<0||out>Number(l.systemQty))return alert(`簡単出庫は開始時帳簿 ${fmt(l.systemQty)} ${l.unit} 以下で入力してください`)
 ;if(out>0&&actual!==Number(l.systemQty)-out)return alert(`簡単出庫を使う場合、実数は開始時帳簿−出庫数（${fmt(Number(l.systemQty)-out)} ${l.unit}）にしてください`)
-;if(out>0&&(!destEl?.value||destEl.value!=="廃棄"&&!timingEl?.value))return alert("簡単出庫は出庫先と当日発注分／翌日発注分を選択してください");l.actualQty=actual
+;if(out>0&&(!destEl?.value||!c163NoTiming(destEl.value)&&!timingEl?.value))return alert("簡単出庫は出庫先と当日発注分／翌日発注分を選択してください");if(out>0&&c163IsReturnDest(destEl?.value)&&!memoEl?.value.trim())return alert(C163_RETURN_MEMO_MSG);l.actualQty=actual
 ;if(large)l.actualWeightKg=weightMode==="auto"?qrCountActualWeight(l):yen(weight);l.outQty=out;l.destination=destEl?.value||""
 ;l.shipTiming=timingEl?.value||"";l.memo=memoEl?.value.trim()||"";l.status="entered";l.countedAt=nowIso();l.countedBy=db.user;l.countedById=db.userId}
 s.updatedAt=nowIso();s.updatedBy=db.user;s.revision=Number(s.revision||0)+1;save();inventoryCountPage(id)}function qrCountToggleTiming(lineId){
 const dest=document.getElementById("qrcount_dest_"+lineId)?.value||"",box=document.getElementById("qrcount_timing_box_"+lineId),sel=document.getElementById("qrcount_timing_"+lineId)
-;if(!box)return;if(dest==="廃棄"){box.style.display="none";if(sel)sel.value=""}else box.style.display="block"}async function qrCountOpenCamera(id){
+;if(!box)return;if(c163NoTiming(dest)){box.style.display="none";if(sel)sel.value=""}else box.style.display="block"}async function qrCountOpenCamera(id){
 await qrStopActiveCamera("count");if(!countEditable(countSession(id)))return;setScreen("qrCountCameraPage",[id])
 ;pageShell("QR棚卸し・連続読取","読み取り後に実数または簡単出庫を保存すると、次のQRを続けて読めます。",`<div class="card"><div id="qrCountReader" style="width:100%;min-height:280px"></div><div id="qrCountCameraMsg" class="small" style="margin-top:10px">カメラ許可を求められたら許可してください。</div><button class="btn btn2" style="width:100%;margin-top:12px" ${seikaEventAttrs('click','seikaStopCountCameraAndReturn',[id])}>棚卸しへ戻る</button></div>`)
 ;setTimeout(()=>qrCountStartCamera(id),150)}function qrCountStartCamera(id){if(isQrInventoryCameraStarting)return;isQrInventoryCameraStarting=true
@@ -1812,7 +1815,7 @@ const reason=kind==="waste"?document.getElementById("qrWasteReason")?.value||"":
 ;const other=document.getElementById("qrWasteReasonOther")?.value.trim()||"";if(kind==="waste"&&!reason)throw new Error("廃棄理由を選択してください")
 ;if(kind==="waste"&&reason==="その他"&&!other)throw new Error("その他の詳細を入力してください")
 ;const dest=kind==="out"?document.getElementById("qrMoveDestination")?.value||"":null,shipTiming=kind==="out"?document.getElementById("qrShipTiming")?.value||"":""
-;if(kind==="out"&&!dest)throw new Error("出庫先を選択してください");if(kind==="out"&&dest!=="廃棄"&&!shipTiming)throw new Error("当日発注分・翌日発注分を選択してください")
+;if(kind==="out"&&!dest)throw new Error("出庫先を選択してください");if(kind==="out"&&!c163NoTiming(dest)&&!shipTiming)throw new Error("当日発注分・翌日発注分を選択してください");if(kind==="out"&&c163IsReturnDest(dest)&&!(document.getElementById("qrMoveMemo")?.value||"").trim())throw new Error(C163_RETURN_MEMO_MSG)
 ;const large=qrIsLargeContainer(lot.container_type),per=qrPerWeight(lot),normalPackWeight=v1162ParsePackWeight(lot.pack_weight),afterW=large&&per!==null?per*after:null,weight=large&&per!==null?per*qty:null,wasteWeight=kind==="waste"?(large?weight:(normalPackWeight!==null?normalPackWeight*qty:null)):null,type=kind==="waste"?"廃棄":kind==="out"?"出庫":after<cur?"出庫・調整減":after>cur?"入庫・調整増":"差分なし",memo=document.getElementById("qrMoveMemo")?.value.trim()||"",operation=qrMovementOperationMeta(kind,lot,cur,after,type),meta=operation.meta
 ;if(!confirm(`QR処理の確認\n\n品目：${lot.item_name}\n現在残：${fmt(cur)} ${lot.unit}\n処理後残：${fmt(after)} ${lot.unit}\n区分：${type}${reason?"\n理由："+reason+(other?"（"+other+"）":""):""}\n\n登録しますか？`))return
 ;const ans=await callRpc("apply_qr_lot_operation",{p_operation_id:meta.operationId,p_qr_key:lot.qr_key,p_movement_type:type,p_qty:qty,
@@ -2345,10 +2348,10 @@ const uid=document.getElementById("loginUser")?.value,pass=document.getElementBy
 ;if(!uid)return alert("名前を選択してください");if(!pass)return alert("パスワードを入力してください");if(btn){btn.disabled=true;btn.textContent="確認中..."}try{
 const data=await authRequest("token?grant_type=password",{method:"POST",body:JSON.stringify({email:authEmailForLegacyId(uid),password:pass})})
 ;data.expires_at=Math.floor(Date.now()/1000)+Number(data.expires_in||3600);authWriteSession(data);await authProfileLoad()
-;authApplyProfile(authProfile);try{v188AssertPendingOwner()}catch(ownerError){console.warn(ownerError)}await loadCloud();v187PurgePasswords();v188PersistDb();if(authProfile?.must_change_password){
+;authApplyProfile(authProfile);try{v188AssertPendingOwner()}catch(ownerError){console.warn(ownerError)}await loadCloud();v187PurgePasswords();v188PersistDb();c163ShowSwitchNotice();if(authProfile?.must_change_password){
 changePasswordPage(true)}else if(!await qrAfterLoginRoute())home()}catch(e){authWriteSession(null);alert(e.message||"ログインできませんでした")}finally{if(btn){
 btn.disabled=false;btn.textContent="ログイン"}}};logout=async function(){const pending=v161PendingCount()
-;if(pending&&!confirm(`未同期データが ${pending}件あります。ログアウト後もデータはこの端末に保持されますが、同じ利用者で再ログインするまで送信できません。\n\nログアウトしますか？`))return;const token=authToken();try{
+;if(pending&&!confirm(`未同期データが ${pending}件あります。ログアウト後もデータはこの端末に保持されます。送れるのは同じ利用者で再ログインしたときです（ほかの人もこの端末でログインできます）。\n\nログアウトしますか？`))return;const token=authToken();try{
 if(token)await authRequest("logout",{method:"POST",headers:{Authorization:"Bearer "+token},body:"{}"})}catch(e){}authWriteSession(null)
 ;authProfile=null;db.user=null;db.userId=null;db.role=null;applyDisplaySettings(DEFAULT_DISPLAY_SETTINGS);clearSession();v187PurgePasswords()
 ;v188PersistDb();login()};changePassword=async function(){
@@ -2607,11 +2610,60 @@ v188SyncBundle.appData=v188Clone(db);v188SyncBundle.base={schema:V188_SYNC_SCHEM
 ;v188ScheduleBundle()};function v188PendingOwner(){return v188SyncBundle.queue?.[0]?.ownerUserId||null}function v188AssertPendingOwner(){
 const owner=v188PendingOwner()
 ;if(owner&&db?.userId&&String(owner)!==String(db.userId))throw new Error("この端末には別の利用者の未同期データが残っています。データは保持しています。元の利用者でログインして再送するか、管理者へ連絡してください。")}
+/* ===== v1.199-c163 共用の端末：別の利用者の未送信データを本人用に分けて保管し、ほかの人もログインできるようにする =====
+   これまでは loadCloud が v188AssertPendingOwner() で「別の利用者の未同期データ」を見つけると止まり、ほかの人がログインできなかった。
+   前の人の未送信データは消さずに IndexedDB の parked_pending_c163_<利用者ID> に分けて保管し、今の人はクラウドの最新で始める。
+   前の人が同じ端末でもう一度ログインしたら戻し、「未同期データを再送」で送れる。 */
+const C163_PARK_PREFIX="parked_pending_c163_",C163_PARK_INDEX=C163_PARK_PREFIX+"index";let c163LastSwitch=null;
+function c163ParkedId(owner){return C163_PARK_PREFIX+String(owner)}
+async function c163ParkedRead(owner){const v=await v188IdbGet(c163ParkedId(owner));return v&&Array.isArray(v.items)?v:{owner:String(owner),items:[]}}
+async function c163ParkedIndex(){const v=await v188IdbGet(C163_PARK_INDEX);return Array.isArray(v)?v.map(String):[]}
+async function c163ParkedIndexSet(list){await v188IdbPut(C163_PARK_INDEX,[...new Set(list.map(String))])}
+async function c163ParkedSummary(){const out=[];for(const owner of await c163ParkedIndex()){const rec=await c163ParkedRead(owner);if(rec.items.length)out.push({owner,name:rec.items[rec.items.length-1]?.ownerName||"",count:rec.items.length})}return out}
+function c163KeepAuth(){return{user:db?.user??null,userId:db?.userId??null,role:db?.role??null}}
+async function c163SwitchPendingOwner(){
+ c163LastSwitch=null;const current=db?.userId?String(db.userId):"";if(!current)return null;await v188IdbFlush();
+ const owner=v188PendingOwner();
+ if(owner&&String(owner)!==current&&v188SyncBundle.queue?.length){
+  /* 前の人の未送信データを、前の人の分として分けて保管する（消さない） */
+  const rec=await c163ParkedRead(owner);
+  const ownerName=String(v188SyncBundle.appData?.user||rec.items[0]?.ownerName||"");
+  rec.items.push({queue:v188Clone(v188SyncBundle.queue),base:v188Clone(v188SyncBundle.base),appData:v188Clone(v188SyncBundle.appData),historyPending:v188HistoryPending(),ownerName,parkedAt:nowIso(),parkedWhile:current});
+  await v188IdbPut(c163ParkedId(owner),rec);
+  const check=await c163ParkedRead(owner);
+  if(check.items.length!==rec.items.length)throw new Error("別の利用者の未送信データを端末に分けて保管できませんでした。データは保持しています。管理者へ連絡してください。");
+  await c163ParkedIndexSet([...await c163ParkedIndex(),String(owner)]);
+  const ackId=v188SyncBundle.queue[0]?.id||null,keep=c163KeepAuth();
+  v188SyncBundle={schema:3,queue:[],base:null,appData:null,status:"acknowledged",acknowledgedQueueId:ackId,updatedAt:nowIso()};
+  try{localStorage.removeItem(V188_DIRTY_KEY)}catch(e){}
+  v188SetHistoryPending(false);db=normalize({...defaultState(),...keep});v188SyncBundle.appData=v188Clone(db);v188ScheduleBundle();await v188IdbFlush();
+  c163LastSwitch={type:"parked",owner:String(owner),name:ownerName};return c163LastSwitch;
+ }
+ if(v188SyncBundle.queue?.length)return null;
+ /* 今の人の分が分けて保管されていれば戻す（1回分ずつ） */
+ const rec=await c163ParkedRead(current);if(!rec.items.length)return null;
+ const item=rec.items[0],queue=v188CompactQueue(item.queue||[]);
+ if(!queue.length){rec.items.shift();await v188IdbPut(c163ParkedId(current),rec);return null}
+ queue[0].ownerUserId=current;const keep=c163KeepAuth();
+ v188SyncBundle={schema:3,queue,base:v188Clone(item.base),appData:null,status:"pending",acknowledgedQueueId:null,updatedAt:nowIso()};
+ db=normalize({...(queue[0].localPayload||item.appData||{}),...keep});v188SyncBundle.appData=v188Clone(db);if(item.historyPending)v188SetHistoryPending(true);
+ try{localStorage.setItem(V188_DIRTY_KEY,JSON.stringify({pending:true,id:queue[0].id,operationId:queue[0].operationId,expectedVersion:queue[0].expectedVersion,createdAt:queue[0].createdAt,attempts:queue[0].attempts||0}))}catch(e){}
+ v188ScheduleBundle();await v188IdbFlush();rec.items.shift();
+ await v188IdbPut(c163ParkedId(current),rec);if(!rec.items.length)await c163ParkedIndexSet((await c163ParkedIndex()).filter(x=>x!==current));
+ c163LastSwitch={type:"restored",owner:current,name:item.ownerName||String(db?.user||""),left:rec.items.length};return c163LastSwitch;
+}
+function c163SwitchMessage(info){
+ if(!info)return"";const who=info.name?`${info.name}さん`:"前に使った人";
+ if(info.type==="parked")return`この端末には、${who}のまだ送っていないデータが残っていました。\n\nデータは消さずに、${who}の分として分けて保管しました。${who}がこの端末でログインすると、送れるようになります。\n\nこのままご自分の作業を続けてください。`;
+ return`前にこの端末で入力して、まだ送っていなかったデータを戻しました。\n\n画面の上の「未同期データを再送」を押して、送ってください。${info.left?`\n\n（まだ戻していない分が${info.left}回分あります。送り終わったら、もう一度ログインし直してください）`:""}`;
+}
+function c163ShowSwitchNotice(){const info=c163LastSwitch;c163LastSwitch=null;const msg=c163SwitchMessage(info);if(msg)setTimeout(()=>alert(msg),0)}
+
 saveCloudNow=async function(options={}){await v188IdbFlush();v188AssertPendingOwner()
 ;const result=await v188SaveCloudNowProtected(options);await v188IdbFlush();return result}
 ;v178ResolvePendingInventoryConflict=async function(){await v188IdbFlush()
 ;v188AssertPendingOwner();const result=await v188ResolveConflictProtected();await v188IdbFlush();return result}
-;loadCloud=async function(){await v188StorageInit();v188AssertPendingOwner();return v188LoadCloudProtected()}
+;loadCloud=async function(){await v188StorageInit();await c163SwitchPendingOwner();v188AssertPendingOwner();return v188LoadCloudProtected()}
 ;refreshData=async function(){await v188StorageInit();await v188IdbFlush();return v188RefreshDataProtected()};
 /* ===== v1.88 端末未同期データ破棄・クラウド最新版切替 ===== */let v188DiscardPendingRunning=false;function v188PendingDiscardOwner(){
 return v188PendingOwner()||v188SyncBundle?.appData?.userId||null}function v188PendingDiscardSummary(){
@@ -2650,7 +2702,7 @@ await v188StorageInit()}catch(e){console.error("端末保存領域の初期化�
 console.error("ログイン状態の更新に失敗しました",e)
 ;app.innerHTML='<main class="wrap"><div class="card err"><h2 style="margin-top:0">通信状態を確認してください</h2><p>ログイン状態を更新できませんでした。ログイン情報は保持されています。</p><button class="btn blue" style="width:100%" data-seika-click-action="seikaReload" data-seika-click-args="%5B%5D">再試行</button></div></main>'
 ;return}if(!authenticated){db.user=null;db.userId=null;db.role=null;return login()}try{const p=await authProfileLoad();authApplyProfile(p)
-;try{v188AssertPendingOwner()}catch(ownerError){console.warn(ownerError)}await loadCloud();v187PurgePasswords();v188PersistDb();if(await qrAfterLoginRoute())return;home()}catch(e){console.error(e)
+;try{v188AssertPendingOwner()}catch(ownerError){console.warn(ownerError)}await loadCloud();v187PurgePasswords();v188PersistDb();c163ShowSwitchNotice();if(await qrAfterLoginRoute())return;home()}catch(e){console.error(e)
 ;if(e?.authFailure||e?.status===401||e?.status===403){authWriteSession(null);db.user=null;db.userId=null;db.role=null;return login()}
 const message=esc(e?.message||"クラウドデータを読み込めませんでした")
 ;app.innerHTML=`<main class="wrap"><div class="card err"><h2 style="margin-top:0">データを読み込めませんでした</h2><p>${message}</p><p class="small">ログイン情報と端末内の未同期データは保持されています。</p><button class="btn blue" style="width:100%" data-seika-click-action="seikaReload" data-seika-click-args="%5B%5D">再試行</button></div></main>`
@@ -3642,7 +3694,7 @@ function v119QrCountInput(id,key){
     if(out===null||out<0||out>Number(line.systemQty))return v161FocusField("qrcount_out_"+line.lineId,`簡単出庫は開始時帳簿 ${fmt(line.systemQty)} ${line.unit} 以下で入力してください。`);
     if(large&&weightMode==="manual"&&(weight===null||weight<0))return v161FocusField("qrcount_weight_"+line.lineId,"大型容器の棚卸し重量は0以上で入力してください（0も入力できます）。");
     if(out>0&&actual!==Number(line.systemQty)-out)return v161FocusField("qrcount_actual_"+line.lineId,`簡単出庫を使う場合、実数は開始時帳簿−出庫数（${fmt(Number(line.systemQty)-out)} ${line.unit}）にしてください。`);
-    if(out>0&&(!destEl?.value||(destEl.value!=="廃棄"&&!timingEl?.value)))return alert("簡単出庫は出庫先と当日発注分／翌日発注分を選択してください。");
+    if(out>0&&(!destEl?.value||(!c163NoTiming(destEl.value)&&!timingEl?.value)))return alert("簡単出庫は出庫先と当日発注分／翌日発注分を選択してください。");if(out>0&&c163IsReturnDest(destEl?.value)&&!memoEl?.value.trim())return alert(C163_RETURN_MEMO_MSG);
     line.actualQty=yen(actual);if(large)line.actualWeightKg=weightMode==="auto"?qrCountActualWeight(line):yen(weight);line.outQty=yen(out);line.destination=destEl?.value||"";line.shipTiming=timingEl?.value||"";line.memo=memoEl?.value.trim()||"";line.status="entered";line.countedAt=nowIso();line.countedBy=db.user;line.countedById=db.userId;
   }
   v119SaveSessionLocal(session,"QR実数入力",`${line.itemName}: ${line.actualQty===null?"未入力":fmt(line.actualQty)+line.unit}`);inventoryCountPage(id);
@@ -4290,7 +4342,7 @@ function v135AllPendingBatchCount(){return v135CurrentPendingBatchCount()}
 function v135StatusText(row){const map={draft:'未処理',sending:'送信中',success:'登録済み',conflict:'在庫競合',failed:'登録失敗',unknown:'結果確認待ち',price_failed:'廃棄保存済み・価格未確定'};return map[row?.status]||'未処理'}
 function v135StatusClass(row){return row?.status==='success'?'normal':row?.status==='price_failed'||row?.status==='unknown'||row?.status==='conflict'||row?.status==='failed'?'excess':'unset'}
 function v135KindLabel(kind){return kind==='waste'?'QR連続廃棄':'QR連続出庫'}
-function v135DefaultValidation(kind,defaults){if(kind==='out'){if(!defaults.destination)throw new Error('出庫先を選択してください。');if(defaults.destination!=='廃棄'&&!defaults.shipTiming)throw new Error('出庫区分を選択してください。')}else{if(!defaults.reason)throw new Error('廃棄理由を選択してください。');if(defaults.reason==='その他'&&!defaults.reasonOther)throw new Error('その他の詳細を入力してください。')}}
+function v135DefaultValidation(kind,defaults){if(kind==='out'){if(!defaults.destination)throw new Error('出庫先を選択してください。');if(!c163NoTiming(defaults.destination)&&!defaults.shipTiming)throw new Error('出庫区分を選択してください。');if(c163IsReturnDest(defaults.destination)&&!defaults.memo)throw new Error(C163_RETURN_MEMO_MSG)}else{if(!defaults.reason)throw new Error('廃棄理由を選択してください。');if(defaults.reason==='その他'&&!defaults.reasonOther)throw new Error('その他の詳細を入力してください。')}}
 function v135DefaultsHtml(kind,values={}){const memo=esc(values.memo||'');if(kind==='out')return `<label class="label">出庫先 <span style="color:#dc2626">必須</span></label><select id="v135Destination" class="input"><option value="">選択してください</option>${QR_OUT_DESTINATIONS.map(x=>`<option value="${esc(x)}" ${values.destination===x?'selected':''}>${esc(x)}</option>`).join('')}</select><label class="label">出庫区分 <span style="color:#dc2626">必須</span></label><select id="v135ShipTiming" class="input"><option value="">選択してください</option>${QR_SHIP_TIMINGS.map(x=>`<option value="${esc(x)}" ${values.shipTiming===x?'selected':''}>${esc(x)}</option>`).join('')}</select><label class="label">共通メモ（任意）</label><textarea id="v135Memo" class="textarea" placeholder="全ロット共通の補足">${memo}</textarea>`;const reasons=(typeof wasteReasons==='function'?wasteReasons():[]);return `<label class="label">廃棄理由 <span style="color:#dc2626">必須</span></label><select id="v135Reason" class="input" data-seika-change-action="v135ToggleOther" data-seika-change-args="%5B%5D"><option value="">選択してください</option>${reasons.map(x=>`<option value="${esc(x)}" ${values.reason===x?'selected':''}>${esc(x)}</option>`).join('')}</select><div id="v135ReasonOtherBox" style="display:${values.reason==='その他'?'block':'none'}"><label class="label">その他の詳細 <span style="color:#dc2626">必須</span></label><input id="v135ReasonOther" class="input" value="${esc(values.reasonOther||'')}" placeholder="理由を入力"></div><label class="label">共通メモ（任意）</label><textarea id="v135Memo" class="textarea" placeholder="全ロット共通の補足">${memo}</textarea>`}
 function v135ToggleOther(){const select=document.getElementById('v135Reason'),box=document.getElementById('v135ReasonOtherBox');if(select&&box)box.style.display=select.value==='その他'?'block':'none'}
 function v135ReadDefaults(kind){return kind==='out'?{destination:document.getElementById('v135Destination')?.value||'',shipTiming:document.getElementById('v135ShipTiming')?.value||'',memo:document.getElementById('v135Memo')?.value.trim()||''}:{reason:document.getElementById('v135Reason')?.value||'',reasonOther:document.getElementById('v135ReasonOther')?.value.trim()||'',memo:document.getElementById('v135Memo')?.value.trim()||''}}
@@ -4362,7 +4414,7 @@ qrSaveLotMovement=async function(kind,q){
     const cur=Number(lot.current_qty??lot.current_quantity??0),qty=Number(document.getElementById('qrMoveQty')?.value||0);
     if(!(qty>0)||qty>cur)throw new Error('処理数量を確認してください');
     const destination=document.getElementById('qrMoveDestination')?.value||'',shipTiming=document.getElementById('qrShipTiming')?.value||'';
-    if(!destination)throw new Error('出庫先を選択してください');if(destination!=='廃棄'&&!shipTiming)throw new Error('当日発注分・翌日発注分を選択してください');
+    if(!destination)throw new Error('出庫先を選択してください');if(!c163NoTiming(destination)&&!shipTiming)throw new Error('当日発注分・翌日発注分を選択してください');if(c163IsReturnDest(destination)&&!(document.getElementById('qrMoveMemo')?.value||'').trim())throw new Error(C163_RETURN_MEMO_MSG);
     const after=cur-qty,large=qrIsLargeContainer(lot.container_type),per=qrPerWeight(lot),weight=large&&per!==null?per*qty:null,afterWeight=large&&per!==null?per*after:null;
     const memo=document.getElementById('qrMoveMemo')?.value.trim()||'',operation=qrMovementOperationMeta('out',lot,cur,after,'出庫'),meta=operation.meta;
     let fifo={violation:'',override:''};try{fifo=v136ReadReason('v136');}catch(e){throw e;}
@@ -4467,7 +4519,7 @@ qrSaveLotMovement=async function(kind,q){
     const cur=Number(lot.current_qty??lot.current_quantity??0),qty=Number(document.getElementById('qrMoveQty')?.value||0);
     if(!(qty>0)||qty>cur)throw new Error('処理数量を確認してください');
     const destination=document.getElementById('qrMoveDestination')?.value||'',shipTiming=document.getElementById('qrShipTiming')?.value||'';
-    if(!destination)throw new Error('出庫先を選択してください');if(destination!=='廃棄'&&!shipTiming)throw new Error('当日発注分・翌日発注分を選択してください');
+    if(!destination)throw new Error('出庫先を選択してください');if(!c163NoTiming(destination)&&!shipTiming)throw new Error('当日発注分・翌日発注分を選択してください');if(c163IsReturnDest(destination)&&!(document.getElementById('qrMoveMemo')?.value||'').trim())throw new Error(C163_RETURN_MEMO_MSG);
     const fifo=v136ReadReason('v136'); prepared=v136NewSingleOutPayload(lot,cur,qty,destination,shipTiming,document.getElementById('qrMoveMemo')?.value.trim()||'',fifo);
     const p=prepared.payload;
     if(!prepared.reused&&!confirm(`QR出庫の確認\n\n品目：${lot.item_name}\n現在残：${fmt(cur)} ${lot.unit}\n出庫：${fmt(qty)} ${lot.unit}\n処理後残：${fmt(cur-qty)} ${lot.unit}\n出庫先：${destination}${fifo.violation?`\nFIFO例外理由：${fifo.violation}`:''}${fifo.override?`\n管理者override：${fifo.override}`:''}\n\nサーバーでFIFOと残数を再確認して登録しますか？`))return;
@@ -5160,7 +5212,7 @@ function v1144ReturnToOutboundHistory(){v1144OutboundDetailReturn=false;return v
 function v1144OutboundSummary(rows,total){const groups=new Map;for(const r of rows){const k=`${r.item_name||'-'}\u0000${r.unit||''}`;const x=groups.get(k)||{item:r.item_name||'-',unit:r.unit||'',qty:0,weight:0,hasWeight:false,count:0};x.qty+=Number(r.qty||0);if(r.weight!==null&&r.weight!==undefined){x.weight+=Number(r.weight);x.hasWeight=true}x.count++;groups.set(k,x)}return `<div class="card"><b>日次集計</b><div class="small">明細 ${Number(total||rows.length).toLocaleString()}件（表示 ${rows.length.toLocaleString()}件）</div><div style="display:grid;gap:7px;margin-top:9px">${[...groups.values()].map(x=>`<div class="box"><b>${esc(x.item)}</b><span>${fmt(x.qty)} ${esc(x.unit)} / ${x.hasWeight?fmt(x.weight)+'kg':'重量未確定'} / ${x.count}件</span></div>`).join('')}</div></div>`}
 async function v1144LoadOutboundHistory(append=false){const destination=document.getElementById('v1144OutboundDestination')?.value||'',date=document.getElementById('v1144OutboundDate')?.value||todayKey(),include=!!document.getElementById('v1144OutboundCancelled')?.checked,offset=append?v1144OutboundState.offset:0,token=++v1144OutboundRequestToken,box=document.getElementById('v1144OutboundResults');if(box&&!append)box.innerHTML='<div class="notice">QR出庫履歴を読み込み中...</div>';try{const ans=await callRpc('list_qr_outbound_history_v1144',{p_destination:destination||null,p_work_date:date,p_include_cancelled:include,p_limit:100,p_offset:offset});if(token!==v1144OutboundRequestToken)return;const rows=Array.isArray(ans?.rows)?ans.rows:[],next=append?[...v1144OutboundState.rows,...rows]:rows;v1144OutboundState={destinations:[...new Set([...(QR_OUT_DESTINATIONS||[]),...(ans?.destinations||[])])],rows:next,total:Number(ans?.total_count||0),offset:offset+rows.length,destination,date,includeCancelled:include};const select=document.getElementById('v1144OutboundDestination');if(select){const value=destination;select.innerHTML='<option value="">全出庫先</option>'+v1144OutboundState.destinations.map(x=>`<option value="${esc(x)}" ${x===value?'selected':''}>${esc(x)}</option>`).join('')}if(box)box.innerHTML=v1144OutboundSummary(next,v1144OutboundState.total,ans?.summary_rows)+v1144OutboundCards(next)+(next.length<v1144OutboundState.total?'<button class="btn btn2" style="width:100%" data-seika-click-action="v1144LoadOutboundHistory" data-seika-click-args="%5Btrue%5D">さらに読み込む</button>':'')}catch(e){if(token!==v1144OutboundRequestToken)return;if(box)box.innerHTML=`<div class="err">出庫履歴を取得できませんでした。<br>${esc(e?.message||e)}<button class="btn btn2" style="width:100%;margin-top:10px" data-seika-click-action="v1144LoadOutboundHistory" data-seika-click-args="%5Bfalse%5D">再読込</button></div>`}}
 function v1144QrOutboundHistoryPage(state={}){setScreen('v1144QrOutboundHistoryPage');const defaultDest=state.destination??v1144OutboundState.destination??'深谷',date=state.date??v1144OutboundState.date??todayKey(),include=state.includeCancelled??v1144OutboundState.includeCancelled??false,options=[...new Set([defaultDest,...QR_OUT_DESTINATIONS])];pageShell('QR出庫履歴','出庫先 → 日付 → 全品目の順で確認します。取消済みは通常表示から除外します。',`<div class="card"><label class="label">出庫先</label><select id="v1144OutboundDestination" class="input">${options.map(x=>`<option value="${esc(x)}" ${x===defaultDest?'selected':''}>${esc(x)}</option>`).join('')}</select><label class="label" style="margin-top:10px">日付</label><input id="v1144OutboundDate" class="input" type="date" value="${esc(date)}"><label class="switch" style="margin-top:10px"><input id="v1144OutboundCancelled" type="checkbox" ${include?'checked':''}> 取消済みを含める</label><button class="btn blue" style="width:100%;margin-top:12px" data-seika-click-action="v1144LoadOutboundHistory" data-seika-click-args="%5Bfalse%5D">表示</button></div><div id="v1144OutboundResults" aria-live="polite"><div class="notice">表示を押すと、その日の全品目を確認できます。</div></div>`);if(state.autoLoad!==false)v1144LoadOutboundHistory(false)}
-const v1144QrSaveLotMovementBase=qrSaveLotMovement;qrSaveLotMovement=async function(kind,q){if(kind==='out'){const destination=document.getElementById('qrMoveDestination')?.value||'',timing=document.getElementById('qrShipTiming')?.value||'',lot=await qrFindLot(q).catch(()=>null);if(!destination)return (typeof v161FocusField==='function'?v161FocusField('qrMoveDestination','出庫先を選択してください。'):alert('出庫先を選択してください。'));if(destination!=='廃棄'&&!timing)return (typeof v161FocusField==='function'?v161FocusField('qrShipTiming','出庫区分を選択してください。'):alert('出庫区分を選択してください。'));if(lot&&!confirm(`QR出庫の確認\n\n品目：${lot.item_name}\n数量：${document.getElementById('qrMoveQty')?.value||'-'} ${lot.unit||''}\n出庫先：${destination}\n日付：${todayKey()}\n区分：${hqTimingLabelG(timing)||'廃棄'}\n\n登録しますか？`))return}return v1144QrSaveLotMovementBase(kind,q)};
+const v1144QrSaveLotMovementBase=qrSaveLotMovement;qrSaveLotMovement=async function(kind,q){if(kind==='out'){const destination=document.getElementById('qrMoveDestination')?.value||'',timing=document.getElementById('qrShipTiming')?.value||'',lot=await qrFindLot(q).catch(()=>null);if(!destination)return (typeof v161FocusField==='function'?v161FocusField('qrMoveDestination','出庫先を選択してください。'):alert('出庫先を選択してください。'));if(!c163NoTiming(destination)&&!timing)return (typeof v161FocusField==='function'?v161FocusField('qrShipTiming','出庫区分を選択してください。'):alert('出庫区分を選択してください。'));if(c163IsReturnDest(destination)&&!(document.getElementById('qrMoveMemo')?.value||'').trim())return (typeof v161FocusField==='function'?v161FocusField('qrMoveMemo',C163_RETURN_MEMO_MSG):alert(C163_RETURN_MEMO_MSG));if(lot&&!confirm(`QR出庫の確認\n\n品目：${lot.item_name}\n数量：${document.getElementById('qrMoveQty')?.value||'-'} ${lot.unit||''}\n出庫先：${destination}\n日付：${todayKey()}\n区分：${hqTimingLabelG(timing)||(c163IsReturnDest(destination)?'返品':'廃棄')}\n\n登録しますか？`))return}return v1144QrSaveLotMovementBase(kind,q)};
 
 
 /* ===== v1.144 最終監査修正: 確定重量・v1.136前提・安全な月次削除境界 ===== */

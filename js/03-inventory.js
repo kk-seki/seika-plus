@@ -1516,7 +1516,7 @@ async function v193MakeReport(){
 
 
 /* ===== v1.194 納品先マスタ・認証区分 ===== */
-const V194_INTERNAL_DESTS=["本社","埼玉","深谷","社外","荻沼","石岡冷凍","現場作業","その他","廃棄"];
+const V194_INTERNAL_DESTS=["本社","埼玉","深谷","社外","荻沼","石岡冷凍","現場作業","その他","廃棄","返品"];
 const V194_DEST_PRESET_VERSION=3;
 const V194_EXTERNAL_SEED=[
  ["美野里D・デリカシェフ",[

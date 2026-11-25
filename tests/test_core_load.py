@@ -22,6 +22,7 @@ async function run(){
    }});
    return Promise.resolve();
   },
+  c163SwitchPendingOwner(){events.push('switch');return Promise.resolve(null)},
   v188AssertPendingOwner(){events.push('owner');if(input.mode==='owner-error')throw failure},
   v161PendingCount(){events.push('pending');return queue.length},
   v188ReadBase(){events.push('read-base');return{version:input.mode==='invalid-version'?'invalid':37}},
@@ -99,12 +100,12 @@ class CoreLoadTests(unittest.TestCase):
     def test_entry_returns_inner_promise_without_an_extra_await(self):
         _, entry = core_blocks(self.source)
         body = entry[entry.index("loadCloud=async function()") :]
-        self.assertIn("await v188StorageInit();v188AssertPendingOwner();return v188", body)
+        self.assertIn("await v188StorageInit();await c163SwitchPendingOwner();v188AssertPendingOwner();return v188", body)
         self.assertNotIn("return await", body)
 
     def test_loads_after_storage_and_owner_check_then_records_base(self):
         result = evaluate_core(self.source, "ok")
-        self.assertEqual(result["events"], ["storage", "owner", "pending", ["base", 0, False], "pending", "snapshot", "write", "resolved"])
+        self.assertEqual(result["events"], ["storage", "switch", "owner", "pending", ["base", 0, False], "pending", "snapshot", "write", "resolved"])
         self.assertEqual(result["writes"], [{"payload": {"local": "fixture"}, "version": 7}])
         self.assertEqual(result["returned"], "undefined")
         self.assertTrue(result["cloudReady"])
@@ -124,13 +125,13 @@ class CoreLoadTests(unittest.TestCase):
                 self.assertEqual(result["writes"], [])
                 self.assertEqual(result["queue"], 1)
                 self.assertEqual(result["version"], 99 if mode == "invalid-version" else 37)
-                self.assertEqual(result["events"][:5], ["storage", "owner", "pending", "read-base", "queue"])
-                self.assertEqual(result["events"][5][0:2], ["sync", expected])
+                self.assertEqual(result["events"][:6], ["storage", "switch", "owner", "pending", "read-base", "queue"])
+                self.assertEqual(result["events"][6][0:2], ["sync", expected])
                 self.assertTrue(result["cloudReady"])
-                self.assertEqual(result["events"][6:], ["resolved"])
+                self.assertEqual(result["events"][7:], ["resolved"])
 
     def test_storage_and_owner_failures_do_not_read_or_write_cloud(self):
-        for mode, expected in [("storage-error", ["storage", "rejected"]), ("owner-error", ["storage", "owner", "rejected"])]:
+        for mode, expected in [("storage-error", ["storage", "rejected"]), ("owner-error", ["storage", "switch", "owner", "rejected"])]:
             with self.subTest(mode=mode):
                 result = evaluate_core(self.source, mode)
                 self.assertTrue(result["rejected"])
@@ -140,19 +141,19 @@ class CoreLoadTests(unittest.TestCase):
     def test_base_failure_propagates_without_updating_base(self):
         result = evaluate_core(self.source, "base-error")
         self.assertTrue(result["rejected"])
-        self.assertEqual(result["events"], ["storage", "owner", "pending", ["base", 0, False], "rejected"])
+        self.assertEqual(result["events"], ["storage", "switch", "owner", "pending", ["base", 0, False], "rejected"])
         self.assertEqual(result["writes"], [])
 
     def test_pending_changes_arriving_during_load_are_not_acknowledged(self):
         result = evaluate_core(self.source, "base-pending")
-        self.assertEqual(result["beforeResolve"], ["storage", "owner", "pending", ["base", 0, False]])
+        self.assertEqual(result["beforeResolve"], ["storage", "switch", "owner", "pending", ["base", 0, False]])
         self.assertEqual(result["queue"], 1)
         self.assertEqual(result["writes"], [])
         self.assertEqual(result["events"][-2:], ["pending", "resolved"])
 
     def test_base_promise_callback_precedes_snapshot_write(self):
         result = evaluate_core(self.source, "base-interleave")
-        self.assertEqual(result["events"], ["storage", "owner", "pending", ["base", 0, False], "base-callback", "pending", "snapshot", "write", "resolved"])
+        self.assertEqual(result["events"], ["storage", "switch", "owner", "pending", ["base", 0, False], "base-callback", "pending", "snapshot", "write", "resolved"])
 
     def test_write_failure_still_rejects(self):
         result = evaluate_core(self.source, "write-error")

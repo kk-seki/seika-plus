@@ -214,17 +214,19 @@ class LoadCloudTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(recovered["base"]["version"], self.server.version)
         self.assertEqual(recovered["base"]["payload"]["settings"]["remote"], "recovered-value")
 
-    async def test_load_cloud_rejects_pending_data_for_another_user(self):
+    async def park_for_user_b(self):
+        # Aさん（u1）が未送信データを残した端末で、Bさん（u2）がログインする
         await self.page.evaluate(
             """async()=>{
+                db.userId='u1';db.user='利用者A';
                 db.settings={...(db.settings||{}),protected:'value'};
                 v161QueueLatest();
                 await v188IdbFlush();
-                db.userId='u2';
+                db.userId='u2';db.user='利用者B';
             }"""
         )
         self.requests.clear()
-        message = await self.page.evaluate(
+        return await self.page.evaluate(
             """async()=>{
                 try{
                     await loadCloud();
@@ -234,15 +236,83 @@ class LoadCloudTests(unittest.IsolatedAsyncioTestCase):
                 }
             }"""
         )
+
+    async def test_load_cloud_parks_pending_data_for_another_user(self):
+        # c163：Aさんの未送信データが残った共用の端末に、Bさんがログインできる。Aさんの分は消さずに分けて保管する
+        message = await self.park_for_user_b()
         state = await self.page.evaluate(
-            """()=>({
-                queue:v161ReadQueue().length,
-                protected:db.settings?.protected
-            })"""
+            """async()=>{
+                await v188IdbFlush();
+                const parked=await c163ParkedRead('u1'),bundle=await v188IdbGet(V188_IDB_BUNDLE_ID);
+                return{
+                    queue:v161ReadQueue().length,
+                    protected:db.settings?.protected??null,
+                    user:db.userId,
+                    parked:parked.items.length,
+                    parkedProtected:parked.items[0]?.queue?.[0]?.localPayload?.settings?.protected??null,
+                    parkedName:parked.items[0]?.ownerName,
+                    bundleQueue:(bundle?.queue||[]).length,
+                    summary:await c163ParkedSummary(),
+                    notice:c163SwitchMessage(c163LastSwitch)
+                }
+            }"""
         )
-        self.assertIn("別の利用者", message)
-        self.assertEqual(state, {"queue": 1, "protected": "value"})
-        self.assertEqual(await self.load_cloud_requests(), [])
+        self.assertEqual(message, "")
+        self.assertEqual(state["queue"], 0)
+        self.assertIsNone(state["protected"])
+        self.assertEqual(state["user"], "u2")
+        self.assertEqual(state["parked"], 1)
+        self.assertEqual(state["parkedProtected"], "value")
+        self.assertEqual(state["parkedName"], "利用者A")
+        self.assertEqual(state["bundleQueue"], 0)
+        self.assertEqual(state["summary"], [{"owner": "u1", "name": "利用者A", "count": 1}])
+        self.assertIn("利用者Aさん", state["notice"])
+        self.assertFalse(self.server.accepted)
+
+        # Bさんの保存にはAさんの未送信の内容が入らない
+        await self.page.evaluate("()=>{db.adminNotices=[...(db.adminNotices||[]),{id:'from-b',title:'Bさんのお知らせ'}];save()}")
+        await self.page.wait_for_function("()=>v161ReadQueue().length===0&&!v161SyncRunning", timeout=10000)
+        self.assertIn("from-b", [n.get("id") for n in self.server.data.get("adminNotices", [])])
+        self.assertNotEqual(self.server.data.get("settings", {}).get("protected"), "value")
+
+    async def test_parked_pending_data_returns_when_the_owner_logs_in_again(self):
+        # Aさんがこの端末でもう一度ログインすると、Aさんの未送信データが戻り、再送できる
+        self.assertEqual(await self.park_for_user_b(), "")
+        restored = await self.page.evaluate(
+            """async()=>{
+                db.userId='u1';db.user='利用者A';
+                await loadCloud();
+                await v188IdbFlush();
+                const parked=await c163ParkedRead('u1');
+                return{queue:v161ReadQueue().length,owner:v188PendingOwner(),protected:db.settings?.protected??null,parked:parked.items.length,
+                    index:await c163ParkedIndex(),notice:c163SwitchMessage(c163LastSwitch)}
+            }"""
+        )
+        self.assertEqual(restored["queue"], 1)
+        self.assertEqual(restored["owner"], "u1")
+        self.assertEqual(restored["protected"], "value")
+        self.assertEqual(restored["parked"], 0)
+        self.assertEqual(restored["index"], [])
+        self.assertIn("未同期データを再送", restored["notice"])
+        # 画面の「未同期データを再送」と同じ処理
+        await self.page.evaluate("()=>retryPendingSync()")
+        self.assertEqual(self.server.data.get("settings", {}).get("protected"), "value")
+        self.assertEqual(await self.page.evaluate("()=>v161ReadQueue().length"), 0)
+
+    async def test_pending_data_of_the_same_user_is_not_parked(self):
+        await self.page.evaluate(
+            """async()=>{
+                db.userId='u1';db.user='利用者A';
+                db.settings={...(db.settings||{}),protected:'value'};
+                v161QueueLatest();
+                await v188IdbFlush();
+            }"""
+        )
+        await self.page.evaluate("()=>loadCloud()")
+        state = await self.page.evaluate(
+            "async()=>({queue:v161ReadQueue().length,parked:(await c163ParkedRead('u1')).items.length,protected:db.settings?.protected})"
+        )
+        self.assertEqual(state, {"queue": 1, "parked": 0, "protected": "value"})
 
 
 if __name__ == "__main__":
