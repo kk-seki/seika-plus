@@ -484,7 +484,17 @@ const app=document.getElementById("app");
 if(app)new MutationObserver(()=>{if(currentScreen==="home"&&!document.getElementById("c140HomeBtn")&&document.querySelector("#app .homePrimary"))c140InjectHome()}).observe(app,{childList:true,subtree:true});
 {const st=document.createElement("style");st.textContent=".homeBtnShipPlan,.c140Btn{background:linear-gradient(90deg,#1e293b 0%,#1d4ed8 55%,#f59e0b 100%) !important;color:#fff !important;border-color:transparent !important;}.c140St{margin-left:6px;font-size:13px}.c140St_new,.c140St_change{color:#1d4ed8}.c140St_same{color:#64748b}.c140St_bad,.c140St_short{color:#b91c1c}.c140St_done{color:#15803d}.c142Diff{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fee2e2;color:#991b1b;font-size:12px;font-weight:800;border:1px solid #f87171}.c142Btn{background:linear-gradient(90deg,#14532d 0%,#15803d 55%,#facc15 100%) !important;color:#fff !important;border-color:transparent !important}.c140Frac{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:800;border:1px solid #f59e0b}";document.head.appendChild(st)}
 
-Object.assign(window,{c140ShipPlanPage,c140ImportPage,c140PickFiles,c140ReadFiles,c140Prepare,c140PreviewPage,c140ToggleDate,c140PickItem,c140ToggleAlias,c140FixKg,c140FixCust,c140CancelImport,c140Save,
+/* c165：AI の読み取り補助に渡す「読めなかった行」（決めるのは管理者。候補は c140PickItem・c140FixKg・c140FixCust で入れる） */
+function c165PlanAssistData(){
+ const p=pending;if(!p)return null;
+ const ls=effective(),items=new Map;
+ for(const l of p.lines)if(l.issues.includes("item")&&!p.picks[key(l.base)]){const k=key(l.base);if(!items.has(k))items.set(k,{key:k,base:l.base,samples:[]});const it=items.get(k);if(it.samples.length<3&&!it.samples.includes(l.raw))it.samples.push(l.raw)}
+ const qty=ls.filter(l=>(l.issues.includes("qty")||l.issues.includes("unit"))&&!(p.kgFix[lk(l)]>0)).map(l=>({key:lk(l),item:l.item||l.raw,qty_raw:l.qtyRaw,unit:l.unit||"",case_kg:l.item?masters?.std?.get(l.item)||null:null,customer:l.customer||"",label:`${md(l.date)}・${l.customer||"-"}・${l.raw}「${l.qtyRaw}」`}));
+ const customers=ls.filter(l=>l.issues.includes("customer")&&!p.custFix[lk(l)]).map(l=>({key:lk(l),raw:l.raw,note:l.qtyRaw,label:`${md(l.date)}・${l.raw}（${l.qtyRaw}）`}));
+ const known=[...new Set(ls.map(l=>l.customer).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja"));
+ return{kind:"plan",items:[...items.values()],qty,customers,known_customers:known,apply:{item:"c140PickItem",kg:"c140FixKg",customer:"c140FixCust"}};
+}
+Object.assign(window,{c165PlanAssistData,c140ShipPlanPage,c140ImportPage,c140PickFiles,c140ReadFiles,c140Prepare,c140PreviewPage,c140ToggleDate,c140PickItem,c140ToggleAlias,c140FixKg,c140FixCust,c140CancelImport,c140Save,
  c140AliasPage,c140ChangeAlias,c140DeleteAlias,c140SaveStd,c140AddStd,c140InjectHome,
  c140Auto:{dayStates,effective,payload,listDates,pending:()=>pending},
  c140Lib:{T,N,key,md,addDays,num,busy,uuid,esc:(v)=>esc(v),loadMasters,getMasters:()=>masters,seikaItems,resolveItem,casesOf,itemTotals,weightText,totalText,baseName,cellDate,loadPlan,loadActual,sqlMissing,canImport,canView,SMALL_KG},
