@@ -2,7 +2,7 @@
    ・QR在庫管理ホームとメニューの入口を「納品先・仕入先・単協マスタ」1つにまとめ、画面の上のタブで切り替える。
      納品先マスタは管理者だけなので、青果社員は今までどおり「仕入先・単協マスタ」。
    ・仕入れ担当者のホームに、担当品目ごとの日量（昨日までの7日間の出庫 ÷ 出庫した日数）のボタンを並べる。
-     押すと、その品目を選んだ状態で「在庫・出庫の分析」が開く。日量はQR品目の出庫から計算する（取消・廃棄は除く）。 */
+     押すと、その品目を選んだ状態で「在庫・出庫の分析」が開く。日量はQR品目の出庫から計算する（取消・廃棄・返品は除く）。 */
 (()=>{
 const LABEL="納品先・仕入先・単協マスタ";
 
@@ -63,7 +63,7 @@ async function c134Load(){
  loading=(async()=>{
   const {from,to,fromKey,toKey}=c134Range();
   const q=`select=*&movement_type=eq.${encodeURIComponent("出庫")}&occurred_at=gte.${encodeURIComponent(from.toISOString())}&occurred_at=lt.${encodeURIComponent(to.toISOString())}&limit=5000`;
-  const moves=(await qrSelect("qr_lot_movements",q)||[]).filter(m=>!m.cancelled_at&&String(m.destination||"").trim()!=="廃棄");
+  const moves=(await qrSelect("qr_lot_movements",q)||[]).filter(m=>!m.cancelled_at&&!["廃棄","返品"].includes(String(m.destination||"").trim()));
   const ids=[...new Set(moves.map(m=>m.lot_id).filter(Boolean))],lots=new Map;
   /* c151：ロットは80件ずつまとめて同時に読む（1つずつ順番に待たない） */
   const parts=[];for(let i=0;i<ids.length;i+=80)parts.push(ids.slice(i,i+80));

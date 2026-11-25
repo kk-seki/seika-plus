@@ -41,7 +41,7 @@ async function load(){
    row.qrQty[d]=row.qrQty[d]||{};addQty(row.qrQty[d],unitOf(l),s.qty)}
  }
  const normal={};for(const r of (db.records||[])){if(!r.createdAt||!r.itemId)continue;const d=jstDay(r.createdAt);if(d<from||d>to)continue;const it=(db.items||[]).find(x=>x.id===r.itemId);const name=it?.name||r.itemName||"";if(!name)continue;const o=normal[name]=normal[name]||{id:r.itemId,days:{}};const prev=o.days[d];if(!prev||new Date(r.createdAt)>=new Date(prev.at))o.days[d]={v:Number(r.total||0),at:r.createdAt}}
- const pr=prevRange(from,to),mkOuts=(from,to)=>{const outs=[];for(const m of moves){if(m.movement_type!=="出庫"||m.cancelled_at)continue;const dest=String(m.destination||"").trim()||"（出庫先なし）";if(dest==="廃棄")continue;const d=jstDay(m.occurred_at||m.created_at);if(d<from||d>to)continue;const l=byKey.get(String(m.qr_key||m.lot_id||m.lot_no||""));const name=l?nameOf(l):String(m.item_name||"");outs.push({d,dest,name,lot:m.lot_no||l?.lot_no||"",unit:unitOf(m.unit?m:l||m),qty:Number(m.qty||0),kg:outKg(m,l),user:m.user_name||""})}return outs};
+ const pr=prevRange(from,to),mkOuts=(from,to)=>{const outs=[];for(const m of moves){if(m.movement_type!=="出庫"||m.cancelled_at)continue;const dest=String(m.destination||"").trim()||"（出庫先なし）";if(dest==="廃棄"||dest==="返品")continue;const d=jstDay(m.occurred_at||m.created_at);if(d<from||d>to)continue;const l=byKey.get(String(m.qr_key||m.lot_id||m.lot_no||""));const name=l?nameOf(l):String(m.item_name||"");outs.push({d,dest,name,lot:m.lot_no||l?.lot_no||"",unit:unitOf(m.unit?m:l||m),qty:Number(m.qty||0),kg:outKg(m,l),user:m.user_name||""})}return outs};
  const outs=mkOuts(from,to),prevOuts=mkOuts(pr.from,pr.to);
  const names=[...new Set([...(db.items||[]).filter(i=>i.active!==false).map(i=>i.name),...Object.keys(stock),...outs.map(r=>r.name)])].filter(Boolean);
  const first=moves.map(m=>jstDay(m.occurred_at||m.created_at)).filter(Boolean).sort()[0]||"",prevHas=!!first&&first<=pr.from;
@@ -161,7 +161,7 @@ async function c81Excel(){
  if(["hq_prep","hq_receiver"].includes(db?.role))return hqHome("この権限では在庫・出庫の分析を利用できません。");
  try{const data=await load(),wb=XLSX.utils.book_new(),add=(name,aoa)=>{const ws=XLSX.utils.aoa_to_sheet(aoa);ws["!cols"]=aoa[0].map((_,i)=>({wch:i?12:18}));XLSX.utils.book_append_sheet(wb,ws,name)};
   const rows=selectedOuts(data.outs),daily=dailyData(data);
-  add("選択条件",[["項目","選択内容"],["期間",`${data.from}〜${data.to}`],["品目",A.item||"すべての品目"],["出庫先",A.dest||"すべての出庫先"],["対象","石岡QR出庫（取消・廃棄を除く。本社移動を含む）"],["kg", "分かる分のみ。kg不明を含む合計・平均は過少の可能性あり"],["平均", "出庫日平均は出庫のあった日数、全日平均は期間の全日数で割る"],["在庫", "出庫先にかかわらず選択品目の在庫"]]);
+  add("選択条件",[["項目","選択内容"],["期間",`${data.from}〜${data.to}`],["品目",A.item||"すべての品目"],["出庫先",A.dest||"すべての出庫先"],["対象","石岡QR出庫（取消・廃棄・返品を除く。本社移動を含む）"],["kg", "分かる分のみ。kg不明を含む合計・平均は過少の可能性あり"],["平均", "出庫日平均は出庫のあった日数、全日平均は期間の全日数で割る"],["在庫", "出庫先にかかわらず選択品目の在庫"]]);
   const dailyRows=[["日付","出庫kg（分かる分）","数量（単位別）","件数","kg不明件数"]];
   if(A.item){for(const x of daily.daily)dailyRows.push([x.d,dailyKg(x)??"",Object.entries(x.q).map(([u,v])=>`${n1(v)}${u}`).join("・"),x.n,x.unk]);
    dailyRows.push(["期間合計",dailyKg(daily.total)??"",Object.entries(daily.total.q).map(([u,v])=>`${n1(v)}${u}`).join("・"),daily.total.n,daily.total.unk],["出庫日平均",daily.activeAvg??"",`${daily.active}日`,"",""],["全日平均",daily.allAvg??"",`${daily.daily.length}日`,"",""])}
@@ -188,7 +188,7 @@ function addHomeBtn(){
 const app=document.getElementById("app");if(app)new MutationObserver(addHomeBtn).observe(app,{childList:true,subtree:true});
 try{const sec={title:"在庫・出庫の分析を見る",where:"ホーム →「在庫・出庫の分析」",
  steps:["上の品目・期間・出庫先を選び、「在庫推移」「出庫数量」を切り替えます。選択はタブ間で保持されます。出庫のみの品目も選べます。","「在庫推移」：全品目の一覧に、最新の在庫・平均・適正在庫を下回った日数（不足）と上回った日数（多い）・小さなグラフが出ます。外れた日が多い品目ほど上に出ます。","品目を押すと、在庫の折れ線グラフ（合計kg＝通常在庫の入力kg＋QR在庫kg）と、その日の出庫kgの棒が出ます。薄い緑の帯が適正在庫の範囲です。下の表は日付・合計kg・状態（不足・適正・多い）で、日付を押すと内訳が開きます。","「出庫数量」：選択品目の日別kg・単位別数量・件数・kg不明件数、期間合計、出庫日平均と全日平均が出ます。出庫日平均は出庫のあった日数、全日平均は期間の全日数で割ります。出庫なしは0kg、全件kg不明は不明です。分かるkgだけの合計・平均は、kg不明があると実際より少ない可能性があります。下の「出庫先別」「品目別」は選択条件で絞られます。","↑↓の％は、前の期間（先月なら前々月、今月なら先月の同じ日まで、ほかは同じ日数だけ前）との比較です。前の期間にQRの記録がないときは「比較なし」と出ます。kg不明を含む場合は比較率を表示しません。","「選択条件をExcelにする」で、選択条件・選択品目の日量・在庫推移・出庫先別・品目別・出庫明細を出力できます。品目未選択では全品目の一覧を出力し、日量は品目選択後に出力します。"],
- check:"この分析の出庫集計はQR品目だけが対象です。取り消した出庫と廃棄は入らず、本社への移動は含みます。伝票重量は使いません。量目が分からないロットはkgに入らず「kg不明」の件数で出ます。",
+ check:"この分析の出庫集計はQR品目だけが対象です。取り消した出庫と廃棄・返品は入らず、本社への移動は含みます。伝票重量は使いません。量目が分からないロットはkgに入らず「kg不明」の件数で出ます。",
  caution:"通常在庫は入力した日の数だけです。アプリに残っている通常在庫の記録は約90日分です。"};
  if(typeof V198_GUIDE_SECTIONS!=="undefined")V198_GUIDE_SECTIONS.c81Analysis=sec;
  if(typeof V195_ROLE_GUIDES!=="undefined")for(const r of Object.keys(V195_ROLE_GUIDES)){if(["hq_prep","hq_receiver"].includes(r))continue;const g=V195_ROLE_GUIDES[r];if(g&&Array.isArray(g.sections)&&!g.sections.some(x=>x.title===sec.title))g.sections.push(sec)}
