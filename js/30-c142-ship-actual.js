@@ -241,7 +241,18 @@ async function c142DeleteCustomerAlias(k,name){
  if(!canAdmin()||!confirm(`「${name}」の客先の読み替えを削除します。よろしいですか？`))return;
  try{await callRpc("delete_ship_customer_alias_v1199c142",{p_key:k});await c140AliasPage(`「${name}」の客先の読み替えを削除しました。`)}catch(e){alert(e?.message||e)}
 }
-Object.assign(window,{c142ImportPage,c142PickFile,c142ReadFile,c142Prepare,c142PreviewPage,c142PickCustomer,c142ToggleCAlias,c142PickItem,c142ToggleAlias,c142FixKg,c142Cancel,c142Save,c142DeleteCustomerAlias,
+/* c165：AI の読み取り補助に渡す「読めなかった行」（決めるのは管理者。候補は c142PickItem・c142FixKg・c142PickCustomer で入れる） */
+function c165ActualAssistData(){
+ const p=pend;if(!p)return null;
+ const ls=eff(),items=new Map,cs=new Map;
+ for(const l of p.lines){
+  if(l.issues.includes("item")&&!p.picks[key(l.base)]){const k=key(l.base);if(!items.has(k))items.set(k,{key:k,base:l.base,samples:[]});const it=items.get(k);if(it.samples.length<3&&!it.samples.includes(l.raw))it.samples.push(l.raw)}
+  if(l.issues.includes("cmap")&&!p.cpicks[ckey(l.customerRaw)]){const k=ckey(l.customerRaw);if(!cs.has(k))cs.set(k,{key:k,raw:l.customerRaw,note:"",label:l.customerRaw})}
+ }
+ const qty=ls.filter(l=>l.issues.includes("qty")&&!(p.kgFix[l.cell+"|"+l.sheet]>0)).map(l=>({key:l.cell+"|"+l.sheet,item:l.item||l.raw,qty_raw:l.qtyRaw,unit:"",case_kg:l.item?p.m?.std?.get(l.item)||null:null,customer:l.customer||l.customerRaw||"",label:`${l.customerRaw}・${l.raw}「${l.qtyRaw}」`}));
+ return{kind:"actual",items:[...items.values()],qty,customers:[...cs.values()],known_customers:[...(p.planCust||[])],apply:{item:"c142PickItem",kg:"c142FixKg",customer:"c142PickCustomer"}};
+}
+Object.assign(window,{c165ActualAssistData,c142ImportPage,c142PickFile,c142ReadFile,c142Prepare,c142PreviewPage,c142PickCustomer,c142ToggleCAlias,c142PickItem,c142ToggleAlias,c142FixKg,c142Cancel,c142Save,c142DeleteCustomerAlias,
  c142Parse:{parseReportQty,readReport,ckey},c142Auto:{eff,pend:()=>pend}});
 
 /* ---------- 操作ガイド ---------- */
