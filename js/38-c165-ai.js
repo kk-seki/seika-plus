@@ -7,7 +7,9 @@
 (()=>{
 const FN="seika-ai",ROLES=["admin","worker","buyer","sales"];
 const ROLE_LABEL={admin:"管理者",worker:"青果社員",buyer:"仕入れ担当",sales:"営業"};
-const canUse=()=>ROLES.includes(db?.role);
+/* c166：しばらくは管理者だけ（全体に広げるときは C166_OPEN_ROLES に役割を足す。Edge Function のシークレット AI_ALLOWED_ROLES も合わせる） */
+const C166_OPEN_ROLES=["admin"];
+const canUse=()=>ROLES.includes(db?.role)&&C166_OPEN_ROLES.includes(db?.role);
 const msgOf=e=>String(e?.message||e||"AIを使えませんでした。");
 
 async function c165Ai(action,payload={}){
@@ -20,7 +22,8 @@ async function c165Ai(action,payload={}){
  if(!res.ok||data?.ok===false)throw new Error(data?.message||`AIを使えませんでした（${res.status}）`);
  return data;
 }
-const lines=t=>esc(String(t||"")).replace(/\n/g,"<br>");
+/* c166：AIの文の **太字** は太字で見せる（記号は出さない） */
+const lines=t=>esc(String(t||"")).replace(/\*\*([^*\n]+)\*\*/g,"<b>$1</b>").replace(/\*\*/g,"").replace(/\n/g,"<br>");
 
 /* ---------- ① 毎日のまとめ ---------- */
 const sum={day:"",role:"",body:"",at:"",loading:false,error:""};
@@ -65,12 +68,12 @@ const EXAMPLES={
  buyer:["明日から3日間の予定に対して在庫が足りなそうな品目は？","今週のキャベツの仕入れ価格は？","期限が近いGAP認証は？","今の在庫で入荷日が古い品目は？"],
  sales:["明日の客先ごとの予定は？","先週、予定より確定が減った客先は？","昨日の確定数量で多い品目は？","来週の予定でいちばん多い客先は？"]};
 function c165AskPage(){
- if(!canUse()){alert("AIは管理者・青果社員・仕入れ担当・営業が使えます。");return home()}
+ if(!canUse()){alert("AIは今は管理者だけが使えます。");return home()}
  setScreen("c165AskPage",[]);
  const ex=(EXAMPLES[db.role]||[]).map(q=>`<button class="btn btn2 c165Ex" ${seikaEventAttrs("click","c165AskExample",[q])}>${esc(q)}</button>`).join("");
  const hist=ask.history.map(h=>`<div class="c165Q">${esc(h.q)}</div><div class="c165A">${lines(h.a)}${h.used?.length?`<div class="small" style="margin-top:4px">調べたデータ：${esc(h.used.map(u=>[KIND_LABEL[u.kind]||u.kind,u.from&&u.to?`${u.from}〜${u.to}`:"",u.item||"",u.customer||""].filter(Boolean).join(" ")).join("／"))}</div>`:""}</div>`).join("");
  pageShell("AIに聞く","SEIKA＋のデータを見て、AIが答えます（読むだけ。在庫や伝票は変わりません）",`
- <div class="card">${hist||'<div class="small">聞きたいことを書いて「聞く」を押してください。下の例を押すとそのまま聞けます。</div>'}
+ <div class="card">${hist||'<div class="small">聞きたいことを書いて「聞く」を押してください。下の例を押すと入力欄に入るので、付け足してから「聞く」を押せます。</div>'}
   <div id="c165AskBusy" class="small" style="display:${ask.busy?"block":"none"};margin-top:8px">AIが調べています…（10〜30秒ほど）</div></div>
  <div class="card"><textarea id="c165AskText" class="textarea" maxlength="500" placeholder="例：先週のキャベツの廃棄は何kg？"></textarea>
   <div class="row" style="gap:6px;margin-top:8px"><button id="c165AskBtn" class="btn green" style="flex:1" ${seikaEventAttrs("click","c165AskSend",[])}>聞く</button>${ask.history.length?`<button class="btn btn2" ${seikaEventAttrs("click","c165AskClear",[])}>はじめから</button>`:""}</div>
@@ -80,7 +83,8 @@ function c165AskPage(){
  if(db.role==="admin")c165LoadUsage();
 }
 const KIND_LABEL={stock:"在庫",outbound:"出庫",waste:"廃棄",plan:"出荷予定",actual:"確定数量",plan_vs_actual:"予定と確定の差",trimming:"下処理",quality:"品質評価",gap:"GAP",prices:"仕入れ価格"};
-function c165AskExample(q){const t=document.getElementById("c165AskText");if(t)t.value=q;return c165AskSend()}
+/* c166：例を押すと入力欄に入るだけ（付け足してから「聞く」を押す） */
+function c165AskExample(q){const t=document.getElementById("c165AskText");if(!t)return;t.value=q;try{t.focus();t.setSelectionRange(q.length,q.length);t.scrollIntoView({block:"center"})}catch(_){}}
 function c165AskClear(){ask.history=[];return c165AskPage()}
 async function c165AskSend(){
  if(ask.busy)return;
@@ -102,7 +106,7 @@ async function c165LoadUsage(){
 /* ---------- ③ 写真で品質評価の候補 ---------- */
 let photoItem="";
 function c165InjectQuality(n=0){
- if(currentScreen!=="v1102QualityPage"||!["admin","worker"].includes(db?.role))return;
+ if(currentScreen!=="v1102QualityPage"||!["admin","worker"].includes(db?.role)||!canUse())return;
  const memo=document.getElementById("v1102QualityMemo");
  if(!memo){if(n<40)setTimeout(()=>c165InjectQuality(n+1),150);return}
  if(document.getElementById("c165Photo"))return;
@@ -209,7 +213,7 @@ try{
  const askSec={title:"AIに聞く",...common,steps:["メニューかホームの「AIに聞く」を開き、聞きたいことを書いて「聞く」を押します（例：先週のキャベツの廃棄は何kg？）。","AIが在庫・出庫・廃棄・出荷予定・確定・下処理・品質評価・GAPを調べて答えます。答えの下に、調べたデータが出ます。","続けて聞くと、前の話を覚えたまま答えます。「はじめから」で話を消します。"]};
  const photoSec={title:"AIで写真から品質評価の候補を出す",where:"QR品質評価の画面",steps:["「写真を撮って候補を出す」を押して、野菜の写真を撮ります。","AIが「総合判定」と「状態」に候補を入れます（メモが空なら、AIの見立ても入ります）。","目で確かめて、違うところは直してから「品質評価を登録」を押します。"],check:"写真はAIに見せるだけで、保存しません（登録用の写真は今まで通り「写真ライブラリから選択」で付けます）。",caution:"におい・温度など、写真で分からないことは判断しません。"};
  const assistSec={title:"AIで帳票の読めなかった行の候補を出す",where:"積み込み表・産地報告書の取り込み（確認）",steps:["要確認の行があるとき、「AIに候補を出してもらう」を押します。","品名・数量（kg）・客先の候補が出ます。「使う」か「候補を全部使う」を押すと、下の欄に入ります。","確かめてから、今まで通り「登録する」を押します。"],check:"AIが自信を持てない行は候補を出しません。下の欄で選んでください。",caution:"「大根」など取り違えやすい品名は、特によく確かめてください。"};
- if(typeof V195_ROLE_GUIDES!=="undefined")for(const [r,list] of [["admin",[sumSec,askSec,photoSec,assistSec]],["worker",[sumSec,askSec,photoSec]],["buyer",[sumSec,askSec]],["sales",[sumSec,askSec]]]){
+ if(typeof V195_ROLE_GUIDES!=="undefined")for(const [r,list] of [["admin",[sumSec,askSec,photoSec,assistSec]],["worker",[sumSec,askSec,photoSec]],["buyer",[sumSec,askSec]],["sales",[sumSec,askSec]]].filter(([r])=>C166_OPEN_ROLES.includes(r))){
   const g=V195_ROLE_GUIDES[r];if(!g||!Array.isArray(g.sections))continue;for(const s of list)if(!g.sections.some(x=>x&&x.title===s.title))g.sections.push(s)}
 }catch(e){}
 })();
