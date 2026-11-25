@@ -173,11 +173,15 @@ function c130AddDays(d,k){const t=new Date(String(d).slice(0,10)+"T00:00:00");t.
 function c130Find(rows,coop,item,date,supplier){
  if(!rows||!item)return null;
  const name=c130Item(item)||item,i=n(name),fam=n(c130Family(name));
- const hit=c=>c?(rows.find(r=>r.coop_norm===c&&r.item_norm===i)||(fam?rows.find(r=>r.coop_norm===c&&r.item_norm===fam):null)):null;
- const g=hit(n(coop))||hit(n(supplier));
- if(!g)return null;
  const d=String(date||todayKey()).slice(0,10);
- return{...g,valid:d<=String(g.expires_on).slice(0,10)};
+ /* c164：単協・仕入先の両方で探し、入荷日が有効期限内の行を先に使う（期限切れの行があっても、有効な行で自動入力できるように）。アグリファクトリーはサンワアグリ */
+ const keys=[...new Set([coop,supplier].filter(x=>String(x??"").trim()).flatMap(x=>[n(x),n(c164Alias(x))]))];
+ const hits=[];
+ for(const c of keys){const g=rows.find(r=>r.coop_norm===c&&r.item_norm===i)||(fam?rows.find(r=>r.coop_norm===c&&r.item_norm===fam):null);if(g&&!hits.includes(g))hits.push(g)}
+ if(!hits.length)return null;
+ const ok=hits.find(g=>d<=String(g.expires_on).slice(0,10));
+ const g=ok||hits.reduce((a,b)=>String(b.expires_on)>String(a.expires_on)?b:a);
+ return{...g,valid:!!ok};
 }
 function c130Status(g,today=todayKey()){const e=String(g.expires_on).slice(0,10);return e<today?"expired":e<=c130AddDays(today,SOON_DAYS)?"soon":"ok"}
 function c130Md(d){if(!d)return"";const t=new Date(String(d).slice(0,10)+"T00:00:00");return`${t.getFullYear()}/${t.getMonth()+1}/${t.getDate()}`}
@@ -241,32 +245,77 @@ function c130Family(v){const k=n(v);for(const [root,list] of Object.entries(C130
 function c130Item(v){const raw=String(v??"").trim();if(!raw)return"";for(const root of Object.keys(C130_FAMILY))if(loose(root)===loose(raw))return root;const q=qrStrictItemName(raw);if(q)return q;const k=loose(raw);try{for(const it of activeItems()){const nm=String(it?.name||"").trim();if(nm&&loose(nm)===k)return nm}}catch(_){}return""}
 /* GAP一覧の単協名：そのままマスタにないときは、かっこの中の名前（例：さしま農場（カルゲン会さしま）→ カルゲン会さしま）も照らし合わせる */
 /* c131：単協マスタになければ仕入先マスタとも照らし合わせる */
-function c130CoopIn(m,raw){const k=String(raw).normalize("NFKC").match(/^(.*?)\(([^()]+)\)\s*$/),names=[raw,...(k?[k[2].trim()]:[])];
- for(const kind of ["cooperative","supplier"])for(const nm of names){const r=c130ResolveIn(m,kind,nm);if(r.ok)return{...r,kind}}
- return{name:String(raw).trim(),ok:false}}
-/* 行（配列の配列）を調べる。単協はマスタの正式名、品目は品目マスタの名前に直す */
+/* c164：かっこの前の名前（NCTファームネット（小出博基）→ NCTファームネット）、株式会社・(株) などを外した名前も照らし合わせる。
+   アグリファクトリーはサンワアグリとして扱う（C164_ALIAS）。マスタにない名前は、そのままの名前で取り込む（ok:false） */
+const C164_ALIAS={"アグリファクトリー":"サンワアグリ"};
+function c164Alias(v){const k=n(v);for(const [a,b] of Object.entries(C164_ALIAS))if(n(a)===k)return b;return String(v??"").trim()}
+function c164Clean(v){return String(v??"").normalize("NFKC").replace(/[\s　]+/g," ").trim()}
+function c164NoCorp(v){return c164Clean(v).replace(/^(株式会社|有限会社|農事組合法人|\(株\)|\(有\)|㈱|㈲)\s*/,"").replace(/\s*(株式会社|\(株\)|\(有\)|㈱|㈲)$/,"").trim()}
+function c130CoopIn(m,raw){const clean=c164Clean(raw),k=clean.match(/^(.*?)\(([^()]+)\)\s*$/),names=[clean,...(k?[k[2].trim(),k[1].trim()]:[])];
+ for(const x of [...names])if(c164NoCorp(x)&&c164NoCorp(x)!==x)names.push(c164NoCorp(x));
+ for(const nm of names){const a=c164Alias(nm);if(a!==nm.trim())return{name:a,ok:true,alias:true,kind:"alias"}}
+ for(const kind of ["cooperative","supplier"])for(const nm of names){const r=c130ResolveIn(m,kind,nm);if(r.ok){const a=c164Alias(r.name);return{...r,name:a,alias:r.alias||a!==r.name,kind}}}
+ return{name:clean,ok:false}}
+/* c164：品目の「ズッキー二」（漢字の二）などを直してから照らし合わせる */
+function c164ItemClean(v){return c164Clean(v).replace(/([ァ-ヶー])二/g,"$1ニ").replace(/([ァ-ヶー])へ/g,"$1ヘ")}
+/* c164：社内のGAP一覧（産地・品目・…・認証・番号・認証期限の形）をそのまま読む */
+function c164GapListCols(aoa){
+ for(let i=0;i<Math.min(aoa.length,20);i++){const r=(aoa[i]||[]).map(x=>String(x??"").normalize("NFKC").replace(/\s/g,""));
+  const ex=r.indexOf("認証期限"),item=r.indexOf("品目"),cert=r.indexOf("認証"),name=r.indexOf("産地");
+  if(ex>=0&&item>=0&&cert>=0&&name>=0){const pref=r.indexOf("産地",name+1);return{h:i,name,pref:pref>=0?pref:-1,item,cert,num:r.indexOf("番号"),exp:ex,status:name-1}}}
+ return null;
+}
+function c164NumText(v){return String(v??"").replace(/_x0002_/g,"-").replace(/[\t\s]+/g,"").trim()}
+/* 行（配列の配列）を調べる。単協はマスタの正式名、品目は品目マスタの名前に直す。
+   c164：マスタにない名前・品目もそのまま取り込む（一覧で期限を確かめるため。QR入庫の自動入力はマスタの名前と合うものだけ）。
+   同じ単協・品目が2行以上あるときは、有効期限の新しい行を使う */
 function c130Check(aoa,m){
- const rows=[],errors=[];
+ const rows=[],errors=[],merged=[];
+ const gl=c164GapListCols(aoa);
  let h=-1,col={};
- for(let i=0;i<Math.min(aoa.length,20);i++){const r=(aoa[i]||[]).map(x=>String(x??"").normalize("NFKC").replace(/\s/g,""));const nc=NAME_HEADS.map(x=>r.indexOf(x)).find(x=>x>=0);if(nc!==undefined&&r.includes("品目")){h=i;HEAD.forEach(k=>col[k]=r.indexOf(k));col[HEAD[0]]=nc;break}}
- if(h<0)return{rows,errors:[{line:"-",reason:"見出しの行（単協名・仕入先、品目、認証区分、有効期限、備考）が見つかりません。ひな形を使ってください。"}]};
- for(const k of ["認証区分","有効期限"])if(col[k]<0)return{rows,errors:[{line:"-",reason:`見出し「${k}」の列がありません。`}]};
- const seen=new Map;
- for(let i=h+1;i<aoa.length;i++){
-  const r=aoa[i]||[],get=k=>col[k]>=0?r[col[k]]:"";
-  const coopIn=String(get(HEAD[0])??"").trim(),itemIn=String(get("品目")??"").trim(),certIn=get("認証区分"),expIn=get("有効期限"),note=String(get("備考")??"").trim();
-  if(!coopIn&&!itemIn&&!String(certIn??"").trim()&&!String(expIn??"").trim())continue;
-  const line=i+1,why=[],res=coopIn?c130CoopIn(m,coopIn):{ok:false},item=itemIn?c130Item(itemIn):"";
-  if(!coopIn)why.push("単協名・仕入先が空です");else if(!m)why.push("単協マスタを読み込めません");else if(!res.ok)why.push("単協名・仕入先がマスタにありません");
-  if(!itemIn)why.push("品目が空です");else if(!item)why.push("品目がSEIKA＋の品目（品目設定・QR対象品目）にありません");
-  const cert=c130Cert(certIn);if(!cert)why.push("認証区分は JGAP・GGAP・ASIAGAP（AGAP）のどれかで書いてください");
-  const exp=c130Date(expIn);if(!exp)why.push("有効期限が日付ではありません");
-  if(!why.length){const key=n(res.name)+"|"+n(item);if(seen.has(key))why.push(`同じ単協・品目が${seen.get(key)}行目にもあります`);else seen.set(key,line)}
-  const base={line,coop:coopIn,item:itemIn,cert:String(certIn??""),exp:String(expIn instanceof Date?c130Date(expIn):expIn??"")};
-  if(why.length)errors.push({...base,reason:why.join("／")});
-  else rows.push({line,coop_name:res.name,item_name:item,certification:cert,expires_on:exp,note,renamed:(res.name!==coopIn||item!==itemIn)?`${coopIn}・${itemIn} → ${res.name}・${item}`:""});
+ if(!gl){
+  for(let i=0;i<Math.min(aoa.length,20);i++){const r=(aoa[i]||[]).map(x=>String(x??"").normalize("NFKC").replace(/\s/g,""));const nc=NAME_HEADS.map(x=>r.indexOf(x)).find(x=>x>=0);if(nc!==undefined&&r.includes("品目")){h=i;HEAD.forEach(k=>col[k]=r.indexOf(k));col[HEAD[0]]=nc;break}}
+  if(h<0)return{rows,errors:[{line:"-",reason:"見出しの行（単協名・仕入先、品目、認証区分、有効期限、備考）が見つかりません。ひな形か、社内のGAP一覧（産地・品目・認証・番号・認証期限）を使ってください。"}],merged};
+  for(const k of ["認証区分","有効期限"])if(col[k]<0)return{rows,errors:[{line:"-",reason:`見出し「${k}」の列がありません。`}],merged};
  }
- return{rows,errors};
+ const seen=new Map;
+ for(let i=(gl?gl.h:h)+1;i<aoa.length;i++){
+  const r=aoa[i]||[];
+  let coopIn,itemIn,certIn,expIn,note,status="";
+  if(gl){
+   const cell=c=>c>=0?r[c]:"";
+   coopIn=c164Clean(cell(gl.name));itemIn=c164Clean(cell(gl.item));certIn=cell(gl.cert);expIn=cell(gl.exp);status=c164Clean(cell(gl.status));
+   if(!itemIn||coopIn==="産地"||itemIn==="品目")continue;
+   if(!coopIn&&!String(certIn??"").trim())continue;
+   const num=c164NumText(cell(gl.num)),pref=c164Clean(cell(gl.pref)),extra=c164Clean(r[gl.exp+1]);
+   note=[num?`認証番号 ${num}`:"",pref,/^[※(（]/.test(extra)?extra:""].filter(Boolean).join("、");
+  }else{
+   const get=k=>col[k]>=0?r[col[k]]:"";
+   coopIn=String(get(HEAD[0])??"").trim();itemIn=String(get("品目")??"").trim();certIn=get("認証区分");expIn=get("有効期限");note=String(get("備考")??"").trim();
+   if(!coopIn&&!itemIn&&!String(certIn??"").trim()&&!String(expIn??"").trim())continue;
+  }
+  const line=i+1,why=[],res=coopIn?c130CoopIn(m,coopIn):{ok:false},item=itemIn?(c130Item(itemIn)||c130Item(c164ItemClean(itemIn))):"";
+  const base={line,coop:coopIn,item:itemIn,cert:String(certIn??""),exp:String(expIn instanceof Date?c130Date(expIn):expIn??"")};
+  if(gl&&status&&!/認証取得済/.test(status)){errors.push({...base,reason:`認証取得済ではありません（${status}）`});continue}
+  if(!coopIn)why.push("単協名・仕入先が空です");else if(!m)why.push("単協マスタを読み込めません");
+  if(!itemIn)why.push("品目が空です");
+  const cert=c130Cert(certIn);if(!cert)why.push("認証区分は JGAP・GGAP・ASIAGAP（AGAP）のどれかで書いてください");
+  const exp=c130Date(expIn);if(!exp)why.push(String(expIn??"").trim()&&!/^[-ー－‐]$/.test(String(expIn).trim())?"有効期限が日付ではありません":"有効期限の記載がありません");
+  if(why.length){errors.push({...base,reason:why.join("／")});continue}
+  const coopName=res.ok?res.name:res.name,itemName=item||c164ItemClean(itemIn);
+  const row={line,coop_name:coopName,item_name:itemName,certification:cert,expires_on:exp,note,
+   renamed:(res.ok&&(coopName!==coopIn||(item&&item!==itemIn)))?`${coopIn}・${itemIn} → ${coopName}・${itemName}`:"",
+   unknown:[!res.ok?"単協名・仕入先":"",!item?"品目":""].filter(Boolean).join("・")};
+  const key=n(coopName)+"|"+n(itemName),prev=seen.get(key);
+  if(prev){
+   const keepNew=row.expires_on>prev.expires_on;
+   merged.push({key:`${coopName}・${itemName}`,lines:[prev.line,line],used:keepNew?line:prev.line,expires_on:keepNew?row.expires_on:prev.expires_on});
+   if(keepNew){rows[rows.indexOf(prev)]=row;seen.set(key,row)}
+   continue;
+  }
+  seen.set(key,row);rows.push(row);
+ }
+ return{rows,errors,merged};
 }
 function c130Diff(cur,rows){
  const old=new Map((cur||[]).map(g=>[g.coop_norm+"|"+g.item_norm,g])),now=new Map(rows.map(r=>[n(r.coop_name)+"|"+n(r.item_name),r]));
@@ -297,14 +346,18 @@ function c130PreviewPage(){
  setScreen("c130GapPage",[]);
  const d=p.diff,row=(r,extra="")=>`<tr><td>${esc(r.coop_name)}</td><td>${esc(r.item_name)}</td><td>${esc(r.certification)}</td><td>${esc(c130Md(r.expires_on))}</td><td>${extra}</td></tr>`;
  const tbl=(title,body,open=false)=>`<details ${open?"open":""} style="margin-top:8px"><summary style="font-weight:800;cursor:pointer">${title}</summary><div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>単協名・仕入先</th><th>品目</th><th>認証</th><th>有効期限</th><th></th></tr>${body}</table></div></details>`;
- const errs=p.errors.length?`<div class="card err"><b>取り込まない行（${p.errors.length}件）</b><div class="small">単協名・仕入先や品目がSEIKA＋のマスタと合わない行などです。マスタに登録するか、Excelを直してから取り込み直してください。</div><div style="overflow:auto;margin-top:6px"><table class="table" style="font-size:13px"><tr><th>行</th><th>単協名・仕入先</th><th>品目</th><th>理由</th></tr>${p.errors.map(e=>`<tr><td>${esc(e.line)}</td><td>${esc(e.coop||"")}</td><td>${esc(e.item||"")}</td><td>${esc(e.reason)}</td></tr>`).join("")}</table></div></div>`:"";
+ const errs=p.errors.length?`<div class="card err"><b>取り込まない行（${p.errors.length}件）</b><div class="small">有効期限の記載がない行、認証取得済ではない行（★取引検討中など）、認証区分が正しくない行です。取り込むときは、Excelを直してから取り込み直してください。</div><div style="overflow:auto;margin-top:6px"><table class="table" style="font-size:13px"><tr><th>行</th><th>単協名・仕入先</th><th>品目</th><th>理由</th></tr>${p.errors.map(e=>`<tr><td>${esc(e.line)}</td><td>${esc(e.coop||"")}</td><td>${esc(e.item||"")}</td><td>${esc(e.reason)}</td></tr>`).join("")}</table></div></div>`:"";
  const renamed=p.rows.filter(r=>r.renamed);
  const ren=renamed.length?`<div class="card"><b>表記を正式名に直して取り込む行（${renamed.length}件）</b>${renamed.map(r=>`<div class="small">${esc(r.line)}行目：${esc(r.renamed)}</div>`).join("")}</div>`:"";
+ const unk=p.rows.filter(r=>r.unknown);
+ const unkBox=unk.length?`<details class="card" style="margin-top:8px"><summary style="font-weight:800;cursor:pointer">マスタにない名前・品目のまま取り込む行（${unk.length}件）</summary><div class="small">一覧には出ますが、QR入庫で認証が自動で入るのは、単協名・仕入先と品目がSEIKA＋のマスタと合うときだけです。よく仕入れる農場は、仕入先・単協マスタに登録すると自動で入るようになります。</div>${unk.map(r=>`<div class="small">${esc(r.line)}行目：${esc(r.coop_name)}・${esc(r.item_name)}（マスタにない：${esc(r.unknown)}）</div>`).join("")}</details>`:"";
+ const mg=p.merged||[];
+ const mgBox=mg.length?`<details class="card" style="margin-top:8px"><summary style="font-weight:800;cursor:pointer">同じ単協・品目をまとめた行（${mg.length}件）</summary><div class="small">同じ単協・品目が2行以上あるときは、有効期限の新しい行を使います。</div>${mg.map(x=>`<div class="small">${esc(x.key)}：${esc(x.lines.join("・"))}行目 → ${esc(x.used)}行目（${esc(c130Md(x.expires_on))}）を使う</div>`).join("")}</details>`:"";
  const ok=p.rows.length>0;
  pageShell("GAP一覧の取り込み（確認）",`${p.file}（シート：${p.sheet}）`,`<div class="card"><b>取り込む行：${p.rows.length}件</b><div class="row" style="margin-top:8px;flex-wrap:wrap"><div class="box">追加<b>${d.add.length}</b></div><div class="box">変更<b>${d.chg.length}</b></div><div class="box">削除<b>${d.del.length}</b></div><div class="box">変わらない<b>${d.same.length}</b></div></div>
  ${tbl(`追加（${d.add.length}件）`,d.add.map(r=>row(r)).join(""),d.add.length<=20)}
  ${tbl(`変更（${d.chg.length}件）`,d.chg.map(x=>row(x.r,`前：${esc(x.o.certification)}・${esc(c130Md(x.o.expires_on))}`)).join(""),d.chg.length<=20)}
- ${tbl(`削除（${d.del.length}件）※新しい一覧にないもの`,d.del.map(o=>row(o)).join(""),d.del.length<=20)}</div>${errs}${ren}
+ ${tbl(`削除（${d.del.length}件）※新しい一覧にないもの`,d.del.map(o=>row(o)).join(""),d.del.length<=20)}</div>${errs}${ren}${unkBox}${mgBox}
  <div class="card">${ok?`<div class="small">取り込むと、今のGAP一覧は全部この内容に置き換わります${p.errors.length?"（取り込まない行の単協・品目は、一覧からなくなります）":""}。すでに入庫したロットの認証区分は変わりません。</div><button class="btn green" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","c130Import",[])}>この内容で置き換える（${p.rows.length}件）</button>`:'<div class="err">取り込める行がありません。</div>'}<button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c130CancelImport",[])}>取り込まずに戻る</button></div>`);
 }
 function c130CancelImport(){c130Pending=null;return c130GapPage()}
@@ -387,7 +440,8 @@ try{
  const gapSec={title:"GAP一覧を取り込む・有効期限を確認する",where:"QR在庫管理 → GAP一覧（認証）（管理者）",
   steps:["「取り込み用のひな形をダウンロード」でExcelのひな形を出し、単協名・仕入先、品目、認証区分（JGAP／GGAP）・有効期限・備考を1行ずつ書きます。ひも付けは「単協名か仕入先」＋品目です（ロットの単協名で当たる行が先、なければ仕入先）。",
    "「Excelを取り込む（全部置き換え）」でファイルを選ぶと、追加・変更・削除の件数と中身が出ます。確認して「この内容で置き換える」を押します。",
-   "単協名・仕入先が仕入先・単協マスタにない行、品目が品目マスタにない行、認証区分や有効期限が正しくない行は取り込まず、「取り込まない行」に理由つきで出ます。",
+   "社内のGAP一覧（産地・品目・月ごとの〇・認証・番号・認証期限の形）も、そのまま取り込めます。★認証取得済の行だけを取り込み、認証番号と県は備考に入ります。有効期限の記載がない行、★取引検討中などの行は取り込まず、「取り込まない行」に理由つきで出ます。",
+   "単協名・仕入先や品目がSEIKA＋のマスタにない行も、そのままの名前で取り込みます（一覧で期限を確かめられます）。QR入庫で自動で入るのは、名前がマスタと合うときだけです。同じ単協・品目が2行以上あるときは、有効期限の新しい行を使います。アグリファクトリーはサンワアグリとして扱います。",
    "単協名が「さしま農場（カルゲン会さしま）」のようにかっこ付きのときは、かっこの中の名前（カルゲン会さしま）が単協名か仕入先のマスタにあれば、その名前で取り込みます。品目の「大根」は、カット大根・葉付大根のロットにも当てはまります。",
    "QR入庫で単協名（または仕入先）と品目を入れると、GAP一覧にあり入荷日が有効期限内なら、認証区分が自動で入ります。違うときは選び直せます。一覧にないもの、期限が切れたものには入りません。",
    "取り込む前に入庫したロットに入れるときは「在庫が残るロットに入れる」を押し、対象を確認してから「この○件に入れる」を押します（認証区分が空で、在庫が残っているロットだけ）。",

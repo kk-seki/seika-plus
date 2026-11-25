@@ -74,16 +74,16 @@ class PartyGapBrowserTests(unittest.TestCase):
                    {"kind": "cooperative", "name": "カルゲン会さしま", "status": "active"}]
         page = self.open_app(parties=parties)
         fam = page.evaluate("""async()=>{const m=await c130Master(true);return c130Check([['単協名','品目','認証区分','有効期限'],['さしま農場（カルゲン会さしま）','大根','JGAP','2028/3/27'],['NCTファームネット（小出博基）','レタス','GGAP','2027/8/27']],m)}""")
-        self.assertEqual([(r["coop_name"], r["item_name"]) for r in fam["rows"]], [("カルゲン会さしま", "大根")])
-        self.assertEqual(len(fam["errors"]), 1)
+        # c164：マスタにない名前もそのまま取り込む（マスタにない印つき）
+        self.assertEqual([(r["coop_name"], r["item_name"], r["unknown"]) for r in fam["rows"]], [("カルゲン会さしま", "大根", ""), ("NCTファームネット(小出博基)", "レタス", "単協名・仕入先")])
+        self.assertEqual(fam["errors"], [])
         rows = [{"coop_norm": "カルゲン会さしま", "item_norm": "大根", "certification": "JGAP", "expires_on": "2028-03-27"},
                 {"coop_norm": "カルゲン会さしま", "item_norm": "葉付大根", "certification": "GGAP", "expires_on": "2028-03-27"}]
         found = page.evaluate("(r)=>['カット大根','葉付大根','葉付き大根','人参'].map(i=>{const g=c130Find(r,'カルゲン会さしま',i,'2026-11-19');return g?g.certification:''})", rows)
         self.assertEqual(found, ["JGAP", "GGAP", "JGAP", ""])
         sup = page.evaluate("""async()=>{window.__T.qr_party_names_v1280.push({kind:'supplier',name:'丸西産業',status:'active'});const m=await c130Master(true);
           return c130Check([['単協名・仕入先','品目','認証区分','有効期限'],['丸西産業','レタス','JGAP','2028/1/1'],['無い名前','レタス','JGAP','2028/1/1']],m)}""")
-        self.assertEqual([(r["coop_name"], r["item_name"]) for r in sup["rows"]], [("丸西産業", "レタス")])
-        self.assertIn("単協名・仕入先がマスタにありません", sup["errors"][0]["reason"])
+        self.assertEqual([(r["coop_name"], r["item_name"], r["unknown"]) for r in sup["rows"]], [("丸西産業", "レタス", ""), ("無い名前", "レタス", "単協名・仕入先")])
         g2 = [{"coop_norm": "丸西産業", "item_norm": "レタス", "certification": "JGAP", "expires_on": "2028-01-01"},
               {"coop_norm": "JA水戸", "item_norm": "レタス", "certification": "GGAP", "expires_on": "2028-01-01"}]
         self.assertEqual(page.evaluate("(r)=>[['','丸西産業'],['JA水戸','丸西産業'],['JA不明','丸西産業'],['','水戸大同']].map(([c,s])=>{const g=c130Find(r,c,'レタス','2026-11-19',s);return g?g.certification:''})", g2),
@@ -101,15 +101,16 @@ class PartyGapBrowserTests(unittest.TestCase):
            ['','','','','']];
           return c130Check(aoa,m)}""")
         rows = {(r["line"], r["coop_name"], r["item_name"], r["certification"], r["expires_on"]) for r in out["rows"]}
-        self.assertEqual(rows, {(3, "JA水戸", "キャベツ", "JGAP", "2027-03-31"), (4, "JA水戸", "白菜", "GGAP", "2027-03-31"),
-                                (5, "ＪＡつくば", "キャベツ", "JGAP", "2027-03-31")})
+        # 10行目は3行目と同じ単協・品目で期限が新しいので、10行目を使う
+        self.assertEqual(rows, {(10, "JA水戸", "キャベツ", "GGAP", "2027-04-01"), (4, "JA水戸", "白菜", "GGAP", "2027-03-31"),
+                                (5, "ＪＡつくば", "キャベツ", "JGAP", "2027-03-31"), (6, "JA未登録", "キャベツ", "JGAP", "2027-03-31"),
+                                (7, "JA水戸", "存在しない野菜", "JGAP", "2027-03-31")})
+        self.assertEqual({r["line"]: r["unknown"] for r in out["rows"] if r["unknown"]}, {6: "単協名・仕入先", 7: "品目"})
+        self.assertEqual([(x["lines"], x["used"]) for x in out["merged"]], [([3, 10], 10)])
         reasons = {e["line"]: e["reason"] for e in out["errors"]}
-        self.assertEqual(set(reasons), {6, 7, 8, 9, 10})
-        self.assertIn("単協名・仕入先がマスタにありません", reasons[6])
-        self.assertIn("品目がSEIKA＋の品目", reasons[7])
+        self.assertEqual(set(reasons), {8, 9})
         self.assertIn("認証区分", reasons[8])
         self.assertIn("有効期限", reasons[9])
-        self.assertIn("3行目にもあります", reasons[10])
         self.assertEqual(page.evaluate("()=>['AGAP','ａｓｉａｇａｐ','J-GAP','GLOBALG.A.P.','x'].map(c130Cert)"), ["ASIAGAP", "ASIAGAP", "JGAP", "GGAP", ""])
 
     def test_import_preview_shows_diff_and_replaces_only_valid_rows(self):
@@ -122,13 +123,63 @@ class PartyGapBrowserTests(unittest.TestCase):
           const buf=XLSX.write(wb,{type:'array',bookType:'xlsx'});await c130ReadFile({files:[new File([buf],'gap.xlsx')]})}""")
         page.wait_for_selector("text=GAP一覧の取り込み（確認）")
         text = page.inner_text("#app")
-        for s in ("追加\n1", "変更\n1", "削除\n1", "取り込まない行（1件）", "この内容で置き換える（2件）"):
+        for s in ("追加\n2", "変更\n1", "削除\n1", "マスタにない名前・品目のまま取り込む行（1件）", "この内容で置き換える（3件）"):
             self.assertIn(s, text)
-        page.click("text=この内容で置き換える（2件）")
+        self.assertNotIn("取り込まない行", text)
+        page.click("text=この内容で置き換える（3件）")
         page.wait_for_function("()=>window.__x.rpc.some(x=>x[0]==='replace_qr_gap_certs_v1199c130')")
         sent = page.evaluate("()=>window.__x.rpc.find(x=>x[0]==='replace_qr_gap_certs_v1199c130')[1].p_rows")
         self.assertEqual(sent, [{"coop_name": "JA水戸", "item_name": "キャベツ", "certification": "JGAP", "expires_on": "2027-03-31", "note": ""},
-                                {"coop_name": "JA水戸", "item_name": "人参", "certification": "JGAP", "expires_on": "2027-03-31", "note": ""}])
+                                {"coop_name": "JA水戸", "item_name": "人参", "certification": "JGAP", "expires_on": "2027-03-31", "note": ""},
+                                {"coop_name": "JA不明", "item_name": "人参", "certification": "JGAP", "expires_on": "2027-03-31", "note": ""}])
+
+    def test_c164_reads_company_gap_list_and_prefers_valid_rows(self):
+        parties = [{"kind": "cooperative", "name": "カルゲン会さしま", "status": "active"},
+                   {"kind": "cooperative", "name": "アグリファクトリー", "status": "active"},
+                   {"kind": "supplier", "name": "サンワアグリ", "status": "active"},
+                   {"kind": "cooperative", "name": "NCTファームネット", "status": "active"},
+                   {"kind": "supplier", "name": "新光製作所", "status": "active"}]
+        page = self.open_app(parties=parties)
+        out = page.evaluate("""async()=>{const m=await c130Master(true);const D=(y,mo,d)=>new Date(y,mo-1,d);
+          const aoa=[[null,null,null,null,'GAP認証農場取引及び検討一覧'],[],
+           [null,'産地','産地','品目','４月',null,'認証','番号','認証期限'],
+           [null,null,null,null,'上旬'],
+           ['★認証取得済','さしま農場（カルゲン会さしま）','茨城','キャベツ','〇',null,'JGAP','080000167',D(2028,3,27)],
+           ['★認証取得済','中山ファーム','茨城','キャベツ',null,null,'JGAP','080000165',D(2028,3,29)],
+           ['★認証取得済','常総井上農園','茨城','キャベツ',null,null,'JGAP',null,'-','080000149'],
+           [null,'※ 紫キャベツ 含む ※'],
+           [null,'産地','産地','品目','４月',null,'認証','番号','認証期限'],
+           ['★認証取得済','サンワアグリ(アグリファクトリー)','茨城','長葱',null,null,'JGAP','080000138',D(2023,5,19)],
+           ['★取引検討中','常総井上農園','茨城','長葱',null,null,'JGAP',null,null],
+           ['★認証取得済','アグリファクトリー(サンワアグリ)','茨城','長葱',null,null,'JGAP','080000138',D(2027,5,19)],
+           ['★認証取得済','ＮＣＴファームネット(小出博基)','長野','レタス',null,null,'GGAP','00110-HVLNV_x0002_0003',D(2027,8,27),'4063061714947'],
+           ['★認証取得済','株式会社\u3000新光製作所','茨城','長葱',null,null,'JGAP','080000229',D(2026,11,21)],
+           ['★認証取得済','アグリフード千葉','千葉','ズッキー二','〇',null,'JGAP','120000139',D(2027,1,21)],
+           ['★認証取得済','フレッシュ･オガケン','愛知','玉葱',null,null,'AGAP','MIC-S-230000044',D(2028,5,22),'※全農青果センター扱い']];
+          return c130Check(aoa,m)}""")
+        got = {(r["line"], r["coop_name"], r["item_name"], r["certification"], r["expires_on"]) for r in out["rows"]}
+        self.assertIn((5, "カルゲン会さしま", "キャベツ", "JGAP", "2028-03-27"), got)
+        self.assertIn((6, "中山ファーム", "キャベツ", "JGAP", "2028-03-29"), got)
+        self.assertIn((12, "サンワアグリ", "長葱", "JGAP", "2027-05-19"), got)
+        self.assertIn((13, "NCTファームネット", "レタス", "GGAP", "2027-08-27"), got)
+        self.assertIn((14, "新光製作所", "長葱", "JGAP", "2026-11-21"), got)
+        self.assertIn((15, "アグリフード千葉", "ズッキーニ", "JGAP", "2027-01-21"), got)
+        self.assertIn((16, "フレッシュ・オガケン", "玉葱", "ASIAGAP", "2028-05-22"), got)
+        self.assertEqual(len(out["rows"]), 7)
+        notes = {r["line"]: r["note"] for r in out["rows"]}
+        self.assertEqual(notes[5], "認証番号 080000167、茨城")
+        self.assertEqual(notes[13], "認証番号 00110-HVLNV-0003、長野")
+        self.assertEqual(notes[16], "認証番号 MIC-S-230000044、愛知、※全農青果センター扱い")
+        self.assertEqual([(x["lines"], x["used"]) for x in out["merged"]], [([10, 12], 12)])
+        reasons = {e["line"]: e["reason"] for e in out["errors"]}
+        self.assertEqual(set(reasons), {7, 11})
+        self.assertIn("有効期限の記載がありません", reasons[7])
+        self.assertIn("★取引検討中", reasons[11])
+        # 期限切れの行があっても、有効な行（単協・仕入先のどちらか）を使う。アグリファクトリーはサンワアグリ
+        g = [{"coop_norm": "アグリファクトリー", "item_norm": "長葱", "certification": "GGAP", "expires_on": "2023-05-19"},
+             {"coop_norm": "サンワアグリ", "item_norm": "長葱", "certification": "JGAP", "expires_on": "2027-05-19"}]
+        self.assertEqual(page.evaluate("(r)=>{const a=c130Find(r,'アグリファクトリー','長葱','2026-11-25','サンワアグリ'),b=c130Find(r.slice(1),'アグリファクトリー','長葱','2026-11-25',''),c=c130Find(r.slice(0,1),'アグリファクトリー','長葱','2026-11-25','');return [a.certification,a.valid,b.certification,b.valid,c.valid]}", g),
+                         ["JGAP", True, "JGAP", True, False])
 
     def test_gap_page_lists_expired_and_soon_and_worker_cannot_open(self):
         page = self.open_app()
