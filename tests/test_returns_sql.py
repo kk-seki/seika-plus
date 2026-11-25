@@ -34,6 +34,8 @@ create function public.trimming_require_role(p_roles text[]) returns public.prof
 create function public.seika_require_role_v1240(p_roles text[]) returns public.profiles language plpgsql security definer as $$declare p public.profiles%rowtype; begin select * into p from public.profiles where id=auth.uid() and active; if not found or not(p.role=any(p_roles)) then raise exception '権限がありません'; end if; return p; end$$;
 create table public.qr_lots(id uuid primary key default gen_random_uuid(), active boolean not null default true, lot_no text, qr_key text, item_id text, item_name text not null, origin text, supplier text, cooperative_name text, unit text, received_date date, current_qty numeric, current_weight numeric, status text, updated_at timestamptz default now(), container_type text, lot_manage_type text, weight_status text, storage_location text);
 create table public.qr_lot_movements(id uuid primary key default gen_random_uuid(), movement_type text not null check(movement_type in ('出庫','取消','棚卸し調整増','棚卸し調整減','入庫','廃棄','出庫・調整減','入庫・調整増','差分なし','調整','重量確定','重量更新','ロット情報訂正','場所移動')), lot_id uuid not null, lot_no text, qr_key text, item_id text, item_name text, origin text, supplier text, cooperative_name text, qty numeric, unit text, destination text, storage_location text, user_id text, user_name text, memo text, container_type text, lot_manage_type text, weight numeric, before_quantity numeric, after_quantity numeric, before_weight numeric, after_weight numeric, weight_status text, reason text, operation_id uuid unique, reversed_operation_id uuid, cancelled_at timestamptz, cancelled_by text, device_meta jsonb default '{}'::jsonb, operation_meta jsonb default '{}'::jsonb, occurred_at timestamptz default now(), created_at timestamptz default now());
+alter table public.qr_lot_movements drop constraint qr_lot_movements_movement_type_check;
+alter table public.qr_lot_movements add constraint qr_lot_movements_movement_type_check check (movement_type = any ('{棚卸し調整増,棚卸し調整減,入庫,出庫,廃棄,出庫・調整減,入庫・調整増,差分なし,調整,重量確定,重量更新,ロット情報訂正,取消,場所移動}'::text[]));
 create table public.qr_lot_grades_v1300(lot_id uuid not null, grade text not null, current_qty numeric not null, updated_at timestamptz default now(), primary key(lot_id,grade));
 create function public.seika_check_lot_grades_v1300() returns trigger language plpgsql as $$declare v_lot public.qr_lots%rowtype; v_sum numeric; v_cnt integer; begin select * into v_lot from public.qr_lots where id=new.id; if not found or coalesce(v_lot.active,true)=false or coalesce(v_lot.status,'')='削除' then return null; end if; select count(*),coalesce(sum(current_qty),0) into v_cnt,v_sum from public.qr_lot_grades_v1300 where lot_id=new.id; if v_cnt>0 and v_sum<>coalesce(v_lot.current_qty,0) then raise exception '規格別ロット（%）は、規格ごとの数量で操作してください。',v_lot.item_name using errcode='23514'; end if; return null; end$$;
 create constraint trigger seika_check_lot_grades_v1300 after insert or update on public.qr_lots deferrable initially deferred for each row execute function public.seika_check_lot_grades_v1300();
@@ -151,7 +153,10 @@ class ReturnsSqlRuntimeTests(unittest.TestCase):
         return json.loads(out.splitlines()[-1])
 
     def test_setup_adds_return_movement_type_and_destination(self):
-        self.assertIn('返品入庫', self.q("select pg_get_constraintdef(oid) from pg_constraint where conname='qr_lot_movements_movement_type_check'"))
+        d = self.q("select pg_get_constraintdef(oid) from pg_constraint where conname='qr_lot_movements_movement_type_check'")
+        self.assertIn('返品入庫', d)
+        self.assertIn('場所移動', d)  # 今までの区分も残る
+        self.assertNotIn('{"{', d)
         self.assertEqual(self.q("select kind||':'||group_name||':'||outbound from public.dest_master_v1199c160 where name='返品'"), '内:社内:true')
 
     def test_return_from_saitama_goes_back_to_the_original_lot(self):

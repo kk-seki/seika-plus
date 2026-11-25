@@ -36,6 +36,9 @@ begin
    where c.conrelid = 'public.qr_lot_movements'::regclass and c.conname = 'qr_lot_movements_movement_type_check';
   if v_def is null or position('返品入庫' in v_def) > 0 then return; end if;
   select array_agg(m[1]) into v_vals from regexp_matches(v_def, '''([^'']+)''', 'g') as m;
+  -- 本番の定義は ANY ('{棚卸し調整増,…}'::text[]) の形（009 で作り直したため）。ARRAY['…'::text, …] の形にも対応する
+  if array_length(v_vals, 1) = 1 and left(v_vals[1], 1) = '{' then v_vals := v_vals[1]::text[]; end if;
+  if v_vals is null or not ('出庫' = any(v_vals)) then raise exception '在庫履歴の区分を読み取れませんでした：%', v_def; end if;
   v_vals := v_vals || array['返品入庫'];
   execute 'alter table public.qr_lot_movements drop constraint qr_lot_movements_movement_type_check';
   execute format('alter table public.qr_lot_movements add constraint qr_lot_movements_movement_type_check check (movement_type = any (%L::text[]))', v_vals);
