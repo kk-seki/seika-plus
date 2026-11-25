@@ -23,6 +23,8 @@ async function c165Ai(action,payload={}){
  return data;
 }
 /* c166：AIの文の **太字** は太字で見せる（記号は出さない） */
+/* c167：作成時刻は日本時間で出す（UTCのまま出ていた） */
+const c167Time=v=>{try{const d=new Date(v);return isNaN(d)?"":d.toLocaleTimeString("ja-JP",{timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit"})}catch(_){return""}};
 const lines=t=>esc(String(t||"")).replace(/\*\*([^*\n]+)\*\*/g,"<b>$1</b>").replace(/\*\*/g,"").replace(/\n/g,"<br>");
 
 /* ---------- ① 毎日のまとめ ---------- */
@@ -43,7 +45,7 @@ async function c165LoadSummary(force=false){
 function c165SummaryHtml(){
  const head=`<div class="c165Head"><b>AI 今日のまとめ</b><span class="small">（${esc(ROLE_LABEL[db?.role]||"")}向け）</span></div>`;
  const body=sum.loading?'<div class="small">AIがまとめています…</div>':sum.error?`<div class="small">${esc(sum.error)}</div>`:`<div class="c165Body">${lines(sum.body)}</div>`;
- const at=sum.at&&!sum.loading?`<div class="small" style="margin-top:4px">${esc(String(sum.at).slice(11,16)||"")}に作成・AIの文なので、大事な数字は画面で確かめてください</div>`:"";
+ const at=sum.at&&!sum.loading?`<div class="small" style="margin-top:4px">${esc(c167Time(sum.at))}に作成・AIの文なので、大事な数字は画面で確かめてください</div>`:"";
  return `${head}${body}${at}<div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn blue" style="flex:1" ${seikaEventAttrs("click","c165AskPage",[])}>AIに聞く</button>${db?.role==="admin"&&!sum.loading?`<button class="btn btn2" ${seikaEventAttrs("click","c165RefreshSummary",[])}>作り直す</button>`:""}</div>`;
 }
 function c165RenderSummary(){const c=document.getElementById("c165Sum");if(c)c.innerHTML=c165SummaryHtml()}

@@ -54,6 +54,7 @@ class AiTests(unittest.TestCase):
         page.wait_for_function("()=>document.getElementById('c165Sum')?.innerText.includes('キャベツ 明日100kg')", timeout=8000)
         self.assertEqual(page.evaluate("()=>__ai.filter(x=>x.action==='summary').length"), 1)
         self.assertTrue(page.evaluate("()=>!!document.querySelector('#c165Sum button[data-seika-click-action=\"c165RefreshSummary\"]')"))
+        self.assertIn('06:10に作成', page.inner_text('#c165Sum'))  # c167：日本時間
         # c166：しばらくは管理者だけ。ほかの役割にはまとめもAIに聞くも出ない
         for role in ("worker", "buyer", "sales", "clerk"):
             with self.subTest(role=role):
