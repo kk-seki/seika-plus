@@ -244,6 +244,22 @@ window.hqItemRuleOf=n=>['キャベツ','白菜','紫キャベツ'].includes(Stri
         page.locator("#c120DraftSave").wait_for()
         self.assertEqual(page.locator("#c120ConfirmNow").count(), 0)
 
+    def test_c170_after_draft_save_only_submit_and_back(self):
+        # c170：下書きを保存したあとは「社員の確認待ちにする」と「戻って編集する」だけ（下書きを保存するは2回目は出さない）
+        page = self.open_app("hq_prep")
+        self.open_new(page)
+        page.evaluate("()=>{window.__rpc=async(_n,args)=>({ok:true,id:'NEW',updated_at:'2026-11-12T03:00:00Z',review_status:'draft'});c120Review()}")
+        page.locator("#c120DraftSave").wait_for()
+        self.assertEqual(page.locator("#c120Submit").count(), 0)
+        page.evaluate("()=>c120SaveDraft()")
+        page.locator("#c120Submit").wait_for()
+        self.assertEqual(page.locator("#c120DraftSave").count(), 0)
+        self.assertEqual(page.get_by_role("button", name="戻って編集する", exact=True).count(), 1)
+        page.evaluate("()=>c120Edit()")
+        page.locator("#c120Review").wait_for()
+        page.evaluate("()=>c120Review()")
+        page.locator("#c120DraftSave").wait_for()  # 編集し直したら、また下書きを保存から
+
     def test_confirm_now_retry_keeps_operation_and_reports_submitted(self):
         page = self.open_app("admin")
         self.open_new(page)
