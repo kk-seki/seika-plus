@@ -389,7 +389,7 @@ const receivedDate=document.getElementById("qrReceivedDate").value||todayKey(),u
 ;const pallets=!large?qrPalletQuantities():[];if(!qrPalletTotalMatchesLot(qty,pallets))return alert("パレット別数量の合計をロット全体数量と一致させてください")
 ;const palletPrintOpts=pallets.length?{palletQtys:pallets,totalQty:qty,unit
 }:null,memoRaw=document.getElementById("qrMemo").value.trim(),memoForSave=memoRaw+qrPalletPrintMarker(palletPrintOpts);const row={lot_no:lotNo,
-qr_key:qrKey,item_id:item.id||null,item_name:itemName,origin:origin||null,supplier:supplier||null,cooperative_name:cooperativeName||null,certification:v194CertValue("qrCertification"),
+qr_key:qrKey,item_id:item.id||null,item_name:itemName,origin:origin||null,...c170SupplierFix(itemName,supplier||null,cooperativeName||null),certification:v194CertValue("qrCertification"),
 received_date:receivedDate,received_qty:qty,current_qty:qty,unit,storage_location:loc||null,status:"在庫あり",memo:memoForSave||null,
 container_type:containerType,lot_manage_type:manageType,quantity_label:quantityLabel,pack_weight:packWeight,total_weight:totalWeight,
 current_weight:currentWeight,weight_status:weightStatus,purchase_staff:purchaseStaff,purchase_staff_profile_id:purchaseStaffInfo.profile_id||null,purchase_staff_legacy_user_id:purchaseStaffInfo.legacy_user_id||null,...qrUserFields()}
@@ -435,8 +435,7 @@ const lot=await qrFindLot(q).catch(()=>null),box=document.getElementById("qrEdit
 ;box.innerHTML=`1基按分重量：${fmt(per)}kg / 現在残基数 ${fmt(cur)}基 → 現在残重量 ${fmt(curW)}kg`}async function qrSaveLotEdit(q){
 if(!canQrOperate())return alert("ロットを編集する権限がありません");try{const lot=await qrFindLot(q);if(!lot)return alert("ロットが見つかりません")
 ;const large=qrIsLargeContainer(lot.container_type),patch={purchase_staff:document.getElementById("qrEditStaff")?.value.trim()||null,
-supplier:document.getElementById("qrEditSupplier")?.value.trim()||null,
-cooperative_name:document.getElementById("qrEditCooperativeName")?.value.trim()||null, certification:v194CertValue("qrEditCertification"),
+...c170SupplierFix(lot.item_name,document.getElementById("qrEditSupplier")?.value.trim()||null,document.getElementById("qrEditCooperativeName")?.value.trim()||null), certification:v194CertValue("qrEditCertification"),
 origin:qrNormalizeOrigin(document.getElementById("qrEditOrigin")?.value)||null,storage_location:document.getElementById("qrEditLoc")?.value||null,
 memo:(document.getElementById("qrEditMemo")?.value.trim()||"")+qrPalletPrintMarker(qrLotPalletPrintOpts(lot)),updated_at:(new Date).toISOString()}
 ;let movementMemo="ロット基本情報を編集";if(large){
@@ -1852,8 +1851,7 @@ if(!canQrOperate())return alert("ロットを編集する権限がありませ�
 ;if(!receivedDate)return v161FocusField("qrEditReceivedDate","入庫日を選択してください。")
 ;const item=qrFindItemByName(itemName)||{},large=qrIsLargeContainer(lot.container_type),patch={item_id:item.id||null,item_name:itemName,
 received_date:receivedDate,purchase_staff:document.getElementById("qrEditStaff")?.value.trim()||null,
-supplier:document.getElementById("qrEditSupplier")?.value.trim()||null,
-cooperative_name:document.getElementById("qrEditCooperativeName")?.value.trim()||null, certification:v194CertValue("qrEditCertification"),
+...c170SupplierFix(itemName,document.getElementById("qrEditSupplier")?.value.trim()||null,document.getElementById("qrEditCooperativeName")?.value.trim()||null), certification:v194CertValue("qrEditCertification"),
 origin:qrNormalizeOrigin(document.getElementById("qrEditOrigin")?.value)||null,storage_location:document.getElementById("qrEditLoc")?.value||null,
 memo:(document.getElementById("qrEditMemo")?.value.trim()||"")+qrPalletPrintMarker(qrLotPalletPrintOpts(lot)),updated_at:(new Date).toISOString()}
 ;if(!patch.storage_location)return v161FocusField("qrEditLoc","保管場所を選択してください。");if(large){
@@ -6509,4 +6507,8 @@ v171DownloadExcel=function(id,otherId=''){
 };
 downloadInventoryCountExcel=v171DownloadExcel;
 window.APP_VERSION=V176_INVENTORY_EXCEL_VERSION;document.title='SEIKA＋ v1.193 週次廃棄レポート版';
-
+/* c170：キャベツの仕入先を「ヴィポート／ヴイポート（・富田農園）」と入れたら、仕入先＝冨田農園・単協＝ヴィポートにする（SQL 073 のトリガーと同じ決まり） */
+function c170SupplierFix(item,supplier,coop){const n=v=>String(v||"").normalize("NFKC").replace(/\s/g,"");
+ if(String(item||"").includes("キャベツ")&&(/^ヴ[イィ]ポー?ト$/.test(n(supplier))||["富田農園","冨田農園"].includes(n(supplier))))return {supplier:"冨田農園",cooperative_name:"ヴィポート"};
+ return {supplier,cooperative_name:coop}}
+window.c170SupplierFix=c170SupplierFix;
