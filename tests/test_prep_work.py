@@ -282,6 +282,27 @@ class PrepWorkTests(unittest.TestCase):
         page.get_by_role("button", name="全員の作業を中断", exact=True).click()
         page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_pause_v1199c116')")
 
+    def test_c169_undo_resume_from_break(self):
+        page = self.app("hq_prep")
+        page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.updated_at='2026-11-12T01:00:00Z';
+          const p1=__T.hq_work_members_v1500.find(x=>x.id==='P1');p1.start_at='2026-11-12T00:00:00Z';p1.end_at='2026-11-12T00:10:00Z';p1.end_reason='休憩';
+          __T.hq_work_members_v1500.push({id:'R1',work_id:'W1',staff_id:'S1',staff_name:'佐藤 花子',team:'1班',phase:'作業',start_at:'2026-11-12T00:20:00Z'});
+          __T.hq_work_pauses_v1199c116.push({id:'B1',work_id:'W1',kind:'休憩',start_at:'2026-11-12T00:10:00Z',end_at:'2026-11-12T00:20:00Z',staff_ids:['S1'],resumed_staff_ids:['S1'],excluded_staff_ids:[]});
+          const rpc=callRpc;callRpc=async(n,a)=>{if(n==='hq_work_resume_undo_v1199c169'){__calls.push({n,a});const x=__T.hq_works_v1500.find(q=>q.id===a.p_work_id);
+            __T.hq_work_members_v1500=__T.hq_work_members_v1500.filter(m=>m.id!==a.p_member_id);x.pause_kind='休憩';x.updated_at=new Date().toISOString();
+            const p=__T.hq_work_pauses_v1199c116.find(q=>q.id==='B1');p.end_at=null;p.resumed_staff_ids=[];return {ok:true,pause_kind:'休憩',reopened:true}}return rpc(n,a)};
+          }""")
+        self.work_page(page, "W1")
+        buttons = page.locator("button.c169Undo")
+        self.assertEqual(buttons.count(), 1)  # 休憩から戻った佐藤さんだけ（最初から作業の鈴木さんには出ない）
+        buttons.click()
+        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_resume_undo_v1199c169')")
+        a = self.calls(page, "hq_work_resume_undo_v1199c169")[0]["a"]
+        self.assertEqual(a, {"p_work_id": "W1", "p_member_id": "R1", "p_expected_updated_at": "2026-11-12T01:00:00Z"})
+        self.assertIn("休憩に戻しますか", page.evaluate("()=>__confirms.at(-1)"))
+        page.get_by_text("佐藤 花子さんの再開を取り消しました").wait_for()
+        self.assertEqual(page.locator("button.c169Undo").count(), 0)
+
     def test_c120_end_requires_saved_materials_and_active_people(self):
         page = self.app("hq_prep")
         page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.updated_at='2026-11-12T01:00:00Z'}""")
