@@ -245,6 +245,38 @@ class BuyerGapTests(unittest.TestCase):
         buyer.evaluate("()=>c154SalesCustomersPage()")
         self.assertTrue(buyer.evaluate("()=>__alerts.some(a=>a.includes('管理者・青果社員'))"))
 
+    def test_separate_shipment_is_not_compared_c167(self):
+        # c167：別便（産地報告書に入れないで出荷する客先×品目）は比べに出さない。管理者だけ登録できる
+        page = self.open_app("admin")
+        page.evaluate("""()=>{window.confirm=()=>true;window.__sep=[];
+         const sel=qrSelect;qrSelect=async(t,q)=>t==='ship_separate_v1199c167'?JSON.parse(JSON.stringify(__sep)):sel(t,q);
+         const rpc=callRpc;callRpc=async(n,a)=>{if(n==='set_ship_separate_v1199c167'){__calls.push([n,a]);__sep=__sep.filter(r=>!(r.customer_name===a.p_customer&&r.item_name===a.p_item));if(a.p_on)__sep.push({customer_name:a.p_customer,item_name:a.p_item,note:a.p_note});return {ok:true}}return rpc(n,a)};
+         __plan['2026-11-24'].push({customer:'東部アシード',item:'土付きじゃが芋',kg:500})}""")
+        cmp = "()=>c153Lib.c153Compare(__plan['2026-11-24'],__actual['2026-11-24'],null).find(r=>r.item==='じゃが芋')?.actual??'none'"
+        self.assertEqual(page.evaluate(cmp), 0)
+        page.evaluate("()=>c153GapPage('2026-11-24')")
+        page.get_by_text("別便（産地報告書に入れない出荷）").wait_for()
+        page.locator("summary", has_text="別便").click()
+        page.locator("button", has_text="別便にする").first.click()
+        page.get_by_text("土付きじゃが芋（東部アシード）を別便にしました").wait_for()
+        self.assertEqual(page.evaluate("()=>__calls.filter(c=>c[0]==='set_ship_separate_v1199c167').map(c=>[c[1].p_customer,c[1].p_item,c[1].p_on])"),
+                         [["東部アシード", "土付きじゃが芋", True]])
+        self.assertEqual(page.evaluate(cmp), "none")
+        # ホームのカードの比べ（c147Diffs）からも消える
+        self.assertFalse(page.evaluate("()=>c147Lib.c147Diffs(__plan['2026-11-24'],__actual['2026-11-24'],null,null).some(r=>r.item==='じゃが芋')"))
+        # 名前の書き方が少しちがっても（そろえた名前で）同じとみなす
+        self.assertTrue(page.evaluate("()=>c167IsSeparate('東部アシード','じゃが芋')"))
+        # 外すと戻る
+        page.locator("summary", has_text="別便").click()
+        page.locator("button", has_text="外す").first.click()
+        page.get_by_text("を別便から外しました").wait_for()
+        self.assertEqual(page.evaluate(cmp), 0)
+        # 青果社員には登録の欄が出ない
+        worker = self.open_app("worker")
+        worker.evaluate("()=>c153GapPage('2026-11-24')")
+        worker.get_by_text("全員分をまとめて").wait_for()
+        self.assertNotIn("別便（産地報告書に入れない出荷）", worker.inner_text("#app"))
+
     def test_staff_rule_prefers_longer_keyword(self):
         page = self.open_app("worker")
         out = page.evaluate("""()=>[c153Lib.c154StaffOf('(株)武蔵野 千葉工場',[{id:1,keyword:'武蔵野千葉',staff_profile_id:'A'}])?.staff_profile_id,

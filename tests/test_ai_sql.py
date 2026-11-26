@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SQL = (ROOT / 'db/068_AI導入.sql').read_text(encoding='utf-8')
 SQL_069 = (ROOT / 'db/069_AIの廃棄にトリミング廃棄.sql').read_text(encoding='utf-8')
+SQL_070 = (ROOT / 'db/070_AIの予定と確定の差.sql').read_text(encoding='utf-8')
 SCRATCH = Path('/tmp/jai-scratch/c165')
 TIMEOUT = 30
 
@@ -46,6 +47,7 @@ create table public.qr_quality_evaluations(id uuid primary key default gen_rando
 create table public.qr_gap_certs_v1199c130(coop_name text, item_name text, certification text, expires_on date);
 create table public.purchase_prices(id uuid primary key default gen_random_uuid(), week_start date, item_name text, origin text, price_yen_per_kg numeric);
 create role anon; create role authenticated; create role service_role;
+create function public.trimming_require_role(p_roles text[]) returns public.profiles language plpgsql security definer as $$declare p public.profiles%rowtype; begin select * into p from public.profiles where id=auth.uid() and active; if not found or not(p.role=any(p_roles)) then raise exception '権限がありません'; end if; return p; end$$;
 insert into public.profiles values ('00000000-0000-0000-0000-000000000001','admin',true,'管理者'),('00000000-0000-0000-0000-000000000002','sales',true,'営業'),('00000000-0000-0000-0000-000000000003','clerk',true,'事務'),('00000000-0000-0000-0000-000000000004','buyer',true,'仕入');
 '''
 
@@ -96,6 +98,8 @@ class AiSqlRuntimeTests(unittest.TestCase):
         cls.psql(SQL)  # 2回実行しても同じ
         cls.psql(SQL_069)
         cls.psql(SQL_069)
+        cls.psql(SQL_070)
+        cls.psql(SQL_070)
 
     @classmethod
     def command(cls, command):
@@ -147,8 +151,22 @@ class AiSqlRuntimeTests(unittest.TestCase):
         self.assertEqual(waste, {'廃棄記録': (4, None), 'QR廃棄': (1, 'CS'), 'トリミング廃棄': (6, 'kg')})  # c166：廃棄にトリミング廃棄も入る
         plan = self.ai(SALES, 'plan')['rows']
         self.assertEqual([(r['customer'], r['kg']) for r in plan], [('美野里デリカ', 100)])  # 置き換え済みは入らない
+        # c167：社内（埼玉・深谷）は除く。産地報告書に出てくる客先だけ。ない行はキャンセル
+        self.psql("""insert into public.ship_plan_lines_v1199c140(import_id,delivery_date,customer_name,item_name,kg,cases) values
+          ('10000000-0000-0000-0000-000000000001',current_date,'美野里デリカ','人参',50,5),
+          ('10000000-0000-0000-0000-000000000001',current_date,'(株)せき 深谷青果センター','キャベツ',900,90),
+          ('10000000-0000-0000-0000-000000000001',current_date,'産地報告にない客先','白菜',30,3)""")
         pva = self.ai(SALES, 'plan_vs_actual')['rows']
-        self.assertEqual([(r['plan_kg'], r['actual_kg'], r['diff_kg']) for r in pva], [(100, 80, -20)])
+        self.assertEqual([(r['customer'], r['item'], r['plan_kg'], r['actual_kg'], r['status']) for r in pva],
+                         [('美野里デリカ', '人参', 50, 0, 'キャンセル（産地報告書にない）'), ('美野里デリカ', 'キャベツ', 100, 80, '予定より少ない')])
+        # 別便に登録した客先×品目は比べに出さない（管理者だけ登録できる）
+        with self.assertRaises(AssertionError):
+            self.q(SALES, "select public.set_ship_separate_v1199c167('美野里デリカ','人参',true,'別便');")
+        self.q(ADMIN, "select public.set_ship_separate_v1199c167('美野里デリカ','人参',true,'別便');")
+        self.assertEqual([r['item'] for r in self.ai(SALES, 'plan_vs_actual')['rows']], ['キャベツ'])
+        self.q(ADMIN, "select public.set_ship_separate_v1199c167('美野里デリカ','人参',false);")
+        self.assertEqual(len(self.ai(SALES, 'plan_vs_actual')['rows']), 2)
+        self.assertEqual(self.q(ADMIN, "select count(*) from public.ship_separate_v1199c167 where item_name='土付きじゃが芋'"), '1')
         self.assertEqual(self.ai(BUYER, 'prices')['rows'][0]['yen_per_kg'], 120)
         self.assertTrue(self.ai(SALES, 'prices').get('denied'))
         for bad in ((CLERK, "'stock'"), (ADMIN, "'unknown'")):

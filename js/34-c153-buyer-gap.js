@@ -33,9 +33,10 @@ function c153Compare(planLines,actualLines,inhouse){
  const ext=new Set((actualLines||[]).map(cust).filter(c=>c&&!inhouseOf(c)));
  const by=new Map();
  const cell=(it,c)=>{if(!by.has(it))by.set(it,new Map());const m=by.get(it);if(!m.has(c))m.set(c,{customer:c,plan:0,actual:0});return m.get(c)};
- for(const l of planLines||[]){const c=cust(l),it=itemOf(l),kg=kgOf(l);if(!it||kg==null)continue;const h=inhouseOf(c);
+ const sep=(c,l)=>typeof window.c167IsSeparate==="function"&&window.c167IsSeparate(c,l.item||l.item_name);  // c167：別便は比べない
+ for(const l of planLines||[]){const c=cust(l),it=itemOf(l),kg=kgOf(l);if(!it||kg==null)continue;const h=inhouseOf(c);if(!h&&sep(c,l))continue;
   if(h){if(inhouse)cell(it,h).plan+=kg}else if(ext.has(c))cell(it,c).plan+=kg}
- for(const l of actualLines||[]){const c=cust(l),it=itemOf(l),kg=kgOf(l);if(!it||kg==null||inhouseOf(c))continue;cell(it,c).actual+=kg}
+ for(const l of actualLines||[]){const c=cust(l),it=itemOf(l),kg=kgOf(l);if(!it||kg==null||inhouseOf(c)||sep(c,l))continue;cell(it,c).actual+=kg}
  if(inhouse)for(const [k] of INHOUSE){for(const [it,kg] of inhouse[k]||new Map())cell(it,k).actual+=kg;for(const [it,kg] of inhouse.ahead?.[k]||new Map())cell(it,k).ahead=(cell(it,k).ahead||0)+kg}
  const out=[];
  for(const [item,m] of by){
@@ -127,6 +128,7 @@ async function findLatest(){
 }
 async function c153Load(date){
  const lib=L(),ship=lib.addDays(date,-1);
+ if(typeof window.c167LoadSeparate==="function")await window.c167LoadSeparate().catch(()=>null);
  const [plan,actual,inhouse]=await Promise.all([lib.loadPlan(date),lib.loadActual(date),(window.c154InhouseFor?window.c154InhouseFor(date):window.c151InhouseOut?window.c151InhouseOut(ship):Promise.resolve(null)).catch(()=>null)]);
  return {date,ship,plan,actual,inhouse};
 }
@@ -184,6 +186,27 @@ function groupBody(g){
  if(g.custs.length||g.none==="custs"||(!g.none&&g.role==="sales"))parts.push(`<div class="c154Sub">${g.none?"客先ごと":"営業担当の客先"}</div>${custsHtml(g.custs)}`);
  return parts.join("");
 }
+/* c167：別便（産地報告書には入れないが出荷している客先×品目）。管理者だけ登録・外す。登録したものは比べに出さない */
+function c167Candidates(planLines,actualLines){
+ const has=new Set,ext=new Set;for(const l of actualLines||[]){const c=cust(l);if(!c||inhouseOf(c))continue;ext.add(c);has.add(`${c}|${itemOf(l)}`)}
+ const out=new Map;for(const l of planLines||[]){const c=cust(l),it=itemOf(l);if(!c||!it||!ext.has(c)||has.has(`${c}|${it}`))continue;
+  const raw=String(l.item||l.item_name||it);if(typeof window.c167IsSeparate==="function"&&window.c167IsSeparate(c,raw))continue;out.set(`${c}|${raw}`,{customer:c,item:raw})}
+ return [...out.values()];
+}
+function c167SepHtml(data,date){
+ if(db?.role!=="admin")return "";
+ const st=window.c167SeparateState||{rows:[]},rows=st.rows||[],cand=c167Candidates(data.plan?.lines,data.actual?.lines);
+ const reg=rows.length?`<table class="table c153Tbl"><tr><th>客先</th><th>品目</th><th></th></tr>${rows.map(r=>`<tr><td>${esc(r.customer_name)}</td><td>${esc(r.item_name)}${r.note?`<div class="small">${esc(r.note)}</div>`:""}</td><td><button class="btn btn2" ${seikaEventAttrs("click","c167SetSeparate",[r.customer_name,r.item_name,false,date])}>外す</button></td></tr>`).join("")}</table>`:'<div class="small">まだありません。</div>';
+ const cnd=cand.length?`<div class="small" style="margin-top:8px">この日、予定にあって産地報告書にない客先×品目（ふだんはキャンセル）：</div><table class="table c153Tbl">${cand.map(r=>`<tr><td>${esc(r.customer)}</td><td>${esc(r.item)}</td><td><button class="btn blue" ${seikaEventAttrs("click","c167SetSeparate",[r.customer,r.item,true,date])}>別便にする</button></td></tr>`).join("")}</table>`:"";
+ return `<div class="card"><details><summary style="cursor:pointer"><b>別便（産地報告書に入れない出荷）${rows.length?`：${rows.length}件`:""}</b></summary><div class="small">登録した客先×品目は、予定と確定の比べ（ホーム・この画面・AI）に出さず、キャンセルとも言いません。管理者だけ変えられます。</div>${reg}${cnd}</details></div>`;
+}
+async function c167SetSeparate(customer,item,on,date){
+ if(db?.role!=="admin")return alert("別便の登録は管理者だけです");
+ if(on&&!confirm(`${customer} の ${item} を「別便（産地報告書に入れない）」にしますか？`))return;
+ try{await callRpc("set_ship_separate_v1199c167",{p_customer:customer,p_item:item,p_on:!!on,p_note:on?"別便（産地報告書に入れない）":""});await window.c167LoadSeparate?.(true);try{window.c147ResetCache?.()}catch(_){}
+  return c153GapPage(date,on?`${item}（${customer}）を別便にしました`:`${item}（${customer}）を別便から外しました`)}
+ catch(e){alert(String(e?.message||e).includes("set_ship_separate")?"別便の機能（SQL 070）がまだ実行されていません":String(e?.message||e))}
+}
 async function c153GapPage(date="",msg=""){
  if(!canSee()){alert("仕入れ担当者・営業担当者・管理者・青果社員が使えます");return home()}
  setScreen("c153GapPage",[date,msg]);
@@ -219,7 +242,7 @@ async function c153GapPage(date="",msg=""){
    <details${big?" open":""}><summary class="small" style="cursor:pointer">内容を見る</summary>${groupBody(g)}</details>
    <textarea id="${id}" class="textarea c153Ta" rows="6">${esc(txt)}</textarea>
    <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn blue" ${seikaEventAttrs("click","copyTextFrom",[id])}>コピー</button><button class="btn btn2" ${seikaEventAttrs("click","shareLineFrom",[id])}>LINEで共有</button><button class="btn btn2" ${seikaEventAttrs("click","shareLineWorksFrom",[id])}>LINE WORKSで共有</button></div></div>`}).join("");
- pageShell("出荷予定と確定のちがい（担当者別）",`${mdw(date)}納品・仕入れ担当者・営業担当者ごとに送れます`,`${msg?`<div class="ok">${esc(msg)}</div>`:""}<div class="card">${nav}${note}</div>${editBtn}${sec}
+ pageShell("出荷予定と確定のちがい（担当者別）",`${mdw(date)}納品・仕入れ担当者・営業担当者ごとに送れます`,`${msg?`<div class="ok">${esc(msg)}</div>`:""}<div class="card">${nav}${note}</div>${editBtn}${c167SepHtml(data,date)}${sec}
   <div class="card"><b>全員分をまとめて</b><textarea id="c153TextAll" class="textarea c153Ta" rows="6">${esc(all||"この日はちがいのある品目がありませんでした。")}</textarea><div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn blue" ${seikaEventAttrs("click","copyTextFrom",["c153TextAll"])}>コピー</button><button class="btn btn2" ${seikaEventAttrs("click","shareLineFrom",["c153TextAll"])}>LINEで共有</button><button class="btn btn2" ${seikaEventAttrs("click","shareLineWorksFrom",["c153TextAll"])}>LINE WORKSで共有</button></div></div>${back}`);
 }
 
@@ -326,5 +349,5 @@ try{if(typeof V195_ROLE_GUIDES!=="undefined"){
 .c154Sub{font-weight:900;color:#1e3a8a;margin-top:10px}
 .c153Ta{margin-top:8px;font-size:14px}`;document.head.appendChild(st)}
 
-Object.assign(window,{c155MyCustomerFilter,c153GapPage,c154SalesCustomersPage,c154SaveRule,c154AddRule,c154DeleteRule,c153Lib:{c153Compare,c153Group,c154Group,c154Customers,c154StaffOf,c153Text,shortCust,RATE,MIN_KG}});
+Object.assign(window,{c167SetSeparate,c155MyCustomerFilter,c153GapPage,c154SalesCustomersPage,c154SaveRule,c154AddRule,c154DeleteRule,c153Lib:{c167Candidates,c153Compare,c153Group,c154Group,c154Customers,c154StaffOf,c153Text,shortCust,RATE,MIN_KG}});
 })();

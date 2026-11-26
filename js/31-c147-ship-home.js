@@ -41,12 +41,25 @@ function sumKg(lines,filter){const mp=new Map;for(const l of lines||[]){const it
 /* 社内の客先：積み込み表の客先名で見分ける（(株)せき 埼玉工場・(株)せき 深谷青果センター） */
 const INHOUSE=[["埼玉",/埼玉/],["深谷",/深谷/]];
 const inhouseOf=c=>{const n=String(c||"");for(const [k,re] of INHOUSE)if(re.test(n))return k;return ""};
+/* c167：別便（産地報告書には入れないが出荷している客先×品目。SQL 070 の ship_separate_v1199c167）。予定と確定の比べに出さない。
+   例：フジフーズ(株) 千葉工場の土付きじゃが芋は別便で引取り。管理者が「出荷予定と確定のちがい」の画面で登録する */
+const c167Sep={keys:new Set,rows:[],at:0,loading:null};
+const c167Key=(c,it)=>`${String(c||"").normalize("NFKC").replace(/\s+/g,"")}|${c157Canon(String(it||"").trim())}`;
+async function c167LoadSeparate(force=false){
+ if(!force&&c167Sep.at&&Date.now()-c167Sep.at<5*60000)return c167Sep;
+ if(c167Sep.loading)return c167Sep.loading;
+ c167Sep.loading=(async()=>{try{const rows=await qrSelect("ship_separate_v1199c167","select=customer_name,item_name,note,created_by_name,created_at&order=customer_name.asc");c167Sep.rows=Array.isArray(rows)?rows:[];c167Sep.keys=new Set(c167Sep.rows.map(r=>c167Key(r.customer_name,r.item_name)))}catch(_){/* SQL 070 がまだなら空のまま */}
+  c167Sep.at=Date.now();return c167Sep})();
+ try{return await c167Sep.loading}finally{c167Sep.loading=null}
+}
+function c167IsSeparate(customer,item){return c167Sep.keys.size>0&&c167Sep.keys.has(c167Key(customer,item))}
 /* 予定と確定の違い（c151）：
    社外＝確定のある客先（産地報告書）の予定と、産地報告書の確定。
    社内（埼玉・深谷）＝積み込み表の予定と、出荷日（納品日の前日）の出庫（QRの出庫先「埼玉」「深谷」）。inhouse が null のときは社外だけ。 */
 function c147Diffs(planLines,actualLines,mine,inhouse){
  const ext=new Set((actualLines||[]).map(l=>l.customer||l.customer_name).filter(c=>!inhouseOf(c)));
- const parts=[["社外",sumKg(planLines,l=>ext.has(l.customer||l.customer_name)),sumKg(actualLines,l=>!inhouseOf(l.customer||l.customer_name))]];
+ const sep=l=>c167IsSeparate(l.customer||l.customer_name,l.item||l.item_name);
+ const parts=[["社外",sumKg(planLines,l=>ext.has(l.customer||l.customer_name)&&!sep(l)),sumKg(actualLines,l=>!inhouseOf(l.customer||l.customer_name)&&!sep(l))]];
  if(inhouse)for(const [k] of INHOUSE)parts.push([k,sumKg(planLines,l=>inhouseOf(l.customer||l.customer_name)===k),inhouse[k]||new Map]);
  const items=new Set();for(const [,p,a] of parts){for(const k of p.keys())items.add(k);for(const k of a.keys())items.add(k)}
  const out=[];
@@ -121,7 +134,7 @@ async function c147Load(){
  loading=(async()=>{
   const lib=L(),today=todayKey(),tomorrow=lib.addDays(today,1);
   const days=[];for(let i=-1;i<BACK;i++)days.push(lib.addDays(today,-i));  // 明日→今日→昨日→おととい
-  const [plan,...acts]=await Promise.all([lib.loadPlan(tomorrow),...days.map(d=>lib.loadActual(d))]);
+  const [plan,...acts]=await Promise.all([lib.loadPlan(tomorrow),...days.map(d=>lib.loadActual(d)),c167LoadSeparate()]);acts.pop();
   let act=null,actDate="",actPlan=null,inhouse=null,shipDate="";
   const k=acts.findIndex(a=>a?.active);
   if(k>=0){act=acts[k];actDate=days[k];shipDate=lib.addDays(actDate,-1);
@@ -248,5 +261,5 @@ if(app)new MutationObserver(()=>{
 .c147Add{display:block;font-size:13px;font-weight:800;color:#334155}
 .c147Add.many{color:#c2410c}.c147Add.few{color:#1d4ed8}`;document.head.appendChild(st)}
 
-Object.assign(window,{c157Canon,c157ResetCanon,c147InjectHome,c147Load,c151Prefetch,c151InhouseOut,c154InhouseFor,c157InhouseMerge,c157Early,c149BuyerItemNames,c147Lib:{c155ForCustomers,c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
+Object.assign(window,{c147ResetCache:()=>{cache=null;cacheAt=0},c167LoadSeparate,c167IsSeparate,c167SeparateState:c167Sep,c157Canon,c157ResetCanon,c147InjectHome,c147Load,c151Prefetch,c151InhouseOut,c154InhouseFor,c157InhouseMerge,c157Early,c149BuyerItemNames,c147Lib:{c155ForCustomers,c147Diffs,c147Tomorrow,c147Html,c147Decorate,RATE,MIN_KG}});
 })();
