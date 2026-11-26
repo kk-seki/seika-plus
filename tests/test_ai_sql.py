@@ -47,6 +47,7 @@ create table public.qr_quality_evaluations(id uuid primary key default gen_rando
 create table public.qr_gap_certs_v1199c130(coop_name text, item_name text, certification text, expires_on date);
 create table public.purchase_prices(id uuid primary key default gen_random_uuid(), week_start date, item_name text, origin text, price_yen_per_kg numeric);
 create role anon; create role authenticated; create role service_role;
+create function public.trimming_require_role(p_roles text[]) returns public.profiles language plpgsql security definer as $$declare p public.profiles%rowtype; begin select * into p from public.profiles where id=auth.uid() and active; if not found or not(p.role=any(p_roles)) then raise exception '権限がありません'; end if; return p; end$$;
 insert into public.profiles values ('00000000-0000-0000-0000-000000000001','admin',true,'管理者'),('00000000-0000-0000-0000-000000000002','sales',true,'営業'),('00000000-0000-0000-0000-000000000003','clerk',true,'事務'),('00000000-0000-0000-0000-000000000004','buyer',true,'仕入');
 '''
 
@@ -158,6 +159,14 @@ class AiSqlRuntimeTests(unittest.TestCase):
         pva = self.ai(SALES, 'plan_vs_actual')['rows']
         self.assertEqual([(r['customer'], r['item'], r['plan_kg'], r['actual_kg'], r['status']) for r in pva],
                          [('美野里デリカ', '人参', 50, 0, 'キャンセル（産地報告書にない）'), ('美野里デリカ', 'キャベツ', 100, 80, '予定より少ない')])
+        # 別便に登録した客先×品目は比べに出さない（管理者だけ登録できる）
+        with self.assertRaises(AssertionError):
+            self.q(SALES, "select public.set_ship_separate_v1199c167('美野里デリカ','人参',true,'別便');")
+        self.q(ADMIN, "select public.set_ship_separate_v1199c167('美野里デリカ','人参',true,'別便');")
+        self.assertEqual([r['item'] for r in self.ai(SALES, 'plan_vs_actual')['rows']], ['キャベツ'])
+        self.q(ADMIN, "select public.set_ship_separate_v1199c167('美野里デリカ','人参',false);")
+        self.assertEqual(len(self.ai(SALES, 'plan_vs_actual')['rows']), 2)
+        self.assertEqual(self.q(ADMIN, "select count(*) from public.ship_separate_v1199c167 where item_name='土付きじゃが芋'"), '1')
         self.assertEqual(self.ai(BUYER, 'prices')['rows'][0]['yen_per_kg'], 120)
         self.assertTrue(self.ai(SALES, 'prices').get('denied'))
         for bad in ((CLERK, "'stock'"), (ADMIN, "'unknown'")):

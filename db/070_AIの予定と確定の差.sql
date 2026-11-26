@@ -6,10 +6,55 @@
   ・その日の産地報告書に出てくる客先だけを比べる。
   ・予定にあって産地報告書にない行は「キャンセル（産地報告書にない）」とする（産地報告書にはキャンセル後の数だけを書く運用）。
   ・行ごとに status（キャンセル／予定より多い／予定より少ない／予定どおり／予定にない追加）を付ける。
-前提：069 を実行済みであること。関数を置き換えるだけで、データは変わりません。何度実行しても同じ結果になります。
-元に戻すとき：069 をもう一度実行する。
+  ・別便（産地報告書には入れないが出荷している客先×品目。例：フジフーズ(株) 千葉工場の土付きじゃが芋は別便で引取り）を登録する表
+    ship_separate_v1199c167 を作り、登録した客先×品目は比べに出さない（キャンセルとも言わない）。ホームのカードと「出荷予定と確定のちがい」も同じ表を見る。
+    見るのはログインしている人、登録・外すのは管理者（set_ship_separate_v1199c167）。
+前提：069 を実行済みであること。今までのデータは変わりません（別便の表を1つ足し、フジフーズ×土付きじゃが芋を1件入れます）。何度実行しても同じ結果になります。
+元に戻すとき：069 をもう一度実行し、drop function if exists public.set_ship_separate_v1199c167(text, text, boolean, text); drop table if exists public.ship_separate_v1199c167;
 */
 begin;
+
+-- 別便（産地報告書には入れないが出荷している客先×品目）
+create table if not exists public.ship_separate_v1199c167(
+  customer_name text not null,
+  item_name text not null,
+  note text not null default '',
+  created_by_name text not null default '',
+  created_at timestamptz not null default now(),
+  primary key (customer_name, item_name)
+);
+alter table public.ship_separate_v1199c167 enable row level security;
+revoke all on public.ship_separate_v1199c167 from public, anon, authenticated;
+grant select on public.ship_separate_v1199c167 to authenticated;
+grant all on public.ship_separate_v1199c167 to service_role;
+drop policy if exists ship_separate_v1199c167_read on public.ship_separate_v1199c167;
+create policy ship_separate_v1199c167_read on public.ship_separate_v1199c167 for select to authenticated using (true);
+insert into public.ship_separate_v1199c167(customer_name, item_name, note, created_by_name)
+values ('フジフーズ(株) 千葉工場', '土付きじゃが芋', '別便で引取り（産地報告書に入れない）', '初期登録（c167）')
+on conflict do nothing;
+
+create or replace function public.set_ship_separate_v1199c167(p_customer text, p_item text, p_on boolean, p_note text default '')
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'pg_catalog','public'
+as $s$
+declare v_profile public.profiles%rowtype; v_c text := btrim(coalesce(p_customer, '')); v_i text := btrim(coalesce(p_item, ''));
+begin
+  v_profile := public.trimming_require_role(array['admin']);
+  if v_c = '' or v_i = '' then raise exception '客先と品目を選んでください' using errcode = '22023'; end if;
+  if coalesce(p_on, true) then
+    insert into public.ship_separate_v1199c167(customer_name, item_name, note, created_by_name)
+    values (v_c, v_i, left(btrim(coalesce(p_note, '')), 200), coalesce(v_profile.display_name, ''))
+    on conflict (customer_name, item_name) do update set note = excluded.note, created_by_name = excluded.created_by_name, created_at = now();
+  else
+    delete from public.ship_separate_v1199c167 where customer_name = v_c and item_name = v_i;
+  end if;
+  return jsonb_build_object('ok', true);
+end
+$s$;
+revoke all on function public.set_ship_separate_v1199c167(text, text, boolean, text) from public, anon;
+grant execute on function public.set_ship_separate_v1199c167(text, text, boolean, text) to authenticated;
 
 create or replace function public.ai_data_v1199c165(p_kind text, p_from date default null, p_to date default null, p_item text default null, p_customer text default null)
 returns jsonb
@@ -107,6 +152,7 @@ begin
               on a.d = p.d and a.c = p.c and a.it = p.it
         ) z
        where c !~ '(埼玉|深谷)'
+         and not exists (select 1 from public.ship_separate_v1199c167 sp where sp.customer_name = z.c and sp.item_name = z.it)
          and exists (select 1 from public.ship_actual_lines_v1199c142 l2 join public.ship_actual_imports_v1199c142 i2 on i2.id = l2.import_id and i2.status = 'active'
                       where l2.delivery_date = z.d and l2.customer_name = z.c)
          and (v_item is null or it ilike '%' || v_item || '%') and (v_cust is null or c ilike '%' || v_cust || '%')
@@ -165,4 +211,6 @@ grant execute on function public.ai_data_v1199c165(text, date, date, text, text)
 commit;
 
 -- ===== 確認（OK なら成功） =====
-select case when position('キャンセル（産地報告書にない）' in pg_get_functiondef('public.ai_data_v1199c165(text,date,date,text,text)'::regprocedure)) > 0 then 'OK' else 'NG' end as "予定と確定の差（c151と同じ）";
+select
+  (select case when position('ship_separate_v1199c167' in pg_get_functiondef('public.ai_data_v1199c165(text,date,date,text,text)'::regprocedure)) > 0 then 'OK' else 'NG' end) as "予定と確定の差（c151と同じ・別便を除く）",
+  (select case when exists (select 1 from public.ship_separate_v1199c167 where customer_name = 'フジフーズ(株) 千葉工場' and item_name = '土付きじゃが芋') then 'OK' else 'NG' end) as "別便の表（フジフーズのじゃが芋）";
