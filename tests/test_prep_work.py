@@ -303,6 +303,31 @@ class PrepWorkTests(unittest.TestCase):
         page.get_by_text("佐藤 花子さんの再開を取り消しました").wait_for()
         self.assertEqual(page.locator("button.c169Undo").count(), 0)
 
+    def test_c171_resume_from_suspend_with_new_members(self):
+        page = self.app("hq_prep")
+        page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.pause_kind='中断';
+          const at=new Date(Date.now()-20*60000).toISOString();
+          __T.hq_work_members_v1500.filter(m=>m.work_id==='W1').forEach(m=>{m.end_at=at;m.end_reason='中断'});
+          __T.hq_work_pauses_v1199c116.push({id:'B9',work_id:'W1',kind:'中断',start_at:at,end_at:null,staff_ids:['S1','S2'],resumed_staff_ids:[],excluded_staff_ids:[]});
+          const rpc=callRpc;callRpc=async(n,a)=>{if(n==='hq_work_resume_swap_v1199c171'){__calls.push({n,a});const x=__T.hq_works_v1500.find(q=>q.id==='W1');x.pause_kind='';return {ok:true}}return rpc(n,a)};
+          window.confirm=m=>{(window.__confirms=window.__confirms||[]).push(m);return true}}""")
+        self.work_page(page, "W1")
+        page.evaluate("()=>h2PauseOpen('W1','再開')")
+        page.get_by_text("中断前のメンバー（戻る人にチェック）").wait_for()
+        self.assertEqual(page.locator(".c171Back").count(), 2)
+        self.assertEqual(page.locator("#c171Pick .h2PickAdd").count(), 0)  # 追加ボタンは出さない（再開で一緒に入る）
+        self.assertEqual(page.locator("#c171Pick input.h2PickChk[data-id='S1']").count(), 0)  # 中断前の人は「新しく入る人」に出ない
+        page.locator(".c171Back[value='S2']").uncheck()
+        page.locator("#c171Pick details", has_text="2班").locator("summary").click()
+        page.locator("#c171Pick input.h2PickChk[data-id='S3']").check()
+        page.locator("button", has_text="この人たちで再開する").click()
+        page.wait_for_function("()=>__calls.some(c=>c.n==='hq_work_resume_swap_v1199c171')")
+        a = [c for c in self.calls(page, "hq_work_resume_swap_v1199c171")][0]["a"]
+        self.assertEqual((a["p_work_id"], a["p_back_staff_ids"], a["p_new_staff_ids"]), ("W1", ["S1"], ["S3"]))
+        msg = page.evaluate("()=>window.__confirms.at(-1)")
+        self.assertIn("戻る人：佐藤 花子", msg); self.assertIn("新しく入る人：高橋 由美", msg); self.assertIn("戻らない人（中断した時刻で抜けた扱い）：鈴木 美咲", msg)
+        page.get_by_text("再開しました（2名）").wait_for()
+
     def test_c120_end_requires_saved_materials_and_active_people(self):
         page = self.app("hq_prep")
         page.evaluate("""()=>{const w=__T.hq_works_v1500.find(x=>x.id==='W1');w.c120_flow=true;w.review_status='draft';w.updated_at='2026-11-12T01:00:00Z'}""")

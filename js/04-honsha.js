@@ -1384,6 +1384,46 @@ async function h2C169ResumeUndo(workId,memberId,name,startAt,expected){
  catch(e){const m=h2Err(e);alert(/hq_work_resume_undo_v1199c169|PGRST202/.test(m)?'再開の取り消し（SQL 072）がまだ実行されていません':m)}
  finally{H2.busy=false}
 }
+/* c171：中断から再開するとき、戻る人（中断前のメンバー）と新しく入る人を1回で決める（SQL 074 hq_work_resume_swap_v1199c171）。
+   戻らない人は中断した時刻で抜けた扱い。休憩中の人がいるとき（休憩の再開）は今までの画面 */
+let C171=null;
+async function h2C171SwapOpen(id){
+ const box=document.getElementById('c116PauseBox');if(!box)return false;
+ const [works,mem,pauses,staff]=await Promise.all([h2Works(`select=*&id=eq.${id}`),h2Members([id]),sel2('hq_work_pauses_v1199c116',`select=*&work_id=eq.${id}&end_at=is.null&order=start_at.desc`),h2Staff()]);
+ const w=works[0];if(!w||w.kind!=='下処理'||w.status!=='作業中'||w.pause_kind!=='中断'||!pauses.length||pauses.some(p=>p.kind!=='中断'))return false;
+ const waiting=new Map();pauses.forEach(p=>(p.staff_ids||[]).filter(sid=>!(p.resumed_staff_ids||[]).includes(sid)).forEach(sid=>waiting.set(sid,p)));
+ const back=[...new Map(mem.filter(m=>waiting.has(m.staff_id)).map(m=>[m.staff_id,m])).values()];
+ const inWork=new Set(mem.filter(m=>!m.end_at).map(m=>m.staff_id));
+ const pick=staff.filter(x=>!waiting.has(x.id)&&!inWork.has(x.id));
+ const since=Math.max(...pauses.map(p=>Date.parse(p.start_at)));
+ C171={id,op:newId(),attempt:null,names:new Map([...back.map(m=>[m.staff_id,m.staff_name]),...pick.map(x=>[x.id,x.name])]),since};
+ box.innerHTML=`<div class="notice" style="margin-top:8px"><b>中断から再開</b><div class="small">中断前のメンバーと入れ替わってもかまいません。戻らない人はチェックを外してください（中断した時刻 ${esc(time2(new Date(since).toISOString()))} で抜けた扱いになります）。新しく入る人は下で選んでください。</div>
+  <div style="margin-top:8px"><b>中断前のメンバー（戻る人にチェック）</b>${back.map(m=>`<label style="display:block;padding:10px 0;font-size:20px"><input type="checkbox" class="c171Back" value="${esc(m.staff_id)}" checked> ${esc(m.staff_name)}</label>`).join('')||'<div class="small">いません</div>'}</div>
+  <div style="margin-top:8px"><b>新しく入る人</b><div class="small">班の名前を押すと、人の一覧が開きます。</div><div id="c171Pick">${h2StaffPickerHtml(pick,'c171',id,{open:new Set(),checked:new Set()})}</div></div>
+  <label class="label" style="margin-top:8px">再開した時刻（日本時間）</label><input id="c171At" type="datetime-local" class="input" value="${esc(h2JstLocalNow())}">
+  <button class="btn hqBtnPrep" style="width:100%;min-height:60px;margin-top:8px" ${btnAttr('h2C171SwapSave',[])}>この人たちで再開する</button>
+  <button class="btn btn2" style="width:100%;min-height:60px;margin-top:8px" ${btnAttr('h2PauseClose',[])}>やめる</button></div>`;
+ box.querySelector('#c171Pick .h2PickAdd')?.remove();
+ box.scrollIntoView({block:'center'});
+ return true;
+}
+async function h2C171SwapSave(){
+ const s=C171;if(!s||!h2CanPrep()||H2.busy)return;
+ const back=[...document.querySelectorAll('.c171Back:checked')].map(el=>el.value);
+ const left=[...document.querySelectorAll('.c171Back:not(:checked)')].map(el=>el.value);
+ const news=[...document.querySelectorAll('#c171Pick input.h2PickChk:checked')].map(el=>el.dataset.id);
+ if(!back.length&&!news.length)return alert('再開する人を選んでください（戻る人か、新しく入る人）');
+ const at=h2JstIso(h2Val('c171At'));if(!at)return alert('再開した時刻を正しく入れてください');
+ if(Date.parse(at)<=s.since)return alert('中断した時刻より後の時刻を入れてください');
+ const args={p_work_id:s.id,p_operation_id:s.op,p_back_staff_ids:back,p_new_staff_ids:news,p_at:at};
+ const fp=JSON.stringify(args);if(s.attempt&&s.attempt!==fp)return alert('通信結果を確認するため、同じ内容で再試行してください。変更する場合は画面を開き直してください');
+ const nm=ids=>ids.map(x=>s.names.get(x)||'').join('、');
+ if(!confirm(`この内容で再開します。よろしいですか？\n\n戻る人：${back.length?nm(back):'なし'}\n新しく入る人：${news.length?nm(news):'なし'}${left.length?`\n戻らない人（中断した時刻で抜けた扱い）：${nm(left)}`:''}`))return;
+ H2.busy=true;s.attempt=fp;
+ try{const r=await r2('hq_work_resume_swap_v1199c171',args);if(!r?.ok)throw new Error(r?.message||'再開できませんでした');C171=null;await hqWorkPage(s.id,`再開しました（${back.length+news.length}名）`)}
+ catch(e){const m=h2Err(e);alert(/hq_work_resume_swap_v1199c171|PGRST202/.test(m)?'入れ替えての再開（SQL 074）がまだ実行されていません':m)}
+ finally{H2.busy=false}
+}
 function h2C137OnBreak(mem){const open=new Set(mem.filter(m=>!m.end_at).map(m=>m.staff_id));return [...new Set(mem.filter(m=>m.end_reason==='休憩'&&!open.has(m.staff_id)).map(m=>m.staff_name))]}
 async function h2C120WorkPage(w,mem,mats,msg='',pauses=[]){
  const open=mem.filter(m=>!m.end_at),ended=!!w.ended_at||w.status==='入力待ち',active=!ended&&w.status==='作業中',signatures=ended&&(['submitted','confirmed'].includes(w.review_status))?await h2C120Signatures(w.id):[];
@@ -1611,6 +1651,7 @@ let C116_PAUSE=null,C116_CORRECT=null;
 async function h2PauseOpen(id,kind){
  if(!h2CanPrep()||H2.busy)return;
  if(document.getElementById('c112Materials')?.dataset.dirty)return alert('先に、入力した使用数を保存してください');
+ if(kind==='再開'){try{if(await h2C171SwapOpen(id))return}catch(e){return alert(h2Err(e))}}  // c171：中断からは、メンバーを入れ替えて再開できる
  try{
   const [works,mem,pauses]=await Promise.all([h2Works(`select=*&id=eq.${id}`),h2Members([id]),sel2('hq_work_pauses_v1199c116',`select=*&work_id=eq.${id}&end_at=is.null&order=start_at.desc`)]);
   const w=works[0];if(!w||w.kind!=='下処理'||w.status==='取消')throw new Error('この下処理は操作できません');
@@ -1747,7 +1788,7 @@ async function h2AddMemberSave(workId){
  const a=h2Val("h2AmA"),b=h2Val("h2AmB");if(!a||!b)return alert("開始と終了を入れてください");
  try{await r2("hq_member_add_v1500",{p_work_id:workId,p_staff_id:h2Val("h2AmS"),p_phase:h2Val("h2AmP"),p_start:new Date(a).toISOString(),p_end:new Date(b).toISOString()});return hqWorkPage(workId,"追加しました")}catch(e){alert(h2Err(e))}
 }
-Object.assign(window,{h2C169ResumeUndo,h2C169CanUndo,h2C137LeaveOpen,h2C137LeaveSave,h2C137TimeOpen,h2C137TimeSave,h2StaffPickChanged,h2StaffPickAdd,h2NwMaterialCamera,h2NwMaterialCameraClose,h2NwStaffCamera,h2JoinStaffCamera,h2OpStaffSelected,h2OpStaffCamera,h2OpCamera,h2DeleteWorkHtml,h2DeleteWork,h2C124CanDelete,hqPrepHome,hqPrepNew,h2NwAddLot,h2NwDelLot,h2NwAddStaff,h2NwDelStaff,h2NwSet,h2NwPair,h2NwToggleOutput,h2NwSetCustomOutput,h2NwStartedAt,h2NwStart,hqOpScanPage,hqWorkPage,h2WorkEnd,h2CleanEnd,h2WorkLeave,h2WorkLeaveSave,h2WorkLeaveClose,h2WorkJoinOpen,h2AddMaterialOpen,h2AddMaterialClose,h2AddMaterialSelected,h2AddMaterial,h2SaveMaterialQty,h2MatUseAll,h2SaveInputs,h2WasteReset,h2PrintLabel,h2ToClean,h2WorkCancel,h2FixMember,h2MemberTimeOpen,h2MemberTimeSave,h2MemberTimeClose,h2AddMemberPage,h2AddMemberSave,h2C120WorkPage,h2C120End,h2C120Confirm,h2C120Return,h2C120EmployeeEdit,h2C120AddMaterialOpen,h2C120AddMaterialCamera,h2C120AddMaterial,h2C120AddMaterialClose,h2PalletOpen,h2PalletOpenReader,h2PalletOpenSelected,h2PalletChooseOpen,h2PalletChoose,h2PalletMode,h2PalletSave,h2PalletCancel,h2PalletClose});
+Object.assign(window,{h2C171SwapOpen,h2C171SwapSave,h2C169ResumeUndo,h2C169CanUndo,h2C137LeaveOpen,h2C137LeaveSave,h2C137TimeOpen,h2C137TimeSave,h2StaffPickChanged,h2StaffPickAdd,h2NwMaterialCamera,h2NwMaterialCameraClose,h2NwStaffCamera,h2JoinStaffCamera,h2OpStaffSelected,h2OpStaffCamera,h2OpCamera,h2DeleteWorkHtml,h2DeleteWork,h2C124CanDelete,hqPrepHome,hqPrepNew,h2NwAddLot,h2NwDelLot,h2NwAddStaff,h2NwDelStaff,h2NwSet,h2NwPair,h2NwToggleOutput,h2NwSetCustomOutput,h2NwStartedAt,h2NwStart,hqOpScanPage,hqWorkPage,h2WorkEnd,h2CleanEnd,h2WorkLeave,h2WorkLeaveSave,h2WorkLeaveClose,h2WorkJoinOpen,h2AddMaterialOpen,h2AddMaterialClose,h2AddMaterialSelected,h2AddMaterial,h2SaveMaterialQty,h2MatUseAll,h2SaveInputs,h2WasteReset,h2PrintLabel,h2ToClean,h2WorkCancel,h2FixMember,h2MemberTimeOpen,h2MemberTimeSave,h2MemberTimeClose,h2AddMemberPage,h2AddMemberSave,h2C120WorkPage,h2C120End,h2C120Confirm,h2C120Return,h2C120EmployeeEdit,h2C120AddMaterialOpen,h2C120AddMaterialCamera,h2C120AddMaterial,h2C120AddMaterialClose,h2PalletOpen,h2PalletOpenReader,h2PalletOpenSelected,h2PalletChooseOpen,h2PalletChoose,h2PalletMode,h2PalletSave,h2PalletCancel,h2PalletClose});
 Object.assign(X,{labelPages,LABEL_CSS,workCard,liveData,h2JstLocalNow,h2JstIso,h2NewOutputId,h2C120WorkPage,h2C120End,h2C120Confirm,h2C120Return,h2C120EmployeeEdit,h2C120AddMaterialOpen,h2C120AddMaterialCamera,h2C120AddMaterial,h2C120AddMaterialClose});
 })();
 
