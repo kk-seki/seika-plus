@@ -195,6 +195,22 @@ class PartyGapBrowserTests(unittest.TestCase):
         worker.evaluate("()=>c130GapPage('')")
         self.assertIn("管理者だけ", worker.evaluate("()=>window.__x.alerts.join()"))
 
+    def test_jgap_auto_check_card_c174(self):
+        page = self.open_app()
+        page.evaluate("""()=>{window.__T.qr_gap_jgap_runs_v1199c174=[{id:3,run_at:'2026-12-01T00:43:00Z',days:60,summary:{updated:1,ambiguous:1,not_found:1},
+          report:[{coop_name:'エプロン',item_name:'玉葱',expires_on:'2026-07-05',status:'updated',new_expires:'2028-07-05',jgap_name:'株式会社エプロン'},
+                  {coop_name:'タスパス',item_name:'キャベツ',expires_on:'2026-12-01',status:'ambiguous',candidates:['田原タスパス部会','タスパスくまもと JGAP部会']},
+                  {coop_name:'SYC協同組合',item_name:'レタス',expires_on:'2026-10-21',status:'not_found'},
+                  {coop_name:'佐賀東部青果',item_name:'玉葱',expires_on:'2026-11-21',status:'same'}]}]}""")
+        page.evaluate("()=>c130GapPage('')")
+        page.wait_for_selector("text=JGAPサイトでの自動チェック")
+        text = page.inner_text("#app")
+        self.assertIn("自動で延ばした（1件）", text)
+        self.assertIn("確かめてほしいもの（2件）", text)
+        self.assertIn("田原タスパス部会、タスパスくまもと JGAP部会", text)
+        self.assertIn("サイトで見つからない", text)
+        self.assertNotIn("佐賀東部青果", text.split("確かめてほしいもの")[1].split("期限切れ")[0])  # 同じ期限は「確かめて」に出さない
+
     # ---------- QR入庫の自動入力 ----------
     def test_qr_create_fills_gap_automatically_and_respects_manual_choice(self):
         parties = [{"kind": "cooperative", "name": "JA水戸", "status": "active"},
