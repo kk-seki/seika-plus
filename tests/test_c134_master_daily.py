@@ -124,5 +124,29 @@ def test_range_excel_splits_by_destination_and_can_pick_one(self):
     self.assertIn("埼玉_", one["name"])
 
 
+
+@_t
+def test_imagawa_run_is_separate_same_day_slip_c172(self):
+    # c172：埼玉・深谷でメモに「今川便」とある出庫は、別の伝票（深谷　今川便）にして、出庫した日に納品する
+    lots, moves, history = self.slip_data()
+    moves += [{"id": "M5", "lot_id": "LA", "cooperative_name": "JA水戸", "operation_meta": {}},
+              {"id": "M6", "lot_id": "LB", "supplier": "丸果", "operation_meta": {}},
+              {"id": "M7", "lot_id": "LB", "supplier": "丸果", "operation_meta": {}}]
+    row = lambda i, dest, item, qty, memo: {"id": i, "destination": dest, "item_name": item, "qty": qty, "unit": "ケース", "container_type": "ダンボール", "memo": memo, "lot_no": "L-" + i, "qr_key": "Q" + i}
+    history["TODAY"] += [row("M5", "深谷", "キャベツ", 100, "今川便"), row("M6", "深谷", "人参", 5, "")]
+    history["YDAY"] += [row("M7", "深谷", "人参", 7, "今川便")]
+    page = self.open_app(lots=lots, moves=moves, history=history)
+    page.evaluate("()=>c84SlipPage(ymdKey(new Date()))")
+    page.wait_for_selector("text=すべての伝票を印刷")
+    got = lambda d: page.evaluate(f"()=>c84Collect({d},new Map).then(it=>c84Build(it,{d}).map(t=>({{title:c84Title(t),lines:t.lines.map(g=>[g.item,g.qty,c84Kind(g)])}})))")
+    today = got("ymdKey(new Date())")
+    # 今日の今川便は今日の伝票（別の伝票）。昨日の今川便は昨日の伝票なので、今日の深谷には出ない。今日のふつうの深谷は明日の伝票
+    self.assertIn({"title": "深谷　今川便", "lines": [["キャベツ", 100, "今川便（当日納品）"]]}, today)
+    self.assertNotIn("深谷", [t["title"] for t in today])
+    tomorrow = got("c84Add(ymdKey(new Date()),1)")
+    self.assertNotIn("深谷　今川便", [t["title"] for t in tomorrow])
+    html = page.evaluate("()=>c84Collect(ymdKey(new Date()),new Map).then(it=>c84TicketPages(c84Build(it,ymdKey(new Date())).find(x=>x.run==='今川便'))[0])")
+    self.assertIn("深谷　今川便", html)
+
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,9 @@ const C84_BIG=["網コンテナ","鉄コンテナ","パレテーナ"],C84_ROWS=1
 const C84_RUNS_DEFAULT=["配送便","原料便","市場便"];
 let c84Tickets=[],c84Date="",c84Url="",c84Busy=false;
 const C84_SUN=["日曜積込分","日曜積込分・先送り"];
+/* c172：埼玉・深谷でメモに「今川便」とある出庫は、埼玉便とは別の伝票（例：深谷　今川便）にして、出庫した日に納品する */
+const C172_SAME_DAY_RUNS=["今川便"];
+function c172SameRun(dest,memo){if(c84Hq(dest))return"";const m=String(memo||"").normalize("NFKC");return C172_SAME_DAY_RUNS.find(r=>m.includes(r))||""}
 function c84Dow(d){return new Date(String(d).slice(0,10)+"T00:00:00").getDay()}
 function c84Can(){return["admin","worker","clerk"].includes(String(db?.role||""))}
 function c84Add(d,n){const t=new Date(String(d).slice(0,10)+"T00:00:00");t.setDate(t.getDate()+n);return ymdKey(t)}
@@ -47,7 +50,7 @@ async function c84LoadDay0(date){
 {if(h&&h.unit==="kg"){kg=Number(h.measured_total_kg)>0?Number(h.measured_total_kg):Number(h.planned_qty)>0?Number(h.planned_qty):null;if(Number(h.measured_count)>0)count=Number(h.measured_count)}}
    if(kg===null&&r.weight!=null&&r.weight!=="")kg=Number(r.weight);
    if(kg===null&&Number(l.total_weight)>0&&Number(l.received_qty)>0)kg=Math.round(Number(l.total_weight)/Number(l.received_qty)*count*10)/10}
-  return{id:r.id,dest:r.destination,date,occurred:r.occurred_at,timing:v1144OutboundMemoParts(r.memo).timing,lotKey:String(m.lot_id||r.qr_key||r.lot_no||r.id),lot_no:r.lot_no||"",qr_key:r.qr_key||l.qr_key||"",
+  return{id:r.id,dest:r.destination,date,occurred:r.occurred_at,timing:v1144OutboundMemoParts(r.memo).timing,sameRun:c172SameRun(r.destination,v1144OutboundMemoParts(r.memo).memo),lotKey:String(m.lot_id||r.qr_key||r.lot_no||r.id),lot_no:r.lot_no||"",qr_key:r.qr_key||l.qr_key||"",
    item:r.item_name||"",cert:String(l.certification||"").trim(),coop:m.cooperative_name||l.cooperative_name||"",supplier:m.supplier||l.supplier||"",origin:m.origin||l.origin||"",received:l.received_date||"",pack:c84Pack(a.pack||sm.pack||(r.pack_weight??l.pack_weight)),packSet:!!(a.pack||sm.pack),
    big,count,kg,kgSet,qty:Number(r.qty||0),unit:r.unit||"",run:String(ship.run||"").trim(),runTime:String(ship.time||"").trim(),day:String(ship.day||"").trim(),hqDate:h?.planned_date||""}
  });
@@ -57,20 +60,21 @@ async function c84Collect(slip,cache){
  const [d0,d1,d2]=await Promise.all([c84LoadDay(slip,cache),c84LoadDay(prev,cache),c84Dow(prev2)===6?c84LoadDay(prev2,cache):Promise.resolve([])]);
  const hqDate=x=>x.hqDate||c84Add(x.date,x.day==="翌日便"?1:0);
  const out=[];
- for(const x of d1)if(!c84Hq(x.dest)&&!C84_SUN.includes(x.timing))out.push(x);
- for(const x of d2)if(!c84Hq(x.dest)&&C84_SUN.includes(x.timing))out.push(x);
+ for(const x of d1)if(!c84Hq(x.dest)&&!x.sameRun&&!C84_SUN.includes(x.timing))out.push(x);
+ for(const x of d2)if(!c84Hq(x.dest)&&!x.sameRun&&C84_SUN.includes(x.timing))out.push(x);
+ for(const x of d0)if(!c84Hq(x.dest)&&x.sameRun)out.push(x);  // c172：今川便は出庫した日の伝票
  for(const x of [...d1,...d0])if(c84Hq(x.dest)&&hqDate(x)===slip)out.push(x);
  return out;
 }
 function c84Build(items,date){
  const map=new Map;
  for(const x of items){
-  const hq=c84Hq(x.dest),hqRun=hq?(x.run||"便の記録なし"):"";
-  const tk=hq?`${x.dest}|${hqRun}`:x.dest;
+  const hq=c84Hq(x.dest),hqRun=hq?(x.run||"便の記録なし"):(x.sameRun||"");
+  const tk=hq||x.sameRun?`${x.dest}|${hqRun}`:x.dest;
   let t=map.get(tk);
   if(!t){t={key:tk,dest:x.dest,run:hqRun,runTime:x.runTime,date,lines:new Map};map.set(tk,t)}
   const fwd=!hq&&(x.timing==="翌日分先送り"||x.timing==="日曜積込分・先送り"),lk=`${fwd?1:0}|${x.date}|${x.lotKey}|${x.big?"":x.pack}`,party=x.coop||x.supplier||"";
-  const g=t.lines.get(lk)||{fwd,ship:x.date,sun:C84_SUN.includes(x.timing),item:x.item,coop:x.coop,cert:x.cert,party,name:party?`${x.item}　${party}`:x.item,mv:[],hq,day:x.day,origin:x.origin,received:x.received,pack:x.pack,big:x.big,count:0,kg:0,kgOk:true,qty:0,unit:x.unit,qr_key:x.qr_key,lot_no:x.lot_no};
+  const g=t.lines.get(lk)||{fwd,ship:x.date,sameRun:x.sameRun||"",sun:C84_SUN.includes(x.timing),item:x.item,coop:x.coop,cert:x.cert,party,name:party?`${x.item}　${party}`:x.item,mv:[],hq,day:x.day,origin:x.origin,received:x.received,pack:x.pack,big:x.big,count:0,kg:0,kgOk:true,qty:0,unit:x.unit,qr_key:x.qr_key,lot_no:x.lot_no};
   g.mv.push({id:x.id,qty:x.qty,count:x.count,kg:x.kg,kgSet:x.kgSet,pack:x.pack,unit:x.unit});
   g.qty+=x.qty;if(x.big){g.count+=x.count||0;if(x.kg===null||!Number.isFinite(x.kg))g.kgOk=false;else g.kg+=x.kg}
   t.lines.set(lk,g);
@@ -80,7 +84,7 @@ function c84Build(items,date){
 }
 function c84Qr(payload){const q=qrcode(0,"M");q.addData(String(payload));q.make();return q.createDataURL(4,1)}
 function c84Unit(u){return /^(ケース|ｃｓ|cs)$/i.test(String(u||"").trim())?"cs":String(u||"")}
-function c84Title(t){return t.dest==="本社"?`本社工場　${t.run}`:t.dest==="荻沼"?`荻沼　${t.run}`:t.dest}
+function c84Title(t){return t.dest==="本社"?`本社工場　${t.run}`:t.dest==="荻沼"?`荻沼　${t.run}`:t.run?`${t.dest}　${t.run}`:t.dest}
 function c84Cells(g){return{pack:g.big?`${c84Num(g.count)}基`:g.pack,qty:g.big?(g.kgOk&&g.kg>0?c84Num(g.kg):""):c84Num(g.qty),unit:g.big?"kg":c84Unit(g.unit),received:c84Md(g.received)}}
 const C89_PER=15,C89_KEEP=2;
 const C89_ORDER={
@@ -181,7 +185,7 @@ async function c84Pdf(idx){
  }catch(e){say(`PDFを作成できませんでした。${esc(e?.message||String(e))}`,"err")}
  finally{if(root)root.remove();c84Busy=false}
 }
-function c84Kind(g){if(g.hq)return g.day||"";return g.sun?(g.fwd?"日曜積込分・先送り":"日曜積込分"):(g.fwd?"先送り":"当日分")}
+function c84Kind(g){if(g.hq)return g.day||"";if(g.sameRun)return `${g.sameRun}（当日納品）`;return g.sun?(g.fwd?"日曜積込分・先送り":"日曜積込分"):(g.fwd?"先送り":"当日分")}
 function c84Aoa(t){
  const a=[["伝票",c84Title(t)],["宛先",c84To(t.dest)],["伝票の日付",t.date],[],["品名","入数","数量","単位","産地","入荷日","単協・仕入先","GAP","出庫日","区分","ロットNo."]];
  const put=g=>{const c=c84Cells(g);a.push([g.name,c.pack,c.qty===""?"":Number(String(c.qty).replace(/,/g,"")),c.unit,g.origin,g.received||"",g.party,g.cert||"",g.ship,c84Kind(g),g.lot_no])};
@@ -211,7 +215,7 @@ async function c84RangeExcel(){
   for(let day=from;day<=to;day=c84Add(day,1)){if(box)box.innerHTML=`<div class="notice">${esc(day)} の伝票を読み込み中です…</div>`;
    for(const t of c84Build(await c84Collect(day,cache),day)){if(dest&&t.dest!==dest)continue;
     for(const g of t.lines){const c=c84Cells(g),q=c.qty===""?"":Number(String(c.qty).replace(/,/g,""));
-     if(!by.has(t.dest))by.set(t.dest,[]);by.get(t.dest).push([t.date,C84_DEST_LABEL(t.dest),c84Hq(t.dest)?t.run:"",c84Kind(g),g.item,g.party,g.cert||"",c.pack,q,c.unit,c84LineKg(g),g.origin,g.received||"",g.ship,g.lot_no]);n++}}}
+     if(!by.has(t.dest))by.set(t.dest,[]);by.get(t.dest).push([t.date,C84_DEST_LABEL(t.dest),t.run||"",c84Kind(g),g.item,g.party,g.cert||"",c.pack,q,c.unit,c84LineKg(g),g.origin,g.received||"",g.ship,g.lot_no]);n++}}}
   const wb=XLSX.utils.book_new(),cols=[{wch:12},{wch:9},{wch:9},{wch:16},{wch:22},{wch:16},{wch:8},{wch:8},{wch:8},{wch:6},{wch:9},{wch:10},{wch:12},{wch:12},{wch:22}];
   const order=["本社","埼玉","深谷","荻沼"].filter(d=>!dest||d===dest);
   for(const d of order){const rows=by.get(d)||[];const kg=rows.reduce((a,r)=>a+(typeof r[10]==="number"?r[10]:0),0);
@@ -283,7 +287,7 @@ async function c84SlipPage(date){
 }
 
 function c84DateChanged(){const v=document.getElementById("c84Date")?.value;if(v)return c84SlipPage(v)}
-Object.assign(window,{c87FitAll,c86EditKg,c86EditPack,c84SlipPage,c84DateChanged,c84Pdf,c84Excel,c84MonthExcel,c84RangeExcel,c84Build,c84Collect,c84Title,c84TicketPages,C84_CSS});
+Object.assign(window,{c87FitAll,c86EditKg,c86EditPack,c84SlipPage,c84DateChanged,c84Pdf,c84Excel,c84MonthExcel,c84RangeExcel,c84Build,c84Collect,c84Title,c84Kind,c84Add,c172SameRun,c84TicketPages,C84_CSS});
 const st=document.createElement("style");st.textContent='.homeBtnSlip{background:linear-gradient(90deg,#4a044e 0%,#a21caf 52%,#f0abfc 100%) !important;color:#fff !important;text-shadow:0 1px 2px rgba(0,0,0,.3) !important;border-color:transparent !important;}';document.head.appendChild(st);
 const base=qrHome;
 qrHome=async function(...a){
