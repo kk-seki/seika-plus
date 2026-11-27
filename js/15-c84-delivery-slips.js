@@ -73,7 +73,7 @@ function c84Build(items,date){
   const tk=hq||x.sameRun?`${x.dest}|${hqRun}`:x.dest;
   let t=map.get(tk);
   if(!t){t={key:tk,dest:x.dest,run:hqRun,runTime:x.runTime,date,lines:new Map};map.set(tk,t)}
-  const fwd=!hq&&(x.timing==="翌日分先送り"||x.timing==="日曜積込分・先送り"),lk=`${fwd?1:0}|${x.date}|${x.lotKey}|${x.big?"":x.pack}`,party=x.coop||x.supplier||"";
+  const fwd=!hq&&!x.sameRun&&(x.timing==="翌日分先送り"||x.timing==="日曜積込分・先送り")  /* c173：今川便は当日納品なので「先送り」にしない */,lk=`${fwd?1:0}|${x.date}|${x.lotKey}|${x.big?"":x.pack}`,party=x.coop||x.supplier||"";
   const g=t.lines.get(lk)||{fwd,ship:x.date,sameRun:x.sameRun||"",sun:C84_SUN.includes(x.timing),item:x.item,coop:x.coop,cert:x.cert,party,name:party?`${x.item}　${party}`:x.item,mv:[],hq,day:x.day,origin:x.origin,received:x.received,pack:x.pack,big:x.big,count:0,kg:0,kgOk:true,qty:0,unit:x.unit,qr_key:x.qr_key,lot_no:x.lot_no};
   g.mv.push({id:x.id,qty:x.qty,count:x.count,kg:x.kg,kgSet:x.kgSet,pack:x.pack,unit:x.unit});
   g.qty+=x.qty;if(x.big){g.count+=x.count||0;if(x.kg===null||!Number.isFinite(x.kg))g.kgOk=false;else g.kg+=x.kg}

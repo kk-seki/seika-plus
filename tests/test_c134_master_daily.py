@@ -133,7 +133,7 @@ def test_imagawa_run_is_separate_same_day_slip_c172(self):
               {"id": "M6", "lot_id": "LB", "supplier": "丸果", "operation_meta": {}},
               {"id": "M7", "lot_id": "LB", "supplier": "丸果", "operation_meta": {}}]
     row = lambda i, dest, item, qty, memo: {"id": i, "destination": dest, "item_name": item, "qty": qty, "unit": "ケース", "container_type": "ダンボール", "memo": memo, "lot_no": "L-" + i, "qr_key": "Q" + i}
-    history["TODAY"] += [row("M5", "深谷", "キャベツ", 100, "今川便"), row("M6", "深谷", "人参", 5, "")]
+    history["TODAY"] += [row("M5", "深谷", "キャベツ", 100, "翌日分先送り / 今川便"), row("M6", "深谷", "人参", 5, "")]
     history["YDAY"] += [row("M7", "深谷", "人参", 7, "今川便")]
     page = self.open_app(lots=lots, moves=moves, history=history)
     page.evaluate("()=>c84SlipPage(ymdKey(new Date()))")
@@ -147,6 +147,7 @@ def test_imagawa_run_is_separate_same_day_slip_c172(self):
     self.assertNotIn("深谷　今川便", [t["title"] for t in tomorrow])
     html = page.evaluate("()=>c84Collect(ymdKey(new Date()),new Map).then(it=>c84TicketPages(c84Build(it,ymdKey(new Date())).find(x=>x.run==='今川便'))[0])")
     self.assertIn("深谷　今川便", html)
+    self.assertNotIn("先送り", html)  # c173：今川便は当日納品。「翌日分先送り」を選んでいても先送りの見出しにしない
 
 if __name__ == "__main__":
     unittest.main()
