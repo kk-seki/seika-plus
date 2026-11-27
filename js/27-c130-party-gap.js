@@ -366,7 +366,7 @@ async function c130Import(){
  c130Busy(true,"GAP一覧を保存しています");
  try{const a=await callRpc("replace_qr_gap_certs_v1199c130",{p_rows:p.rows.map(r=>({coop_name:r.coop_name,item_name:r.item_name,certification:r.certification,expires_on:r.expires_on,note:r.note||""}))});
   if(a&&a.ok===false)throw new Error(a.message||"保存できませんでした");
-  c130Pending=null;gap=null;await c130GapPage(`GAP一覧を${a?.count??p.rows.length}件で置き換えました。在庫が残っているロットに入れるときは「在庫が残るロットに入れる」を押してください。`)}
+  c130Pending=null;gap=null;await c130GapPage(`GAP一覧を${a?.count??p.rows.length}件で置き換えました。${a?.kept_auto?`JGAPサイトで自動で延ばした新しい期限 ${a.kept_auto}件は、そのまま残しました。`:""}在庫が残っているロットに入れるときは「在庫が残るロットに入れる」を押してください。`)}
  catch(e){alert(sqlMissing(e)?NEED_SQL:`保存できませんでした。\n${e?.message||e}`)}finally{c130Busy(false)}
 }
 /* さかのぼり（在庫が残るロット） */
@@ -385,11 +385,26 @@ async function c130BackfillRun(cnt){
  catch(e){alert(sqlMissing(e)?NEED_SQL:(e?.message||e))}finally{c130Busy(false)}
 }
 /* 一覧・期限 */
+/* c174：JGAPサイトでの自動チェック（月2回。SQL 075）。最後の結果を出す */
+async function c174LastRun(){try{const r=await qrSelect("qr_gap_jgap_runs_v1199c174","select=*&order=id.desc&limit=1");return Array.isArray(r)?r[0]||null:null}catch(_){return null}}
+const C174_LABEL={updated:"期限を延ばした",same:"サイトも同じ期限",older:"サイトのほうが古い",ambiguous:"候補が2つ以上",item_missing:"認証の品目にない",cert_missing:"認証の種類が違う",not_found:"サイトで見つからない",not_searched:"調べられなかった"};
+function c174Card(run){
+ const head='<b>JGAPサイトでの自動チェック</b><div class="small">毎月1日と15日に、期限切れ・60日以内に切れる JGAP／ASIAGAP を日本GAP協会の認証農場検索で調べます。名前と品目がはっきり合い、サイトの期限のほうが新しいものだけ自動で延ばします。それ以外は下に出すので、確かめてください。Excelを取り込み直しても、自動で延ばした新しい期限は残ります。</div>';
+ if(!run)return `<div class="card">${head}<div class="small" style="margin-top:6px">まだチェックしていません。</div></div>`;
+ const rep=Array.isArray(run.report)?run.report:[],sm=run.summary||{};
+ const at=String(run.run_at||"").slice(0,16).replace("T"," ");
+ const sum=Object.keys(C174_LABEL).filter(k=>sm[k]).map(k=>`${C174_LABEL[k]} ${sm[k]}件`).join("　");
+ const tb=(list,cols)=>`<div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>単協名・仕入先</th><th>品目</th>${cols.map(c=>`<th>${c[0]}</th>`).join("")}</tr>${list.map(x=>`<tr><td>${esc(x.coop_name)}</td><td>${esc(x.item_name)}</td>${cols.map(c=>`<td>${esc(c[1](x))}</td>`).join("")}</tr>`).join("")}</table></div>`;
+ const up=rep.filter(x=>x.status==="updated"),chk=rep.filter(x=>!["updated","same"].includes(x.status));
+ return `<div class="card">${head}<div style="margin-top:6px">最後のチェック：<b>${esc(at)}</b></div><div class="small">${esc(sum||"対象なし")}</div>
+  ${up.length?`<div style="margin-top:8px"><b>自動で延ばした（${up.length}件）</b>${tb(up,[["前の期限",x=>c130Md(x.expires_on)],["新しい期限",x=>c130Md(x.new_expires)],["サイトの農場名",x=>x.jgap_name||""]])}</div>`:""}
+  ${chk.length?`<div class="warn" style="margin-top:8px;padding:8px;border-radius:8px"><b>確かめてほしいもの（${chk.length}件）</b>${tb(chk,[["期限",x=>c130Md(x.expires_on)],["結果",x=>C174_LABEL[x.status]||x.status],["候補",x=>(x.candidates||[]).join("、")||x.jgap_name||""]])}</div>`:""}</div>`;
+}
 async function c130GapPage(msg=""){
  if(!canAdmin()){alert("GAP一覧は管理者だけが使えます");return home()}
  setScreen("c130GapPage",[msg]);
  pageShell("GAP一覧（認証）","読み込んでいます",'<div class="card"><div class="notice">読み込んでいます。</div></div>');
- const rows=await c130Gap(true);if(currentScreen!=="c130GapPage")return;
+ const [rows,jrun]=await Promise.all([c130Gap(true),c174LastRun()]);if(currentScreen!=="c130GapPage")return;
  if(rows===null)return pageShell("GAP一覧（認証）","",`<div class="err">${NEED_SQL}</div>`);
  const today=todayKey(),exp=rows.filter(g=>c130Status(g,today)==="expired"),soon=rows.filter(g=>c130Status(g,today)==="soon");
  const last=rows.reduce((a,g)=>!a||String(g.imported_at)>String(a.imported_at)?g:a,null);
@@ -401,6 +416,7 @@ async function c130GapPage(msg=""){
   <button class="btn blue" style="width:100%;margin-top:10px" ${seikaEventAttrs("click","c130PickFile",[])}>Excelを取り込む（全部置き換え）</button>
   <button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c130Template",[])}>取り込み用のひな形をダウンロード</button>
   <button class="btn btn2" style="width:100%;margin-top:8px" ${seikaEventAttrs("click","c130BackfillPage",[])}>在庫が残るロットに入れる</button></div>
+ ${c174Card(jrun)}
  <div class="card ${exp.length?"err":""}"><b>期限切れ（${exp.length}件）</b><div class="small">QR入庫で自動では入りません。更新後の一覧を取り込んでください。</div>${exp.length?tbl(exp):""}</div>
  <div class="card ${soon.length?"warn":""}"><b>${SOON_DAYS}日以内に期限が切れる（${soon.length}件）</b>${soon.length?tbl(soon):""}</div>
  <div class="card"><details><summary style="font-weight:800;cursor:pointer">すべて見る（${rows.length}件）</summary>${tbl(rows)}</details></div>`);
