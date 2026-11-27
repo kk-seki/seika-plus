@@ -65,6 +65,7 @@ SCRIPT_LOAD_ORDER = [
     "./js/37-c163-returns.js",
     "./js/38-c165-ai.js",
     "./js/39-c168-usage.js",
+    "./js/40-c175-lettuce.js",
     "./js/33-c152-perf.js",
 ]
 
@@ -184,7 +185,7 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(nodes.inline, [])
         self.assertTrue(css and js)
         self.assertEqual(len([path for path in css if path.startswith("./css/")]), 12)
-        self.assertEqual(len([path for path in js if path.startswith("./js/")]), 39)
+        self.assertEqual(len([path for path in js if path.startswith("./js/")]), 40)
         for attrs in [*nodes.links, *nodes.scripts]:
             self.assertNotIn("async", attrs)
             self.assertNotIn("defer", attrs)
@@ -203,8 +204,8 @@ class AssetTests(unittest.TestCase):
     def test_service_worker_caches_every_external_asset(self):
         css, js = self.app_assets()
         new_assets = [path for path in [*css, *js] if path.startswith(("./css/", "./js/"))]
-        self.assertEqual(len(new_assets), 51)
-        self.assertEqual(len(set(new_assets)), 51)
+        self.assertEqual(len(new_assets), 52)
+        self.assertEqual(len(set(new_assets)), 52)
         shell = set(self.shell)
         self.assertTrue(set(new_assets).issubset(shell), sorted(set(new_assets) - shell))
         for path in [*css, *js]:
