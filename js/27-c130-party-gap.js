@@ -387,9 +387,10 @@ async function c130BackfillRun(cnt){
 /* 一覧・期限 */
 /* c174：JGAPサイトでの自動チェック（月2回。SQL 075）。最後の結果を出す */
 async function c174LastRun(){try{const r=await qrSelect("qr_gap_jgap_runs_v1199c174","select=*&order=id.desc&limit=1");return Array.isArray(r)?r[0]||null:null}catch(_){return null}}
-const C174_LABEL={updated:"期限を延ばした",same:"サイトも同じ期限",older:"サイトのほうが古い",ambiguous:"候補が2つ以上",item_missing:"認証の品目にない",cert_missing:"認証の種類が違う",not_found:"サイトで見つからない",not_searched:"調べられなかった"};
+/* c176：GLOBALG.A.P.（GGAP）も同じチェックで調べる（SQL 076）。GGAPだけの結果：site_expired・not_in_list・no_ggn */
+const C174_LABEL={updated:"期限を延ばした",same:"サイトも同じ期限",older:"サイトのほうが古い",ambiguous:"候補が2つ以上",item_missing:"認証の品目にない",cert_missing:"認証の種類が違う",not_found:"サイトで見つからない",not_searched:"調べられなかった",site_expired:"サイトで認証が切れている",not_in_list:"SEIKA＋のGAP一覧にない（Excelだけ更新）",no_ggn:"ExcelにGGNがない"};
 function c174Card(run){
- const head='<b>JGAPサイトでの自動チェック</b><div class="small">毎月1日と15日に、期限切れ・60日以内に切れる JGAP／ASIAGAP を日本GAP協会の認証農場検索で調べます。名前と品目がはっきり合い、サイトの期限のほうが新しいものだけ自動で延ばします。それ以外は下に出すので、確かめてください。Excelを取り込み直しても、自動で延ばした新しい期限は残ります。</div>';
+ const head='<b>JGAP・GLOBALG.A.P.サイトでの自動チェック</b><div class="small">毎月1日と15日に、期限切れ・60日以内に切れるものを調べます。JGAP／ASIAGAP は日本GAP協会の認証農場検索で、名前と品目がはっきり合い、サイトの期限のほうが新しいものだけ自動で延ばします。GLOBALG.A.P.（GGAP）は、GAP一覧ExcelのGGNで GLOBALG.A.P. のサイトを調べ、認証中（Certified）でサイトの期限のほうが新しいものだけ延ばします（サイトでは品目が見られないため、品目は確かめていません）。それ以外は下に出すので、確かめてください。延ばした期限は共有フォルダのGAP一覧Excel（GAP認証産地○○更新）にも入ります。Excelを取り込み直しても、自動で延ばした新しい期限は残ります。</div>';
  if(!run)return `<div class="card">${head}<div class="small" style="margin-top:6px">まだチェックしていません。</div></div>`;
  const rep=Array.isArray(run.report)?run.report:[],sm=run.summary||{};
  const at=String(run.run_at||"").slice(0,16).replace("T"," ");
@@ -397,8 +398,8 @@ function c174Card(run){
  const tb=(list,cols)=>`<div style="overflow:auto"><table class="table" style="font-size:13px"><tr><th>単協名・仕入先</th><th>品目</th>${cols.map(c=>`<th>${c[0]}</th>`).join("")}</tr>${list.map(x=>`<tr><td>${esc(x.coop_name)}</td><td>${esc(x.item_name)}</td>${cols.map(c=>`<td>${esc(c[1](x))}</td>`).join("")}</tr>`).join("")}</table></div>`;
  const up=rep.filter(x=>x.status==="updated"),chk=rep.filter(x=>!["updated","same"].includes(x.status));
  return `<div class="card">${head}<div style="margin-top:6px">最後のチェック：<b>${esc(at)}</b></div><div class="small">${esc(sum||"対象なし")}</div>
-  ${up.length?`<div style="margin-top:8px"><b>自動で延ばした（${up.length}件）</b>${tb(up,[["前の期限",x=>c130Md(x.expires_on)],["新しい期限",x=>c130Md(x.new_expires)],["サイトの農場名",x=>x.jgap_name||""]])}</div>`:""}
-  ${chk.length?`<div class="warn" style="margin-top:8px;padding:8px;border-radius:8px"><b>確かめてほしいもの（${chk.length}件）</b>${tb(chk,[["期限",x=>c130Md(x.expires_on)],["結果",x=>C174_LABEL[x.status]||x.status],["候補",x=>(x.candidates||[]).join("、")||x.jgap_name||""]])}</div>`:""}</div>`;
+  ${up.length?`<div style="margin-top:8px"><b>自動で延ばした（${up.length}件）</b>${tb(up,[["認証",x=>x.certification||""],["前の期限",x=>c130Md(x.expires_on)],["新しい期限",x=>c130Md(x.new_expires)],["サイトの農場名・GGN",x=>[x.jgap_name,x.certification==="GGAP"?x.jgap_no:""].filter(Boolean).join("　")]])}</div>`:""}
+  ${chk.length?`<div class="warn" style="margin-top:8px;padding:8px;border-radius:8px"><b>確かめてほしいもの（${chk.length}件）</b>${tb(chk,[["認証",x=>x.certification||""],["期限",x=>c130Md(x.expires_on)],["結果",x=>C174_LABEL[x.status]||x.status],["候補・サイト",x=>(x.candidates||[]).join("、")||[x.jgap_name,x.certification==="GGAP"?(x.jgap_no||""):"",x.status==="older"&&x.new_expires?`サイト ${c130Md(x.new_expires)}`:""].filter(Boolean).join("　")]])}</div>`:""}</div>`;
 }
 async function c130GapPage(msg=""){
  if(!canAdmin()){alert("GAP一覧は管理者だけが使えます");return home()}

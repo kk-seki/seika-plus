@@ -203,13 +203,30 @@ class PartyGapBrowserTests(unittest.TestCase):
                   {coop_name:'SYC協同組合',item_name:'レタス',expires_on:'2026-10-21',status:'not_found'},
                   {coop_name:'佐賀東部青果',item_name:'玉葱',expires_on:'2026-11-21',status:'same'}]}]}""")
         page.evaluate("()=>c130GapPage('')")
-        page.wait_for_selector("text=JGAPサイトでの自動チェック")
+        page.wait_for_selector("text=JGAP・GLOBALG.A.P.サイトでの自動チェック")
         text = page.inner_text("#app")
         self.assertIn("自動で延ばした（1件）", text)
         self.assertIn("確かめてほしいもの（2件）", text)
         self.assertIn("田原タスパス部会、タスパスくまもと JGAP部会", text)
         self.assertIn("サイトで見つからない", text)
         self.assertNotIn("佐賀東部青果", text.split("確かめてほしいもの")[1].split("期限切れ")[0])  # 同じ期限は「確かめて」に出さない
+
+    def test_ggap_results_in_auto_check_card_c176(self):
+        page = self.open_app()
+        page.evaluate("""()=>{window.__T.qr_gap_jgap_runs_v1199c174=[{id:4,run_at:'2026-12-01T00:43:00Z',days:60,summary:{updated:1,not_in_list:1,no_ggn:1,site_expired:1},
+          report:[{coop_name:'アグリルーツ',item_name:'キャベツ',certification:'GGAP',expires_on:'2026-12-21',status:'updated',new_expires:'2027-12-21',jgap_name:'',jgap_no:'4063651718256'},
+                  {coop_name:'丸西産業',item_name:'レタス',certification:'GGAP',expires_on:null,status:'not_in_list',new_expires:'2027-07-12',jgap_name:'Marunishi Sangyo Co., Ltd.',jgap_no:'4069453240773'},
+                  {coop_name:'石嶋農園',item_name:'長葱',certification:'GGAP',expires_on:null,status:'no_ggn'},
+                  {coop_name:'マルタケ',item_name:'人参',certification:'GGAP',expires_on:'2027-01-25',status:'site_expired',jgap_no:'4063061957016'}]}]}""")
+        page.evaluate("()=>c130GapPage('')")
+        page.wait_for_selector("text=JGAP・GLOBALG.A.P.サイトでの自動チェック")
+        text = page.inner_text("#app")
+        self.assertIn("自動で延ばした（1件）", text)
+        self.assertIn("4063651718256", text)
+        self.assertIn("確かめてほしいもの（3件）", text)
+        self.assertIn("SEIKA＋のGAP一覧にない（Excelだけ更新）", text)
+        self.assertIn("ExcelにGGNがない", text)
+        self.assertIn("サイトで認証が切れている", text)
 
     # ---------- QR入庫の自動入力 ----------
     def test_qr_create_fills_gap_automatically_and_respects_manual_choice(self):
