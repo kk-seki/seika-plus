@@ -1,9 +1,12 @@
 /* GLOBALG.A.P. Supply Chain Portal（https://prod.osapiens.cloud/portal/webbundle/foodplus/field-service-os/supply-chain-portal?app-route-hash=%252Fcertificates）
    を開いたタブで実行する。window.__ggap(['GGN', ...]) を定義する（ログインしない・1件ごとに間をあける）。
+   使い方：window.__ggapRun(['GGN', ...]) で始め（すぐ返る）、window.__ggapState を数秒ごとに読む（done が true になったら out が結果）。
    結果：[{ggn, result:'certified'|'expired'|'not_found'|'not_searched', valid_to:'YYYY-MM-DD', group_name, producer, certs:[...]}]
    certified＝「Integrated Farm Assurance (IFA)」が Certified の行があり、その中でいちばん新しい Valid to。 */
 window.__ggap = async function (ggns) {
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  // 待ち時間：画面が裏（見えていない）でも遅くならないように、setTimeout ではなく MessageChannel で待つ
+  const sleep = ms => new Promise(res => { const end = performance.now() + ms; const ch = new MessageChannel();
+    ch.port1.onmessage = () => { if (performance.now() >= end) { ch.port1.close(); res(); } else ch.port2.postMessage(0); }; ch.port2.postMessage(0); });
   const fr = [...document.querySelectorAll('iframe')].find(f => /supply-chain-portal/.test(f.src));
   if (!fr) throw new Error('portal iframe not found');
   const d = fr.contentDocument, w = d.defaultView;
@@ -27,23 +30,32 @@ window.__ggap = async function (ggns) {
       const row = [...d.querySelectorAll('[role=row],tr')].find(r => r.innerText.includes(g));
       o.producer = clean(row.innerText).replace(g, '').trim().slice(0, 120);
       const btn = row.querySelector('button'); if (btn) btn.click();
+      // 認証の行は画面の文字ではなく、表の行のデータ（validTo など）から読む（画面が狭い・裏にあると列が描かれないため）
+      const rowData = () => {
+        const seen = new Map();
+        for (const el of d.querySelectorAll('[role=row]')) {
+          const k = Object.keys(el).find(x => x.startsWith('__reactFiber'));
+          let f = k ? el[k] : null;
+          for (let i = 0; i < 25 && f; i++, f = f.return) {
+            const r = f.memoizedProps && f.memoizedProps.row;
+            if (r && r.farmAssuranceProduct) { seen.set(String(r.certificateId || seen.size), r); break; }
+          }
+        }
+        return [...seen.values()];
+      };
       let certs = [];
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 30; i++) {
         await sleep(500);
-        const all = [...d.querySelectorAll('[role=row],tr')]
-          .map(r => [...r.querySelectorAll('[role=cell],[role=gridcell],td')].map(c => clean(c.innerText)))
-          .filter(c => c.length >= 5 && c.some(x => /^\d{2}\.\d{2}\.\d{4}$/.test(x)));
-        if (all.length) { certs = all; break; }
+        certs = rowData();
+        if (certs.length) { await sleep(800); certs = rowData(); break; }
       }
-      o.certs = certs.map(c => {
-        const vt = c.find(x => /^\d{2}\.\d{2}\.\d{4}$/.test(x)) || '';
-        const gi = c.findIndex(x => /^40\d{11}$/.test(x));
-        return { product: c[0], status: c[2], valid_to: vt ? vt.split('.').reverse().join('-') : '',
-                 group_ggn: gi >= 0 ? c[gi] : '', group_name: gi >= 0 ? (c[gi + 1] || '') : '' };
-      });
+      const ymd = ms => ms ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date(ms)) : '';
+      o.certs = certs.map(c => ({ product: c.farmAssuranceProduct || '', status: c.status || '', status_id: c.statusId || '',
+        valid_to: ymd(c.validTo), group_ggn: c.groupGgn || c.groupGGN || '', group_name: c.groupName || '',
+        cb: c.certificationBodyName || '' }));
       if (!certs.length) o.result = 'not_searched';
       else {
-        const ok = o.certs.filter(c => /Integrated Farm Assurance/i.test(c.product) && /^Certified$/i.test(c.status) && c.valid_to)
+        const ok = o.certs.filter(c => /Integrated Farm Assurance/i.test(c.product) && (/^Certified$/i.test(c.status) || /CERTIFIED$/.test(c.status_id)) && c.valid_to)
           .sort((a, b) => b.valid_to.localeCompare(a.valid_to));
         if (ok.length) { o.result = 'certified'; o.valid_to = ok[0].valid_to; o.group_name = ok[0].group_name; }
         else o.result = 'expired';
@@ -53,5 +65,11 @@ window.__ggap = async function (ggns) {
     await sleep(1000);
   }
   return out;
+};
+window.__ggapRun = function (ggns) {
+  window.__ggapState = { done: false, out: null, error: null };
+  window.__ggap(ggns).then(r => { window.__ggapState = { done: true, out: r, error: null }; })
+    .catch(e => { window.__ggapState = { done: true, out: null, error: String(e) }; });
+  return 'started';
 };
 'ok';
